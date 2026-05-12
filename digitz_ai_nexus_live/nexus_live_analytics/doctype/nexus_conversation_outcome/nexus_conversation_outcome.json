@@ -1,0 +1,74 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:NEXUS-CONVERSATION-OUTCOME-.#####",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "outcome",
+    "resolution_notes",
+    "resolved_by_agent",
+    "resolved_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "label": "Outcome",
+      "options": "Answered\nEscalated\nLead Captured\nSupport Ticket Suggested\nUnresolved\nClosed by User"
+    },
+    {
+      "fieldname": "resolution_notes",
+      "fieldtype": "Small Text",
+      "label": "Resolution Notes"
+    },
+    {
+      "fieldname": "resolved_by_agent",
+      "fieldtype": "Link",
+      "label": "Resolved By Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "resolved_on",
+      "fieldtype": "Datetime",
+      "label": "Resolved On"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Analytics",
+  "name": "Nexus Conversation Outcome",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

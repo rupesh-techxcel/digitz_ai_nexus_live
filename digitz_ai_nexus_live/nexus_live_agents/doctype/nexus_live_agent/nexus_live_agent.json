@@ -1,0 +1,157 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:agent_code",
+ "creation": "2026-05-10 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "agent_code",
+  "agent_name",
+  "display_name",
+  "agent_type",
+  "agent_role",
+  "status",
+  "enabled",
+  "visibility",
+  "business_unit",
+  "default_channel",
+  "priority",
+  "max_active_sessions",
+  "current_active_sessions",
+  "avatar",
+  "description",
+  "last_active_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "agent_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Agent Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "agent_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Agent Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "label": "Display Name"
+  },
+  {
+   "fieldname": "agent_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Agent Type",
+   "options": "AI\nHuman",
+   "reqd": 1
+  },
+  {
+   "fieldname": "agent_role",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Agent Role",
+   "options": "Public Responder\nSales\nSupport\nConsultant\nInternal Assistant\nAdmin Reviewer",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nOnboarding\nIdle\nAssigned\nResponding\nWaiting\nUnavailable\nDisabled",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Public",
+   "fieldname": "visibility",
+   "fieldtype": "Select",
+   "label": "Visibility",
+   "options": "Public\nInternal\nBoth"
+  },
+  {
+   "fieldname": "business_unit",
+   "fieldtype": "Data",
+   "label": "Business Unit"
+  },
+  {
+   "fieldname": "default_channel",
+   "fieldtype": "Link",
+   "label": "Default Channel",
+   "options": "Nexus Live Channel"
+  },
+  {
+   "default": "10",
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority"
+  },
+  {
+   "default": "1",
+   "fieldname": "max_active_sessions",
+   "fieldtype": "Int",
+   "label": "Max Active Sessions"
+  },
+  {
+   "default": "0",
+   "fieldname": "current_active_sessions",
+   "fieldtype": "Int",
+   "label": "Current Active Sessions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "avatar",
+   "fieldtype": "Attach Image",
+   "label": "Avatar"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "last_active_on",
+   "fieldtype": "Datetime",
+   "label": "Last Active On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-11 05:30:41.232234",
+ "modified_by": "Administrator",
+ "module": "Nexus Live Agents",
+ "name": "Nexus Live Agent",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,154 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:conversation_id",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation_id",
+    "conversation_type",
+    "channel",
+    "visitor_name",
+    "visitor_email",
+    "visitor_phone",
+    "user_type",
+    "assigned_agent",
+    "assigned_agent_type",
+    "status",
+    "intent",
+    "last_message",
+    "last_response",
+    "confidence",
+    "escalation_status",
+    "started_on",
+    "closed_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation_id",
+      "fieldtype": "Data",
+      "label": "Conversation ID",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "conversation_type",
+      "fieldtype": "Select",
+      "label": "Conversation Type",
+      "reqd": 1,
+      "options": "Q&A\nChat"
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Link",
+      "label": "Channel",
+      "options": "Nexus Live Channel"
+    },
+    {
+      "fieldname": "visitor_name",
+      "fieldtype": "Data",
+      "label": "Visitor Name"
+    },
+    {
+      "fieldname": "visitor_email",
+      "fieldtype": "Data",
+      "label": "Visitor Email"
+    },
+    {
+      "fieldname": "visitor_phone",
+      "fieldtype": "Data",
+      "label": "Visitor Phone"
+    },
+    {
+      "fieldname": "user_type",
+      "fieldtype": "Select",
+      "label": "User Type",
+      "default": "Guest",
+      "options": "Guest\nWebsite User\nDesk User"
+    },
+    {
+      "fieldname": "assigned_agent",
+      "fieldtype": "Link",
+      "label": "Assigned Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "assigned_agent_type",
+      "fieldtype": "Select",
+      "label": "Assigned Agent Type",
+      "options": "AI\nHuman"
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "default": "Open",
+      "options": "Open\nWaiting\nResponding\nEscalated\nHanded Over\nClosed"
+    },
+    {
+      "fieldname": "intent",
+      "fieldtype": "Data",
+      "label": "Intent"
+    },
+    {
+      "fieldname": "last_message",
+      "fieldtype": "Small Text",
+      "label": "Last Message"
+    },
+    {
+      "fieldname": "last_response",
+      "fieldtype": "Small Text",
+      "label": "Last Response"
+    },
+    {
+      "fieldname": "confidence",
+      "fieldtype": "Float",
+      "label": "Confidence"
+    },
+    {
+      "fieldname": "escalation_status",
+      "fieldtype": "Select",
+      "label": "Escalation Status",
+      "options": "None\nPending\nAccepted\nResolved\nRejected",
+      "default": "None"
+    },
+    {
+      "fieldname": "started_on",
+      "fieldtype": "Datetime",
+      "label": "Started On"
+    },
+    {
+      "fieldname": "closed_on",
+      "fieldtype": "Datetime",
+      "label": "Closed On"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Conversations",
+  "name": "Nexus Live Conversation",
+  "naming_rule": "",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

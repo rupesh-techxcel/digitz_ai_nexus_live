@@ -1,0 +1,72 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:NEXUS-LIVE-INTERACTION-LOG-.#####",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "agent",
+    "event_type",
+    "payload_json",
+    "event_time"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation"
+    },
+    {
+      "fieldname": "agent",
+      "fieldtype": "Link",
+      "label": "Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "event_type",
+      "fieldtype": "Data",
+      "label": "Event Type"
+    },
+    {
+      "fieldname": "payload_json",
+      "fieldtype": "Code",
+      "label": "Payload JSON",
+      "options": "JSON"
+    },
+    {
+      "fieldname": "event_time",
+      "fieldtype": "Datetime",
+      "label": "Event Time"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Analytics",
+  "name": "Nexus Live Interaction Log",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

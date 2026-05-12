@@ -1,0 +1,102 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "sender_type",
+    "sender_agent",
+    "message",
+    "response_mode",
+    "confidence",
+    "sources_json",
+    "retrieval_debug_json",
+    "message_time"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation",
+      "reqd": 1
+    },
+    {
+      "fieldname": "sender_type",
+      "fieldtype": "Select",
+      "label": "Sender Type",
+      "reqd": 1,
+      "options": "Visitor\nUser\nAI Agent\nHuman Agent\nSystem"
+    },
+    {
+      "fieldname": "sender_agent",
+      "fieldtype": "Link",
+      "label": "Sender Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "message",
+      "fieldtype": "Long Text",
+      "label": "Message",
+      "reqd": 1
+    },
+    {
+      "fieldname": "response_mode",
+      "fieldtype": "Select",
+      "label": "Response Mode",
+      "options": "qa\nchat"
+    },
+    {
+      "fieldname": "confidence",
+      "fieldtype": "Float",
+      "label": "Confidence"
+    },
+    {
+      "fieldname": "sources_json",
+      "fieldtype": "Code",
+      "label": "Sources JSON",
+      "options": "JSON"
+    },
+    {
+      "fieldname": "retrieval_debug_json",
+      "fieldtype": "Code",
+      "label": "Retrieval Debug JSON",
+      "options": "JSON"
+    },
+    {
+      "fieldname": "message_time",
+      "fieldtype": "Datetime",
+      "label": "Message Time"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Conversations",
+  "name": "Nexus Live Message",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

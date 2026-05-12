@@ -1,0 +1,102 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "rule_name",
+    "enabled",
+    "agent_role",
+    "minimum_confidence",
+    "escalate_on_no_knowledge",
+    "escalate_on_human_request",
+    "target_queue",
+    "target_agent",
+    "rule_conditions_json"
+  ],
+  "fields": [
+    {
+      "fieldname": "rule_name",
+      "fieldtype": "Data",
+      "label": "Rule Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled",
+      "default": 1
+    },
+    {
+      "fieldname": "agent_role",
+      "fieldtype": "Select",
+      "label": "Agent Role",
+      "options": "Public Responder\nSales\nSupport\nConsultant\nInternal Assistant\nAdmin Reviewer"
+    },
+    {
+      "fieldname": "minimum_confidence",
+      "fieldtype": "Float",
+      "label": "Minimum Confidence",
+      "default": 0.65
+    },
+    {
+      "fieldname": "escalate_on_no_knowledge",
+      "fieldtype": "Check",
+      "label": "Escalate On No Knowledge",
+      "default": 1
+    },
+    {
+      "fieldname": "escalate_on_human_request",
+      "fieldtype": "Check",
+      "label": "Escalate On Human Request",
+      "default": 1
+    },
+    {
+      "fieldname": "target_queue",
+      "fieldtype": "Link",
+      "label": "Target Queue",
+      "options": "Nexus Agent Queue"
+    },
+    {
+      "fieldname": "target_agent",
+      "fieldtype": "Link",
+      "label": "Target Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "rule_conditions_json",
+      "fieldtype": "Code",
+      "label": "Rule Conditions JSON",
+      "options": "JSON"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Escalations",
+  "name": "Nexus Escalation Rule",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

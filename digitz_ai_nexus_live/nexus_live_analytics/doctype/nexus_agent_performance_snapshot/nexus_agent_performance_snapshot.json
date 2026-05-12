@@ -1,0 +1,95 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:NEXUS-AGENT-PERFORMANCE-SNAPSHOT-.#####",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "agent",
+    "snapshot_date",
+    "total_conversations",
+    "resolved_conversations",
+    "escalated_conversations",
+    "average_confidence",
+    "positive_feedback_count",
+    "negative_feedback_count"
+  ],
+  "fields": [
+    {
+      "fieldname": "agent",
+      "fieldtype": "Link",
+      "label": "Agent",
+      "options": "Nexus Live Agent",
+      "reqd": 1
+    },
+    {
+      "fieldname": "snapshot_date",
+      "fieldtype": "Date",
+      "label": "Snapshot Date",
+      "reqd": 1
+    },
+    {
+      "fieldname": "total_conversations",
+      "fieldtype": "Int",
+      "label": "Total Conversations",
+      "default": 0
+    },
+    {
+      "fieldname": "resolved_conversations",
+      "fieldtype": "Int",
+      "label": "Resolved Conversations",
+      "default": 0
+    },
+    {
+      "fieldname": "escalated_conversations",
+      "fieldtype": "Int",
+      "label": "Escalated Conversations",
+      "default": 0
+    },
+    {
+      "fieldname": "average_confidence",
+      "fieldtype": "Float",
+      "label": "Average Confidence"
+    },
+    {
+      "fieldname": "positive_feedback_count",
+      "fieldtype": "Int",
+      "label": "Positive Feedback Count",
+      "default": 0
+    },
+    {
+      "fieldname": "negative_feedback_count",
+      "fieldtype": "Int",
+      "label": "Negative Feedback Count",
+      "default": 0
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Analytics",
+  "name": "Nexus Agent Performance Snapshot",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

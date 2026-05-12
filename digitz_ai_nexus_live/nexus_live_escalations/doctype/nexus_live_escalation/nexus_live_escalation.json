@@ -1,0 +1,108 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "escalation_reason",
+    "from_agent",
+    "to_agent",
+    "to_queue",
+    "status",
+    "confidence",
+    "remarks",
+    "created_on",
+    "resolved_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation",
+      "reqd": 1
+    },
+    {
+      "fieldname": "escalation_reason",
+      "fieldtype": "Select",
+      "label": "Escalation Reason",
+      "options": "Low Confidence\nNo Approved Knowledge\nUser Requested Human\nSales Lead\nSupport Required\nRestricted Topic\nRepeated Fallback\nOther",
+      "reqd": 1
+    },
+    {
+      "fieldname": "from_agent",
+      "fieldtype": "Link",
+      "label": "From Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "to_agent",
+      "fieldtype": "Link",
+      "label": "To Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "to_queue",
+      "fieldtype": "Link",
+      "label": "To Queue",
+      "options": "Nexus Agent Queue"
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "default": "Pending",
+      "options": "Pending\nAccepted\nResolved\nRejected"
+    },
+    {
+      "fieldname": "confidence",
+      "fieldtype": "Float",
+      "label": "Confidence"
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
+      "fieldname": "created_on",
+      "fieldtype": "Datetime",
+      "label": "Created On"
+    },
+    {
+      "fieldname": "resolved_on",
+      "fieldtype": "Datetime",
+      "label": "Resolved On"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Escalations",
+  "name": "Nexus Live Escalation",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

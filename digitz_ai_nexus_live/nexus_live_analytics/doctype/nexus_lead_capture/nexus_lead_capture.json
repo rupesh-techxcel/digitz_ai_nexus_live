@@ -1,0 +1,103 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:NEXUS-LEAD-CAPTURE-.#####",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "lead_name",
+    "email",
+    "phone",
+    "company",
+    "interest_area",
+    "lead_score",
+    "captured_by_agent",
+    "status",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation"
+    },
+    {
+      "fieldname": "lead_name",
+      "fieldtype": "Data",
+      "label": "Lead Name"
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email"
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Data",
+      "label": "Company"
+    },
+    {
+      "fieldname": "interest_area",
+      "fieldtype": "Data",
+      "label": "Interest Area"
+    },
+    {
+      "fieldname": "lead_score",
+      "fieldtype": "Int",
+      "label": "Lead Score"
+    },
+    {
+      "fieldname": "captured_by_agent",
+      "fieldtype": "Link",
+      "label": "Captured By Agent",
+      "options": "Nexus Live Agent"
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "New\nQualified\nConverted\nRejected",
+      "default": "New"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Analytics",
+  "name": "Nexus Lead Capture",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

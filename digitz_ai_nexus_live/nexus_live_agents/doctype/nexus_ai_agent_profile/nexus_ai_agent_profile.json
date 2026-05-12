@@ -1,0 +1,162 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "agent",
+    "behavior_prompt",
+    "tone",
+    "response_style",
+    "welcome_message",
+    "fallback_message",
+    "do_not_answer_rules",
+    "default_response_mode",
+    "knowledge_scope",
+    "allowed_business_units_json",
+    "allowed_projects_json",
+    "allowed_contexts_json",
+    "confidence_threshold",
+    "escalation_enabled",
+    "escalation_policy",
+    "memory_mode",
+    "system_notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "agent",
+      "fieldtype": "Link",
+      "label": "Agent",
+      "options": "Nexus Live Agent",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "behavior_prompt",
+      "fieldtype": "Long Text",
+      "label": "Behavior Prompt",
+      "reqd": 1
+    },
+    {
+      "default": "Professional",
+      "fieldname": "tone",
+      "fieldtype": "Select",
+      "label": "Tone",
+      "options": "Professional\nFriendly\nExecutive\nConsultative\nTechnical\nSupportive"
+    },
+    {
+      "default": "Balanced",
+      "fieldname": "response_style",
+      "fieldtype": "Select",
+      "label": "Response Style",
+      "options": "Concise\nBalanced\nDetailed\nStep-by-step"
+    },
+    {
+      "fieldname": "welcome_message",
+      "fieldtype": "Small Text",
+      "label": "Welcome Message"
+    },
+    {
+      "default": "I do not have enough approved knowledge to answer this.",
+      "fieldname": "fallback_message",
+      "fieldtype": "Small Text",
+      "label": "Fallback Message"
+    },
+    {
+      "fieldname": "do_not_answer_rules",
+      "fieldtype": "Long Text",
+      "label": "Do Not Answer Rules"
+    },
+    {
+      "default": "chat",
+      "fieldname": "default_response_mode",
+      "fieldtype": "Select",
+      "label": "Default Response Mode",
+      "options": "qa\nchat"
+    },
+    {
+      "default": "Governed",
+      "fieldname": "knowledge_scope",
+      "fieldtype": "Select",
+      "label": "Knowledge Scope",
+      "options": "Public Only\nGoverned\nInternal Restricted"
+    },
+    {
+      "fieldname": "allowed_business_units_json",
+      "fieldtype": "Code",
+      "label": "Allowed Business Units JSON",
+      "options": "JSON"
+    },
+    {
+      "fieldname": "allowed_projects_json",
+      "fieldtype": "Code",
+      "label": "Allowed Projects JSON",
+      "options": "JSON"
+    },
+    {
+      "fieldname": "allowed_contexts_json",
+      "fieldtype": "Code",
+      "label": "Allowed Contexts JSON",
+      "options": "JSON"
+    },
+    {
+      "default": 0.65,
+      "fieldname": "confidence_threshold",
+      "fieldtype": "Float",
+      "label": "Confidence Threshold"
+    },
+    {
+      "default": 1,
+      "fieldname": "escalation_enabled",
+      "fieldtype": "Check",
+      "label": "Escalation Enabled"
+    },
+    {
+      "fieldname": "escalation_policy",
+      "fieldtype": "Link",
+      "label": "Escalation Policy",
+      "options": "Nexus Escalation Rule"
+    },
+    {
+      "default": "Session",
+      "fieldname": "memory_mode",
+      "fieldtype": "Select",
+      "label": "Memory Mode",
+      "options": "None\nSession\nConversation Summary\nLong Term"
+    },
+    {
+      "fieldname": "system_notes",
+      "fieldtype": "Small Text",
+      "label": "System Notes"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Agents",
+  "name": "Nexus AI Agent Profile",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

@@ -1,0 +1,81 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:NEXUS-SUGGESTED-PROMPT-.#####",
+  "creation": "2026-05-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "prompt_title",
+    "prompt_text",
+    "experience",
+    "agent_role",
+    "display_order",
+    "enabled"
+  ],
+  "fields": [
+    {
+      "fieldname": "prompt_title",
+      "fieldtype": "Data",
+      "label": "Prompt Title",
+      "reqd": 1
+    },
+    {
+      "fieldname": "prompt_text",
+      "fieldtype": "Small Text",
+      "label": "Prompt Text",
+      "reqd": 1
+    },
+    {
+      "fieldname": "experience",
+      "fieldtype": "Link",
+      "label": "Experience",
+      "options": "Nexus Live Experience"
+    },
+    {
+      "fieldname": "agent_role",
+      "fieldtype": "Select",
+      "label": "Agent Role",
+      "options": "Public Responder\nSales\nSupport\nConsultant\nInternal Assistant"
+    },
+    {
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "label": "Display Order",
+      "default": 10
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled",
+      "default": 1
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-05-10 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Experience",
+  "name": "Nexus Suggested Prompt",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}
