@@ -16,16 +16,20 @@ from digitz_ai_nexus_live.services.escalation_service import (
     should_escalate,
     create_escalation,
 )
+from digitz_ai_nexus_live.services.conversation_context_service import (
+    build_chat_continuity_payload,
+)
 
 from digitz_ai_nexus.services.answer_service import answer_query
 
 
-MAX_HISTORY_MESSAGES = 10
+MAX_HISTORY_MESSAGES = 20
+CHAT_RESPONSE_SENTENCE_LIMIT = 6
 
 
 def build_chat_history(conversation):
     """
-    Build simplified chat history for contextual continuity.
+    Build simplified chat history for contextual continuity and prompt awareness.
     """
     history = []
 
@@ -46,8 +50,20 @@ def build_chat_history(conversation):
 def build_core_chat_payload(payload, conversation, agent, profile):
     """
     Build payload for Nexus Core answer service.
+
+    Chat is continuity-aware.
+    Q&A should remain stateless and must not use this flow.
     """
     payload = payload or {}
+
+    continuity = build_chat_continuity_payload(
+        payload={
+            "query": payload.get("message"),
+            "message": payload.get("message"),
+            **payload,
+        },
+        conversation=conversation,
+    )
 
     chat_history = build_chat_history(conversation)
 
@@ -56,22 +72,32 @@ def build_core_chat_payload(payload, conversation, agent, profile):
     }
 
     return {
-        "query": payload.get("message"),
+        "query": continuity.get("effective_query") or payload.get("message"),
+        "original_query": continuity.get("original_query") or payload.get("message"),
         "response_mode": "chat",
+        "response_sentence_limit": CHAT_RESPONSE_SENTENCE_LIMIT,
+
         "tenant": payload.get("tenant"),
         "business_unit": payload.get("business_unit"),
         "project": payload.get("project"),
         "project_scope_mode": payload.get("project_scope_mode") or "with_general",
         "caller_system": "Nexus Live",
         "use_case": "Live Chat",
+
         "context": payload.get("context"),
         "sub_context": payload.get("sub_context"),
         "entity_type": payload.get("entity_type"),
         "entity": payload.get("entity"),
         "topic": payload.get("topic"),
+
         "conversation_id": conversation.conversation_id,
         "chat_history": chat_history,
+        "conversation_context": continuity.get("conversation_context"),
+        "context_message_count": continuity.get("context_message_count"),
+        "is_follow_up": continuity.get("is_follow_up"),
+
         "user": user_context,
+
         "agent_code": agent.agent_code,
         "agent_role": agent.agent_role,
         "agent_behavior_prompt": profile.behavior_prompt if profile else None,
@@ -170,6 +196,14 @@ def continue_live_chat(conversation_id, payload):
             frappe.get_traceback(),
             "Nexus Live Chat Core Answer Failed",
         )
+
+        set_agent_status(
+            agent,
+            "Waiting",
+            conversation=conversation.name,
+            remarks="AI agent response failed. Waiting for next visitor message.",
+        )
+
         raise
 
     answer = core_response.get("answer") if isinstance(core_response, dict) else None
