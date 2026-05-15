@@ -2,7 +2,7 @@ import frappe
 
 from digitz_ai_nexus_live.services.agent_router import assign_agent
 from digitz_ai_nexus_live.services.agent_service import (
-    get_ai_profile,
+    get_agent_behavior,
     set_agent_status,
 )
 from digitz_ai_nexus_live.services.conversation_service import (
@@ -25,12 +25,10 @@ from digitz_ai_nexus.services.answer_service import answer_query
 
 MAX_HISTORY_MESSAGES = 20
 CHAT_RESPONSE_SENTENCE_LIMIT = 6
+DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
 
 
 def build_chat_history(conversation):
-    """
-    Build simplified chat history for contextual continuity and prompt awareness.
-    """
     history = []
 
     messages = get_conversation_messages(
@@ -47,13 +45,7 @@ def build_chat_history(conversation):
     return history
 
 
-def build_core_chat_payload(payload, conversation, agent, profile):
-    """
-    Build payload for Nexus Core answer service.
-
-    Chat is continuity-aware.
-    Q&A should remain stateless and must not use this flow.
-    """
+def build_core_chat_payload(payload, conversation, agent, behavior):
     payload = payload or {}
 
     continuity = build_chat_continuity_payload(
@@ -100,18 +92,22 @@ def build_core_chat_payload(payload, conversation, agent, profile):
 
         "agent_code": agent.agent_code,
         "agent_role": agent.agent_role,
-        "agent_behavior_prompt": profile.behavior_prompt if profile else None,
-        "agent_tone": profile.tone if profile else None,
-        "agent_response_style": profile.response_style if profile else None,
-        "agent_fallback_message": profile.fallback_message if profile else None,
-        "agent_do_not_answer_rules": profile.do_not_answer_rules if profile else None,
+
+        "agent_behavior_prompt": behavior.behavior_prompt if behavior else None,
+        "agent_tone": behavior.tone if behavior else None,
+        "agent_response_style": behavior.response_style if behavior else None,
+        "agent_fallback_message": behavior.fallback_message if behavior else None,
+        "agent_do_not_answer_rules": behavior.do_not_answer_rules if behavior else None,
+
+        "behaviour": behavior.behaviour if behavior else None,
+        "behaviour_code": behavior.behaviour_code if behavior else None,
+        "behaviour_name": behavior.behaviour_name if behavior else None,
+        "behaviour_source": behavior.source if behavior else None,
+        "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
     }
 
 
 def start_live_chat(payload):
-    """
-    Start a brand-new live chat conversation.
-    """
     payload = payload or {}
 
     message = payload.get("message")
@@ -143,9 +139,6 @@ def start_live_chat(payload):
 
 
 def continue_live_chat(conversation_id, payload):
-    """
-    Continue existing live chat conversation.
-    """
     payload = payload or {}
 
     conversation = get_conversation(conversation_id)
@@ -166,7 +159,7 @@ def continue_live_chat(conversation_id, payload):
         conversation.assigned_agent,
     )
 
-    profile = get_ai_profile(agent)
+    behavior = get_agent_behavior(agent)
 
     set_agent_status(
         agent,
@@ -186,7 +179,7 @@ def continue_live_chat(conversation_id, payload):
         payload=payload,
         conversation=conversation,
         agent=agent,
-        profile=profile,
+        behavior=behavior,
     )
 
     try:
@@ -211,12 +204,17 @@ def continue_live_chat(conversation_id, payload):
     sources = core_response.get("sources") if isinstance(core_response, dict) else []
     retrieval_debug = core_response.get("retrieval_debug") if isinstance(core_response, dict) else {}
 
+    fallback_message = (
+        behavior.fallback_message
+        if behavior and behavior.fallback_message
+        else DEFAULT_FALLBACK_ANSWER
+    )
+
     if not answer:
-        answer = (
-            profile.fallback_message
-            if profile and profile.fallback_message
-            else "I do not have enough approved knowledge to answer this."
-        )
+        answer = fallback_message
+
+    if answer.strip() == DEFAULT_FALLBACK_ANSWER and fallback_message != DEFAULT_FALLBACK_ANSWER:
+        answer = fallback_message
 
     add_message(
         conversation=conversation,
@@ -236,15 +234,22 @@ def continue_live_chat(conversation_id, payload):
         remarks="Waiting for next visitor message.",
     )
 
-    no_knowledge = answer.strip() == "I do not have enough approved knowledge to answer this."
+    no_knowledge = (
+        answer.strip() == DEFAULT_FALLBACK_ANSWER
+        or answer.strip() == fallback_message
+    )
 
     threshold = (
-        profile.confidence_threshold
-        if profile and profile.confidence_threshold is not None
+        behavior.confidence_threshold
+        if behavior and behavior.confidence_threshold is not None
         else 0.65
     )
 
-    escalation_enabled = bool(profile.escalation_enabled) if profile else True
+    escalation_enabled = (
+        bool(behavior.escalation_enabled)
+        if behavior and behavior.escalation_enabled is not None
+        else True
+    )
 
     escalation_created = None
 
@@ -271,9 +276,20 @@ def continue_live_chat(conversation_id, payload):
         "agent_code": agent.agent_code,
         "agent_name": agent.display_name or agent.agent_name,
         "message": answer,
+        "answer": answer,
         "confidence": confidence,
         "sources": sources,
         "retrieval_debug": retrieval_debug,
         "escalated": bool(escalation_created),
         "escalation": escalation_created.name if escalation_created else None,
+
+        "behaviour": behavior.behaviour if behavior else None,
+        "behaviour_code": behavior.behaviour_code if behavior else None,
+        "behaviour_name": behavior.behaviour_name if behavior else None,
+        "behaviour_designation": behavior.behaviour_designation if behavior else None,
+        "behaviour_source": behavior.source if behavior else None,
+        "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
+        "confidence_threshold": threshold,
+        "confidence_threshold_source": behavior.confidence_threshold_source if behavior else None,
+        "fallback_used": 1 if no_knowledge else 0,
     }

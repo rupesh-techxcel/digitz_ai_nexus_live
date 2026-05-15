@@ -44,6 +44,69 @@ def get_ai_profile(agent):
 
     return frappe.get_doc("Nexus AI Agent Profile", profile_name)
 
+def get_agent_behavior(agent):
+    """
+    Runtime behaviour resolver for AI agents.
+
+    Priority:
+    1. Assigned Nexus AI Behaviour on Nexus Live Agent
+    2. Legacy Nexus AI Agent Profile fallback
+    """
+    if not agent:
+        return None
+
+    agent_doc = agent if hasattr(agent, "doctype") else frappe.get_doc("Nexus Live Agent", agent)
+
+    if agent_doc.agent_type != "AI":
+        return None
+
+    behaviour_name = getattr(agent_doc, "behaviour", None)
+
+    if behaviour_name and frappe.db.exists("Nexus AI Behaviour", behaviour_name):
+        behaviour = frappe.get_doc("Nexus AI Behaviour", behaviour_name)
+
+        return frappe._dict({
+            "source": "Nexus AI Behaviour",
+            "uses_assigned_behaviour": 1,
+            "behaviour": behaviour.name,
+            "behaviour_code": behaviour.behaviour_code,
+            "behaviour_name": behaviour.behaviour_name,
+            "behaviour_designation": behaviour.designation,
+            "behavior_prompt": behaviour.behavior_prompt,
+            "tone": behaviour.tone,
+            "response_style": behaviour.response_style,
+            "welcome_message": behaviour.welcome_message,
+            "fallback_message": behaviour.fallback_message,
+            "memory_mode": behaviour.memory_mode,
+            "confidence_threshold": behaviour.confidence_threshold,
+            "escalation_enabled": behaviour.escalation_enabled,
+            "do_not_answer_rules": behaviour.do_not_answer_rules,
+            "confidence_threshold_source": "Nexus AI Behaviour",
+        })
+
+    profile = get_ai_profile(agent_doc)
+
+    if not profile:
+        return None
+
+    return frappe._dict({
+        "source": "Nexus AI Agent Profile",
+        "uses_assigned_behaviour": 0,
+        "behaviour": None,
+        "behaviour_code": None,
+        "behaviour_name": None,
+        "behaviour_designation": None,
+        "behavior_prompt": profile.behavior_prompt,
+        "tone": profile.tone,
+        "response_style": profile.response_style,
+        "welcome_message": profile.welcome_message,
+        "fallback_message": profile.fallback_message,
+        "memory_mode": profile.memory_mode,
+        "confidence_threshold": profile.confidence_threshold,
+        "escalation_enabled": profile.escalation_enabled,
+        "do_not_answer_rules": profile.do_not_answer_rules,
+        "confidence_threshold_source": "Nexus AI Agent Profile",
+    })
 
 def get_human_profile(agent):
     """
