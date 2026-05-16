@@ -13,12 +13,19 @@ from digitz_ai_nexus_live.services.escalation_service import (
 )
 
 from digitz_ai_nexus.services.answer_service import answer_query
+from digitz_ai_nexus.services.tenant_context import apply_tenant_context_to_payload
+
+
+DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
 
 
 def build_core_payload(payload, agent=None, profile=None):
     """
     Build payload for Nexus Core answer service.
     Nexus Live should not perform retrieval directly.
+
+    Q&A remains direct and stateless.
+    Tenant/business/context defaults are already resolved before this method.
     """
     payload = payload or {}
 
@@ -29,18 +36,27 @@ def build_core_payload(payload, agent=None, profile=None):
     core_payload = {
         "query": payload.get("query") or payload.get("question"),
         "response_mode": "qa",
+
         "tenant": payload.get("tenant"),
         "business_unit": payload.get("business_unit"),
         "project": payload.get("project"),
         "project_scope_mode": payload.get("project_scope_mode") or "with_general",
+
         "caller_system": "Nexus Live",
         "use_case": "Live Q And A",
+
         "context": payload.get("context"),
         "sub_context": payload.get("sub_context"),
         "entity_type": payload.get("entity_type"),
         "entity": payload.get("entity"),
         "topic": payload.get("topic"),
+
+        "top_k": payload.get("top_k"),
+
+        "channel": payload.get("channel"),
         "user": user_context,
+
+        "_resolved_tenant_context": payload.get("_resolved_tenant_context"),
     }
 
     if agent:
@@ -59,17 +75,22 @@ def build_core_payload(payload, agent=None, profile=None):
 
 def ask_live_question(payload):
     """
-    Main Nexus Live Q And A entry point.
+    Main Nexus Live Q&A entry point.
 
     Flow:
     Question
+    -> apply tenant/user/ecosystem context defaults
     -> detect whether channel is agent-based
-    -> optionally assign AI agent
+    -> optionally assign AI agent for agent-based Q&A channels
     -> create conversation
     -> call Nexus Core
     -> store response
     -> optionally escalate if agent-based
     -> return response
+
+    Note:
+    Normal Q&A remains direct and does not require an agent.
+    Agent-based Q&A is preserved only for channels explicitly configured that way.
     """
     payload = payload or {}
 
@@ -78,7 +99,13 @@ def ask_live_question(payload):
     if not question:
         frappe.throw("Question is required.")
 
+    payload["query"] = question
     payload["conversation_type"] = "Q&A"
+
+    payload = apply_tenant_context_to_payload(
+        payload=payload,
+        require_tenant=True,
+    )
 
     channel_name = payload.get("channel")
     channel = None
@@ -138,7 +165,7 @@ def ask_live_question(payload):
         answer = (
             profile.fallback_message
             if profile and profile.fallback_message
-            else "I do not have enough approved knowledge to answer this."
+            else DEFAULT_FALLBACK_ANSWER
         )
 
     add_message(
@@ -152,7 +179,7 @@ def ask_live_question(payload):
         retrieval_debug=retrieval_debug,
     )
 
-    no_knowledge = answer.strip() == "I do not have enough approved knowledge to answer this."
+    no_knowledge = answer.strip() == DEFAULT_FALLBACK_ANSWER
 
     escalation_created = None
 
@@ -180,18 +207,31 @@ def ask_live_question(payload):
                 remarks="Auto escalation triggered from agent-based Live Q And A.",
             )
 
+    resolved_context = payload.get("_resolved_tenant_context") or {}
+
     return {
         "status": "success",
         "conversation": conversation.name,
         "conversation_id": conversation.conversation_id,
+
         "agent_based": agent_based,
         "agent": agent.name if agent else None,
         "agent_code": agent.agent_code if agent else None,
         "agent_name": (agent.display_name or agent.agent_name) if agent else None,
+
         "answer": answer,
         "confidence": confidence,
         "sources": sources,
         "retrieval_debug": retrieval_debug,
+
         "escalated": bool(escalation_created),
         "escalation": escalation_created.name if escalation_created else None,
+
+        "tenant": payload.get("tenant"),
+        "business_unit": payload.get("business_unit"),
+        "project": payload.get("project"),
+        "channel": payload.get("channel"),
+        "context": payload.get("context"),
+        "resolved_tenant_context": resolved_context,
+        "tenant_context_applied": 1 if resolved_context else 0,
     }

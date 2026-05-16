@@ -21,6 +21,7 @@ from digitz_ai_nexus_live.services.conversation_context_service import (
 )
 
 from digitz_ai_nexus.services.answer_service import answer_query
+from digitz_ai_nexus.services.tenant_context import apply_tenant_context_to_payload
 
 
 MAX_HISTORY_MESSAGES = 20
@@ -43,6 +44,45 @@ def build_chat_history(conversation):
         })
 
     return history
+
+
+def enrich_payload_from_conversation(payload, conversation):
+    """
+    Preserve conversation-level context during follow-up chat messages.
+
+    Priority:
+    1. Explicit payload values
+    2. Existing conversation values, if those fields exist
+    3. User Context / Ecosystem defaults through apply_tenant_context_to_payload()
+    """
+    payload = payload or {}
+
+    conversation_field_map = {
+        "tenant": "tenant",
+        "business_unit": "business_unit",
+        "project": "project",
+        "channel": "channel",
+        "context": "context",
+        "sub_context": "sub_context",
+        "entity_type": "entity_type",
+        "entity": "entity",
+        "topic": "topic",
+    }
+
+    for payload_field, conversation_field in conversation_field_map.items():
+        if payload.get(payload_field):
+            continue
+
+        if hasattr(conversation, conversation_field):
+            value = getattr(conversation, conversation_field, None)
+
+            if value:
+                payload[payload_field] = value
+
+    return apply_tenant_context_to_payload(
+        payload=payload,
+        require_tenant=True,
+    )
 
 
 def build_core_chat_payload(payload, conversation, agent, behavior):
@@ -82,6 +122,9 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "entity": payload.get("entity"),
         "topic": payload.get("topic"),
 
+        "top_k": payload.get("top_k"),
+        "channel": payload.get("channel"),
+
         "conversation_id": conversation.conversation_id,
         "chat_history": chat_history,
         "conversation_context": continuity.get("conversation_context"),
@@ -104,6 +147,8 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "behaviour_name": behavior.behaviour_name if behavior else None,
         "behaviour_source": behavior.source if behavior else None,
         "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
+
+        "_resolved_tenant_context": payload.get("_resolved_tenant_context"),
     }
 
 
@@ -115,7 +160,13 @@ def start_live_chat(payload):
     if not message:
         frappe.throw("Message is required.")
 
+    payload["message"] = message
     payload["conversation_type"] = "Chat"
+
+    payload = apply_tenant_context_to_payload(
+        payload=payload,
+        require_tenant=True,
+    )
 
     agent = assign_agent(payload)
 
@@ -153,6 +204,13 @@ def continue_live_chat(conversation_id, payload):
 
     if not message:
         frappe.throw("Message is required.")
+
+    payload["message"] = message
+
+    payload = enrich_payload_from_conversation(
+        payload=payload,
+        conversation=conversation,
+    )
 
     agent = frappe.get_doc(
         "Nexus Live Agent",
@@ -268,6 +326,8 @@ def continue_live_chat(conversation_id, payload):
             remarks="Auto escalation triggered from Live Chat.",
         )
 
+    resolved_context = payload.get("_resolved_tenant_context") or {}
+
     return {
         "status": "success",
         "conversation": conversation.name,
@@ -275,11 +335,13 @@ def continue_live_chat(conversation_id, payload):
         "agent": agent.name,
         "agent_code": agent.agent_code,
         "agent_name": agent.display_name or agent.agent_name,
+
         "message": answer,
         "answer": answer,
         "confidence": confidence,
         "sources": sources,
         "retrieval_debug": retrieval_debug,
+
         "escalated": bool(escalation_created),
         "escalation": escalation_created.name if escalation_created else None,
 
@@ -289,7 +351,16 @@ def continue_live_chat(conversation_id, payload):
         "behaviour_designation": behavior.behaviour_designation if behavior else None,
         "behaviour_source": behavior.source if behavior else None,
         "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
+
         "confidence_threshold": threshold,
         "confidence_threshold_source": behavior.confidence_threshold_source if behavior else None,
         "fallback_used": 1 if no_knowledge else 0,
+
+        "tenant": payload.get("tenant"),
+        "business_unit": payload.get("business_unit"),
+        "project": payload.get("project"),
+        "channel": payload.get("channel"),
+        "context": payload.get("context"),
+        "resolved_tenant_context": resolved_context,
+        "tenant_context_applied": 1 if resolved_context else 0,
     }
