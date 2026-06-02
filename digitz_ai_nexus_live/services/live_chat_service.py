@@ -3,6 +3,7 @@ import frappe
 from digitz_ai_nexus_live.services.agent_router import assign_agent
 from digitz_ai_nexus_live.services.agent_service import (
     get_agent_behavior,
+    get_ai_profile,
     set_agent_status,
 )
 from digitz_ai_nexus_live.services.conversation_service import (
@@ -22,6 +23,7 @@ from digitz_ai_nexus_live.services.conversation_context_service import (
 
 from digitz_ai_nexus.services.answer_service import answer_query
 from digitz_ai_nexus.services.tenant_context import apply_tenant_context_to_payload
+from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
 
 MAX_HISTORY_MESSAGES = 20
@@ -85,6 +87,26 @@ def enrich_payload_from_conversation(payload, conversation):
     )
 
 
+def _build_ai_profile_dict(behavior, profile_name=None):
+    """Build the ai_profile dict for query_contract from resolved behaviour."""
+    if not behavior:
+        return {}
+
+    return {
+        "name": profile_name or "",
+        "behavior_prompt": behavior.behavior_prompt,
+        "tone": behavior.tone,
+        "response_style": behavior.response_style,
+        "welcome_message": behavior.welcome_message,
+        "fallback_message": behavior.fallback_message,
+        "do_not_answer_rules": behavior.do_not_answer_rules,
+        "confidence_threshold": behavior.confidence_threshold,
+        "escalation_enabled": behavior.escalation_enabled,
+        "memory_mode": behavior.memory_mode,
+        "default_response_mode": "chat",
+    }
+
+
 def build_core_chat_payload(payload, conversation, agent, behavior):
     payload = payload or {}
 
@@ -99,9 +121,20 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
 
     chat_history = build_chat_history(conversation)
 
+    is_public = (payload.get("user_type", "Guest") == "Guest")
+
     user_context = payload.get("user") or {
         "roles": payload.get("roles") or ["Guest"]
     }
+
+    access_resolution = resolve_allowed_policies({
+        "channel": payload.get("channel"),
+        "user": user_context,
+        "force_public_only": is_public,
+    })
+
+    profile = get_ai_profile(agent)
+    ai_profile = _build_ai_profile_dict(behavior, profile_name=profile.name if profile else None)
 
     return {
         "query": continuity.get("effective_query") or payload.get("message"),
@@ -132,15 +165,13 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "is_follow_up": continuity.get("is_follow_up"),
 
         "user": user_context,
+        "force_public_only": is_public,
+        "allowed_access_policies": access_resolution["allowed_access_policies"],
+
+        "ai_profile": ai_profile,
 
         "agent_code": agent.agent_code,
         "agent_role": agent.agent_role,
-
-        "agent_behavior_prompt": behavior.behavior_prompt if behavior else None,
-        "agent_tone": behavior.tone if behavior else None,
-        "agent_response_style": behavior.response_style if behavior else None,
-        "agent_fallback_message": behavior.fallback_message if behavior else None,
-        "agent_do_not_answer_rules": behavior.do_not_answer_rules if behavior else None,
 
         "behaviour": behavior.behaviour if behavior else None,
         "behaviour_code": behavior.behaviour_code if behavior else None,

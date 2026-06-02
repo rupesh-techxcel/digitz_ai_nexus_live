@@ -1,0 +1,150 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:route_name",
+  "creation": "2026-06-02 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "route_name",
+    "channel",
+    "column_break_1",
+    "ai_agent_profile",
+    "enabled",
+    "section_routing",
+    "use_case",
+    "auth_scope",
+    "priority",
+    "is_default",
+    "section_context",
+    "context",
+    "sub_context",
+    "intent",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "route_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Route Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Channel",
+      "options": "Nexus Live Channel",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "ai_agent_profile",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "AI Agent Profile",
+      "options": "Nexus AI Agent Profile",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "fieldname": "section_routing",
+      "fieldtype": "Section Break",
+      "label": "Routing Criteria"
+    },
+    {
+      "description": "e.g. chat, qa, sales, support. Leave blank to match any use case.",
+      "fieldname": "use_case",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Use Case"
+    },
+    {
+      "default": "Any",
+      "fieldname": "auth_scope",
+      "fieldtype": "Select",
+      "label": "Auth Scope",
+      "options": "Any\nPublic\nAuthenticated"
+    },
+    {
+      "default": "10",
+      "description": "Lower number = higher priority. Matched routes are sorted by priority ascending.",
+      "fieldname": "priority",
+      "fieldtype": "Int",
+      "label": "Priority"
+    },
+    {
+      "default": "0",
+      "description": "Fallback route for this channel when no specific route matches.",
+      "fieldname": "is_default",
+      "fieldtype": "Check",
+      "label": "Is Default"
+    },
+    {
+      "fieldname": "section_context",
+      "fieldtype": "Section Break",
+      "label": "Context Matching (Optional)"
+    },
+    {
+      "description": "Leave blank to match any context.",
+      "fieldname": "context",
+      "fieldtype": "Data",
+      "label": "Context"
+    },
+    {
+      "description": "Leave blank to match any sub-context.",
+      "fieldname": "sub_context",
+      "fieldtype": "Data",
+      "label": "Sub Context"
+    },
+    {
+      "description": "Leave blank to match any intent.",
+      "fieldname": "intent",
+      "fieldtype": "Data",
+      "label": "Intent"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-02 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Channel AI Profile Route",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "priority",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "route_name",
+  "track_changes": 1
+}

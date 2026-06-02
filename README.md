@@ -1,33 +1,128 @@
-### Digitz AI Nexus Live
+# DIGITZ AI Nexus Live
 
-Digitz AI Nexus Live
+**Live conversation runtime for the DIGITZ AI platform** — built on [Frappe Framework](https://frappeframework.com).
 
-### Installation
+This app is the real-time conversation layer of the platform. It manages AI and human agents, routes queries to the right agent, maintains conversation history, and escalates sessions when confidence drops or a human is requested. It does **not** contain retrieval or prompt logic — that lives in `digitz_ai_nexus`.
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+---
 
-```bash
-cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch develop
-bench install-app digitz_ai_nexus_live
+## App Family
+
+| App | Role |
+|---|---|
+| `digitz_ai_nexus` | AI core: knowledge, access governance, retrieval, answer engine |
+| `digitz_ai_nexus_live` | Live conversation runtime: chat, escalation, human handover |
+| `digitz_ai_nexus_experience` | Testing and validation: test cases, synthetic data, platform validation |
+
+---
+
+## What This App Does
+
+`digitz_ai_nexus_live` is responsible for:
+
+- **Agent registry** — define AI and human agents with roles, behaviors, availability, and channel defaults
+- **Behavior profiles** — configure tone, style, confidence thresholds, escalation rules, and memory mode per agent
+- **Channel management** — Website Q&A, Website Chat, Desk, Portal, API, and WhatsApp channels
+- **Conversation lifecycle** — create, continue, escalate, hand over, and close conversations
+- **Intelligent routing** — assign agents by role inference, explicit request, or channel default
+- **Escalation management** — trigger escalation based on confidence threshold, no-knowledge, or user request
+- **Experience bundles** — group Q&A and chat configuration into named experience deployments
+- **Analytics** — interaction logs, conversation outcomes, lead capture, and agent performance snapshots
+
+---
+
+## Key Concepts
+
+### Agents
+
+Every conversation is handled by an agent. Agents have a type (AI or Human), a role, and a behavior profile:
+
+```
+Nexus Live Agent
+├── agent_type: AI | Human
+├── agent_role: Public Responder | Sales | Support | Consultant | Internal Assistant | Admin Reviewer
+├── behaviour → Nexus AI Behaviour (preferred)
+└── [fallback] → Nexus AI Agent Profile (legacy)
 ```
 
-### Contributing
+Behavior resolution priority:
+1. Assigned `Nexus AI Behaviour` on the agent
+2. Legacy `Nexus AI Agent Profile` as fallback
 
-This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
+AI agents answer queries through Nexus Core. Human agents receive escalated conversations.
 
-```bash
-cd apps/digitz_ai_nexus_live
-pre-commit install
+### Conversations
+
+A conversation tracks a full session between a visitor and an agent:
+
+```
+Nexus Live Conversation
+├── conversation_type: Q&A | Chat
+├── status: Open → Responding → Escalated → Handed Over → Closed
+├── Nexus Live Message (1:many)
+└── Nexus Conversation Participant (1:many)
 ```
 
-Pre-commit is configured to use the following tools for checking and formatting your code:
+Q&A conversations are stateless single-exchange queries. Chat conversations maintain history across messages for context continuity.
 
-- ruff
-- eslint
-- prettier
-- pyupgrade
+### Escalation
 
-### License
+Escalation is triggered automatically when confidence drops below the rule threshold, when the retrieval engine finds no knowledge, or when a user explicitly requests a human. The escalation flow:
 
-mit
+```
+Confidence < threshold OR no_knowledge OR user_requested_human
+    → Look up Nexus Escalation Rule by agent_role
+    → Find target Nexus Agent Queue
+    → Select available human agent from queue
+    → Update conversation status = "Escalated"
+    → Create Nexus Live Escalation record
+```
+
+### Channels
+
+Channels define the entry point for a conversation. Each channel can have routing rules and a default agent. The `agent_based` flag determines whether the channel uses agent routing logic or falls back to a simple profile-based query.
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [Architecture](docs/architecture.md) | App structure, data flow, service layer, integration points |
+| [Agent Management](docs/agent-management.md) | Agent lifecycle, behavior profiles, routing, availability |
+| [Conversation Flow](docs/conversation-flow.md) | Chat and Q&A lifecycle, context continuity, message history |
+| [Escalation](docs/escalation.md) | Escalation rules, queues, confidence thresholds, handover flow |
+| [DocType Reference](docs/doctypes.md) | All DocTypes with fields, autoname, and purpose |
+| [API Reference](docs/api-reference.md) | All whitelisted endpoints and payload contracts |
+| [Configuration](docs/configuration.md) | Experience bundles, channel setup, development commands |
+
+---
+
+## Installation
+
+```bash
+bench get-app digitz_ai_nexus_live
+bench --site your-site.local install-app digitz_ai_nexus_live
+bench --site your-site.local migrate
+```
+
+Requires Frappe Framework v15+ and `digitz_ai_nexus` to be installed first.
+
+---
+
+## Development
+
+```bash
+# After DocType JSON changes
+bench --site your-site.local migrate
+bench --site your-site.local clear-cache
+
+# Run tests
+bench --site your-site.local run-tests --app digitz_ai_nexus_live
+```
+
+---
+
+## License
+
+See [license.txt](license.txt). Built by [Techxcel Technologies](mailto:rupesh@techxceltech.com).

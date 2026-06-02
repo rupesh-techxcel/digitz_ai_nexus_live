@@ -14,6 +14,7 @@
     "fallback_message",
     "do_not_answer_rules",
     "default_response_mode",
+    "section_knowledge_scope",
     "knowledge_scope",
     "allowed_business_units_json",
     "allowed_projects_json",
@@ -41,17 +42,17 @@
     },
     {
       "default": "Professional",
+      "description": "Free text. e.g. Professional, Friendly, Executive, Consultative, Technical, Supportive",
       "fieldname": "tone",
-      "fieldtype": "Select",
-      "label": "Tone",
-      "options": "Professional\nFriendly\nExecutive\nConsultative\nTechnical\nSupportive"
+      "fieldtype": "Data",
+      "label": "Tone"
     },
     {
       "default": "Balanced",
+      "description": "Free text. e.g. Concise, Balanced, Detailed, Step-by-step",
       "fieldname": "response_style",
-      "fieldtype": "Select",
-      "label": "Response Style",
-      "options": "Concise\nBalanced\nDetailed\nStep-by-step"
+      "fieldtype": "Data",
+      "label": "Response Style"
     },
     {
       "fieldname": "welcome_message",
@@ -77,28 +78,37 @@
       "options": "qa\nchat"
     },
     {
+      "fieldname": "section_knowledge_scope",
+      "fieldtype": "Section Break",
+      "label": "Knowledge Scope (Legacy)"
+    },
+    {
       "default": "Governed",
+      "description": "Legacy field. Access scope is now governed through Nexus AI Agent Profile Access Category. This field is retained for reference only and does not drive enforcement.",
       "fieldname": "knowledge_scope",
       "fieldtype": "Select",
-      "label": "Knowledge Scope",
+      "label": "Knowledge Scope (Legacy)",
       "options": "Public Only\nGoverned\nInternal Restricted"
     },
     {
+      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
       "fieldname": "allowed_business_units_json",
       "fieldtype": "Code",
-      "label": "Allowed Business Units JSON",
+      "label": "Allowed Business Units JSON (Legacy)",
       "options": "JSON"
     },
     {
+      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
       "fieldname": "allowed_projects_json",
       "fieldtype": "Code",
-      "label": "Allowed Projects JSON",
+      "label": "Allowed Projects JSON (Legacy)",
       "options": "JSON"
     },
     {
+      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
       "fieldname": "allowed_contexts_json",
       "fieldtype": "Code",
-      "label": "Allowed Contexts JSON",
+      "label": "Allowed Contexts JSON (Legacy)",
       "options": "JSON"
     },
     {
@@ -135,7 +145,7 @@
   "index_web_pages_for_search": 1,
   "istable": 0,
   "links": [],
-  "modified": "2026-05-10 00:00:00.000000",
+  "modified": "2026-06-02 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Agents",
   "name": "Nexus AI Agent Profile",

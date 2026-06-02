@@ -14,12 +14,13 @@ from digitz_ai_nexus_live.services.escalation_service import (
 
 from digitz_ai_nexus.services.answer_service import answer_query
 from digitz_ai_nexus.services.tenant_context import apply_tenant_context_to_payload
+from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
 
 DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
 
 
-def build_core_payload(payload, agent=None, profile=None):
+def build_core_payload(payload, agent=None, profile=None, is_public=False):
     """
     Build payload for Nexus Core answer service.
     Nexus Live should not perform retrieval directly.
@@ -32,6 +33,28 @@ def build_core_payload(payload, agent=None, profile=None):
     user_context = payload.get("user") or {
         "roles": payload.get("roles") or ["Guest"]
     }
+
+    access_resolution = resolve_allowed_policies({
+        "channel": payload.get("channel"),
+        "user": user_context,
+        "force_public_only": is_public,
+    })
+
+    ai_profile = {}
+    if profile:
+        ai_profile = {
+            "name": profile.name,
+            "behavior_prompt": profile.behavior_prompt,
+            "tone": profile.tone,
+            "response_style": profile.response_style,
+            "welcome_message": profile.welcome_message,
+            "fallback_message": profile.fallback_message,
+            "do_not_answer_rules": profile.do_not_answer_rules,
+            "confidence_threshold": profile.confidence_threshold,
+            "escalation_enabled": profile.escalation_enabled,
+            "memory_mode": profile.memory_mode,
+            "default_response_mode": "qa",
+        }
 
     core_payload = {
         "query": payload.get("query") or payload.get("question"),
@@ -55,6 +78,10 @@ def build_core_payload(payload, agent=None, profile=None):
 
         "channel": payload.get("channel"),
         "user": user_context,
+        "force_public_only": is_public,
+        "allowed_access_policies": access_resolution["allowed_access_policies"],
+
+        "ai_profile": ai_profile,
 
         "_resolved_tenant_context": payload.get("_resolved_tenant_context"),
     }
@@ -62,13 +89,6 @@ def build_core_payload(payload, agent=None, profile=None):
     if agent:
         core_payload["agent_code"] = agent.agent_code
         core_payload["agent_role"] = agent.agent_role
-
-    if profile:
-        core_payload["agent_behavior_prompt"] = profile.behavior_prompt
-        core_payload["agent_tone"] = profile.tone
-        core_payload["agent_response_style"] = profile.response_style
-        core_payload["agent_fallback_message"] = profile.fallback_message
-        core_payload["agent_do_not_answer_rules"] = profile.do_not_answer_rules
 
     return core_payload
 
@@ -141,10 +161,13 @@ def ask_live_question(payload):
         response_mode="qa",
     )
 
+    is_public = payload.get("user_type", "Guest") == "Guest"
+
     core_payload = build_core_payload(
         payload=payload,
         agent=agent if agent_based else None,
         profile=profile if agent_based else None,
+        is_public=is_public,
     )
 
     try:
