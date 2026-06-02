@@ -15,6 +15,8 @@
     "user_type",
     "assigned_agent",
     "assigned_agent_type",
+    "assigned_ai_agent_profile",
+    "ai_profile_snapshot_json",
     "status",
     "intent",
     "last_message",
@@ -78,6 +80,22 @@
       "fieldtype": "Select",
       "label": "Assigned Agent Type",
       "options": "AI\nHuman"
+    },
+    {
+      "description": "AI Agent Profile active at conversation start. Preserved so profile changes do not affect in-progress conversations.",
+      "fieldname": "assigned_ai_agent_profile",
+      "fieldtype": "Link",
+      "label": "Assigned AI Agent Profile",
+      "options": "Nexus AI Agent Profile",
+      "read_only": 1
+    },
+    {
+      "description": "Serialised snapshot of ai_profile behaviour fields at conversation start.",
+      "fieldname": "ai_profile_snapshot_json",
+      "fieldtype": "Code",
+      "label": "AI Profile Snapshot (JSON)",
+      "options": "JSON",
+      "read_only": 1
     },
     {
       "fieldname": "status",

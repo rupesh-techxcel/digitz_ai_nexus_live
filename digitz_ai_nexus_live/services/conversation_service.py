@@ -1,6 +1,7 @@
 import json
 import frappe
 from frappe.utils import now_datetime
+from digitz_ai_nexus_live.services.agent_service import get_ai_profile
 
 
 def generate_conversation_id():
@@ -45,6 +46,26 @@ def create_conversation(payload, assigned_agent=None):
     if assigned_agent:
         conversation.assigned_agent = assigned_agent.name
         conversation.assigned_agent_type = assigned_agent.agent_type
+
+        if getattr(assigned_agent, "agent_type", None) == "AI":
+            profile = get_ai_profile(assigned_agent)
+            if profile:
+                conversation.assigned_ai_agent_profile = profile.name
+                conversation.ai_profile_snapshot_json = json.dumps({
+                    "name": profile.name,
+                    "agent": profile.agent,
+                    "behavior_prompt": profile.behavior_prompt,
+                    "tone": profile.tone,
+                    "response_style": profile.response_style,
+                    "welcome_message": profile.welcome_message,
+                    "fallback_message": profile.fallback_message,
+                    "do_not_answer_rules": profile.do_not_answer_rules,
+                    "confidence_threshold": profile.confidence_threshold,
+                    "escalation_enabled": profile.escalation_enabled,
+                    "escalation_policy": profile.escalation_policy,
+                    "memory_mode": profile.memory_mode,
+                    "default_response_mode": profile.default_response_mode,
+                })
 
     conversation.insert(ignore_permissions=True)
     return conversation

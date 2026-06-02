@@ -44,6 +44,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
     if profile:
         ai_profile = {
             "name": profile.name,
+            "agent": profile.agent,
             "behavior_prompt": profile.behavior_prompt,
             "tone": profile.tone,
             "response_style": profile.response_style,
@@ -52,6 +53,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
             "do_not_answer_rules": profile.do_not_answer_rules,
             "confidence_threshold": profile.confidence_threshold,
             "escalation_enabled": profile.escalation_enabled,
+            "escalation_policy": profile.escalation_policy,
             "memory_mode": profile.memory_mode,
             "default_response_mode": "qa",
         }

@@ -3,7 +3,6 @@ import frappe
 from digitz_ai_nexus_live.services.agent_router import assign_agent
 from digitz_ai_nexus_live.services.agent_service import (
     get_agent_behavior,
-    get_ai_profile,
     set_agent_status,
 )
 from digitz_ai_nexus_live.services.conversation_service import (
@@ -87,13 +86,13 @@ def enrich_payload_from_conversation(payload, conversation):
     )
 
 
-def _build_ai_profile_dict(behavior, profile_name=None):
+def _build_ai_profile_dict(behavior):
     """Build the ai_profile dict for query_contract from resolved behaviour."""
     if not behavior:
         return {}
 
     return {
-        "name": profile_name or "",
+        "name": behavior.profile_name or "",
         "behavior_prompt": behavior.behavior_prompt,
         "tone": behavior.tone,
         "response_style": behavior.response_style,
@@ -102,6 +101,7 @@ def _build_ai_profile_dict(behavior, profile_name=None):
         "do_not_answer_rules": behavior.do_not_answer_rules,
         "confidence_threshold": behavior.confidence_threshold,
         "escalation_enabled": behavior.escalation_enabled,
+        "escalation_policy": behavior.escalation_policy,
         "memory_mode": behavior.memory_mode,
         "default_response_mode": "chat",
     }
@@ -133,8 +133,7 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "force_public_only": is_public,
     })
 
-    profile = get_ai_profile(agent)
-    ai_profile = _build_ai_profile_dict(behavior, profile_name=profile.name if profile else None)
+    ai_profile = _build_ai_profile_dict(behavior)
 
     return {
         "query": continuity.get("effective_query") or payload.get("message"),

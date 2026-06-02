@@ -80,16 +80,16 @@
    "reqd": 1
   },
   {
+   "description": "Free text. e.g. Professional, Friendly, Technical, Consultative",
    "fieldname": "tone",
-   "fieldtype": "Select",
-   "label": "Tone",
-   "options": "\nProfessional\nConsultative\nSupportive\nTechnical\nFriendly\nFormal"
+   "fieldtype": "Data",
+   "label": "Tone"
   },
   {
+   "description": "Free text. e.g. Balanced, Concise, Detailed, Step-by-step",
    "fieldname": "response_style",
-   "fieldtype": "Select",
-   "label": "Response Style",
-   "options": "\nBalanced\nConcise\nStep-by-step\nDetailed\nPersuasive"
+   "fieldtype": "Data",
+   "label": "Response Style"
   },
   {
    "default": "Session",

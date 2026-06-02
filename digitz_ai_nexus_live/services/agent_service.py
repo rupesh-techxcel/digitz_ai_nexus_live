@@ -49,8 +49,9 @@ def get_agent_behavior(agent):
     Runtime behaviour resolver for AI agents.
 
     Priority:
-    1. Assigned Nexus AI Behaviour on Nexus Live Agent
-    2. Legacy Nexus AI Agent Profile fallback
+    1. Nexus AI Agent Profile (always primary source)
+    2. Nexus AI Behaviour on agent.behaviour (optional field-level fallback only —
+       fills gaps when a profile field is empty and the agent has a linked template)
     """
     if not agent:
         return None
@@ -60,51 +61,47 @@ def get_agent_behavior(agent):
     if agent_doc.agent_type != "AI":
         return None
 
-    behaviour_name = getattr(agent_doc, "behaviour", None)
-
-    if behaviour_name and frappe.db.exists("Nexus AI Behaviour", behaviour_name):
-        behaviour = frappe.get_doc("Nexus AI Behaviour", behaviour_name)
-
-        return frappe._dict({
-            "source": "Nexus AI Behaviour",
-            "uses_assigned_behaviour": 1,
-            "behaviour": behaviour.name,
-            "behaviour_code": behaviour.behaviour_code,
-            "behaviour_name": behaviour.behaviour_name,
-            "behaviour_designation": behaviour.designation,
-            "behavior_prompt": behaviour.behavior_prompt,
-            "tone": behaviour.tone,
-            "response_style": behaviour.response_style,
-            "welcome_message": behaviour.welcome_message,
-            "fallback_message": behaviour.fallback_message,
-            "memory_mode": behaviour.memory_mode,
-            "confidence_threshold": behaviour.confidence_threshold,
-            "escalation_enabled": behaviour.escalation_enabled,
-            "do_not_answer_rules": behaviour.do_not_answer_rules,
-            "confidence_threshold_source": "Nexus AI Behaviour",
-        })
-
     profile = get_ai_profile(agent_doc)
 
     if not profile:
         return None
 
+    behaviour_doc = None
+    behaviour_name = getattr(agent_doc, "behaviour", None)
+    if behaviour_name and frappe.db.exists("Nexus AI Behaviour", behaviour_name):
+        behaviour_doc = frappe.get_doc("Nexus AI Behaviour", behaviour_name)
+
+    def _coalesce(profile_val, template_attr):
+        if profile_val:
+            return profile_val
+        return getattr(behaviour_doc, template_attr, None) if behaviour_doc else None
+
     return frappe._dict({
         "source": "Nexus AI Agent Profile",
+        "profile_name": profile.name,
         "uses_assigned_behaviour": 0,
-        "behaviour": None,
-        "behaviour_code": None,
-        "behaviour_name": None,
-        "behaviour_designation": None,
-        "behavior_prompt": profile.behavior_prompt,
-        "tone": profile.tone,
-        "response_style": profile.response_style,
-        "welcome_message": profile.welcome_message,
-        "fallback_message": profile.fallback_message,
-        "memory_mode": profile.memory_mode,
-        "confidence_threshold": profile.confidence_threshold,
-        "escalation_enabled": profile.escalation_enabled,
-        "do_not_answer_rules": profile.do_not_answer_rules,
+        "behaviour": behaviour_doc.name if behaviour_doc else None,
+        "behaviour_code": behaviour_doc.behaviour_code if behaviour_doc else None,
+        "behaviour_name": behaviour_doc.behaviour_name if behaviour_doc else None,
+        "behaviour_designation": behaviour_doc.designation if behaviour_doc else None,
+        "behavior_prompt": _coalesce(profile.behavior_prompt, "behavior_prompt"),
+        "tone": _coalesce(profile.tone, "tone"),
+        "response_style": _coalesce(profile.response_style, "response_style"),
+        "welcome_message": _coalesce(profile.welcome_message, "welcome_message"),
+        "fallback_message": _coalesce(profile.fallback_message, "fallback_message"),
+        "memory_mode": _coalesce(profile.memory_mode, "memory_mode"),
+        "confidence_threshold": (
+            profile.confidence_threshold
+            if profile.confidence_threshold is not None
+            else getattr(behaviour_doc, "confidence_threshold", None)
+        ),
+        "escalation_enabled": (
+            profile.escalation_enabled
+            if profile.escalation_enabled is not None
+            else getattr(behaviour_doc, "escalation_enabled", None)
+        ),
+        "escalation_policy": profile.escalation_policy,
+        "do_not_answer_rules": _coalesce(profile.do_not_answer_rules, "do_not_answer_rules"),
         "confidence_threshold_source": "Nexus AI Agent Profile",
     })
 

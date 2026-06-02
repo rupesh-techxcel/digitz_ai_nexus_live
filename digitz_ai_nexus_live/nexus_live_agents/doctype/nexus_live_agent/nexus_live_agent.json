@@ -130,10 +130,10 @@
   },
   {
    "depends_on": "eval:doc.agent_type==\"AI\"",
+   "description": "Optional legacy behaviour template. Runtime uses Nexus AI Agent Profile as primary source.",
    "fieldname": "behaviour",
    "fieldtype": "Link",
-   "label": "Behaviour",
-   "mandatory_depends_on": "eval:doc.agent_type==\"AI\"",
+   "label": "Behaviour (Template)",
    "options": "Nexus AI Behaviour"
   }
  ],
