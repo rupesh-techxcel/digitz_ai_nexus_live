@@ -89,6 +89,7 @@ Channels define the entry point for a conversation. Each channel can have routin
 | Document | Contents |
 |---|---|
 | [Architecture](docs/architecture.md) | App structure, data flow, service layer, integration points |
+| [Chat Category Identity Access Workflow](docs/chat-category-identity-access-workflow.md) | Category + identity routing to profile, access categories, policies, and chunk retrieval |
 | [Agent Management](docs/agent-management.md) | Agent lifecycle, behavior profiles, routing, availability |
 | [Conversation Flow](docs/conversation-flow.md) | Chat and Q&A lifecycle, context continuity, message history |
 | [Escalation](docs/escalation.md) | Escalation rules, queues, confidence thresholds, handover flow |

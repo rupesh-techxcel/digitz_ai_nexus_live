@@ -92,7 +92,13 @@ Profile resolution is the step that determines which `Nexus AI Agent Profile` go
 
 ### External users (chat window)
 
-The user selects a `Nexus Chat Category` from the chat window (e.g. "Customer Support", "Product Enquiry", "Connect to Sales"). The category carries the identity context and directly references the `ai_agent_profile` to use. No auth detection, no role inference.
+The user selects a `Nexus Chat Category` from the chat window (e.g. "Customer Support", "Product Enquiry", "Connect to Sales"). Runtime derives an `identity_type` and resolves `Nexus Category Identity Route`:
+
+```
+channel + chat_category + identity_type → Nexus AI Agent Profile
+```
+
+The selected profile then controls behavior and access. The category itself does not directly grant access.
 
 ### Internal / desk users
 
@@ -101,6 +107,19 @@ The admin directly assigns a profile via `Nexus User Profile Assignment`. At run
 ### API / non-chat channels
 
 `Nexus Channel AI Profile Route` records map a channel + `identity_type` to a profile. Used when there is no chat window (direct API callers, integrations).
+
+### Access handoff
+
+Before calling Nexus Core, Live must pass the resolved profile as `query_contract.ai_profile.name`. Nexus Core then resolves:
+
+```
+Nexus AI Agent Profile
+  → Nexus AI Agent Profile Access Category
+  → Nexus Access Category Policy
+  → allowed_access_policies
+```
+
+Calling access resolution before the profile is present produces an empty policy list and retrieval is denied.
 
 ## Agent Routing
 

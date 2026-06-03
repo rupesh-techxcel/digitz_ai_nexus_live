@@ -14,7 +14,11 @@ X-Frappe-CSRF-Token: {token}   # Not required for guest-accessible endpoints
 
 ## Public Endpoints (Guest-Accessible)
 
-These endpoints use `allow_guest=True`. No authentication is required. The system forces `force_public_only = True` on all payloads through these endpoints, restricting access to `["Public"]` knowledge regardless of any other configuration.
+These endpoints use `allow_guest=True`. No authentication is required.
+
+For chat-category workflows, callers should pass `chat_category`. Trusted integrations may also pass `identity_type`; otherwise Live derives it from the Frappe session and payload context.
+
+Current public guardrail behavior forces guest requests to public-only access in Nexus Core. If category-routed public visitors should receive policies from the routed profile instead, Live must avoid setting `force_public_only` for those category-routed requests and the Public identity route must be configured with only safe public access categories.
 
 ---
 
@@ -52,7 +56,19 @@ Starts a new chat conversation and returns a `conversation_id` for follow-up mes
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| payload | dict | Yes | Chat payload including `query`, `channel`, and optional visitor fields |
+| payload | dict | Yes | Chat payload including `message`, `channel`, optional `chat_category`, optional `identity_type`, and visitor fields |
+
+**Example payload:**
+
+```json
+{
+  "message": "I need help with my subscription.",
+  "channel": "WEBSITE-CHAT",
+  "chat_category": "CUSTOMER-SUPPORT",
+  "identity_type": "Customer",
+  "user_type": "Website User"
+}
+```
 
 **Returns:**
 
@@ -78,7 +94,7 @@ Continues an existing chat conversation.
 | Name | Type | Required | Description |
 |---|---|---|---|
 | conversation_id | str | Yes | The `conversation_id` returned by `start_chat` |
-| payload | dict | Yes | Payload with `query` field |
+| payload | dict | Yes | Payload with `message`; category/profile context is preserved from the conversation snapshot |
 
 **Returns:**
 

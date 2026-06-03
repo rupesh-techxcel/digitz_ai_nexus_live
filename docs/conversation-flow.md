@@ -52,6 +52,12 @@ POST start_chat(payload)
 Enrich payload
     │
     ▼
+Resolve profile context
+─ Resolve identity_type from payload/session
+─ Resolve Nexus Category Identity Route when chat_category is provided
+─ Snapshot assigned_ai_agent_profile on conversation
+    │
+    ▼
 Assign agent
     │
     ▼
@@ -59,6 +65,12 @@ Create Nexus Live Conversation
 ─ Generates unique conversation_id (NLCV-XXXXX format)
 ─ Sets status = Open
 ─ Records assigned_agent, channel, visitor info
+─ Records assigned_ai_agent_profile
+    │
+    ▼
+Resolve access policies
+─ Build ai_profile from conversation profile snapshot
+─ Resolve allowed_access_policies from profile access categories
     │
     ▼
 Call Nexus Core with conversation context
@@ -88,7 +100,9 @@ Load message history (max 20 messages)
 Build context continuity payload
 ─ Format previous messages as conversation_context string
 ─ Set is_follow_up = True
-─ Preserve tenant, channel, access policies from conversation
+─ Preserve tenant and channel from conversation
+─ Reuse the conversation's assigned_ai_agent_profile snapshot
+─ Resolve allowed_access_policies from that profile before retrieval
     │
     ▼
 Call Nexus Core with full context

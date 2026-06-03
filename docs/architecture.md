@@ -28,7 +28,7 @@ This app owns conversation state, agent lifecycle, and escalation. It must not d
 
 - Agent registry (AI and human agents, roles, availability, session tracking)
 - Behavior profile definitions (tone, style, memory mode, escalation rules)
-- Channel definitions and routing rules
+- Channel definitions, chat categories, identity routes, and routing rules
 - Conversation documents and message history
 - Escalation rules, agent queues, and queue assignments
 - Experience bundles (Q&A config, chat config, branding, welcome flows)
@@ -110,11 +110,20 @@ live_chat_service.start_live_chat(payload)
 Enrich payload
     │
     ▼
+Resolve chat category + identity type
+(Nexus Category Identity Route → Nexus AI Agent Profile)
+    │
+    ▼
 Agent assignment
     │
     ▼
 Create Nexus Live Conversation
-(conversation_service.create_conversation)
+(conversation_service.create_conversation, including profile snapshot)
+    │
+    ▼
+Build core payload
+─ ai_profile.name must be present before access resolution
+─ allowed_access_policies resolved from profile access categories
     │
     ▼
 Answer query (Nexus Core)
@@ -195,6 +204,6 @@ This app never calls OpenAI directly. All LLM and embedding calls go through Nex
 1. **Stateful conversations, stateless queries** — Q&A exchanges are fire-and-forget; chat conversations maintain a document with full message history.
 2. **Profile-first resolution** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile is the single authority for both behaviour and access.
 3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals. `Nexus AI Behaviour` is an optional template only.
-4. **Chat Category as identity declaration** — external users declare their intent by selecting a chat category. The category resolves the profile. No auth inference required.
+4. **Chat Category plus identity routes** — external users declare intent by selecting a chat category. Runtime derives identity type and resolves `Nexus Category Identity Route` to the governing profile.
 5. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
 6. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.

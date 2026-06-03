@@ -19,10 +19,11 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
 2. Create a `Nexus AI Agent Profile` for each agent — configure behaviour fields (tone, response style, fallback message, escalation settings).
 3. Open **Nexus Profile Access Allocation** (`/nexus-profile-access-allocation`) and assign at least one Access Category to each profile.
 
-### Step 3 — Channels
+### Step 3 — Channels, Chat Categories, and Identity Routes
 
 1. Create `Nexus Live Channel` records (Website Chat, Portal, API, etc.).
-2. For each channel, open **Nexus Chat Category Manager** (`/nexus-chat-category-manager`) and configure one category per identity type the channel will serve:
+2. For each channel, open **Nexus Chat Category Manager** (`/nexus-chat-category-manager`) and configure the categories the chat UI should show.
+3. Open **Nexus Category Profile Routes** (`/nexus-category-profile-routes`) and map each category + identity type to an AI Agent Profile:
 
    | Identity Type | Example Label | Example Profile |
    |---|---|---|
@@ -30,7 +31,13 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
    | Customer | Customer Support | Customer Support Bot |
    | Prospect | Connect to Sales | Sales Bot |
 
-   A channel with no enabled categories cannot start a conversation.
+   A category with no enabled route for the resolved identity type cannot start a conversation.
+
+4. Use the chain preview to verify:
+
+   ```
+   Chat Category → Identity Type → AI Agent Profile → Access Categories → Access Policies
+   ```
 
 ### Step 4 — Internal User Assignments
 
@@ -57,6 +64,7 @@ Create a `Nexus Live Experience` to bundle Q&A config, chat config, and branding
 |---|---|---|
 | Nexus Profile Access Allocation | `/nexus-profile-access-allocation` | Assign Access Categories to AI Agent Profiles |
 | Nexus Chat Category Manager | `/nexus-chat-category-manager` | Configure chat window options per channel |
+| Nexus Category Profile Routes | `/nexus-category-profile-routes` | Map channel + chat category + identity type to AI Agent Profiles |
 | Nexus User Profile Manager | `/nexus-user-profile-manager` | Assign profiles to internal desk users |
 | Nexus Live Studio | `/nexus-live-studio` | Agent, channel, and behaviour configuration |
 | Nexus Live Console | `/nexus-live-console` | Live operations visibility |

@@ -243,26 +243,41 @@ Dynamic routing configuration for a channel. Matches query patterns to specific 
 
 ### Nexus Chat Category
 
-Pre-defined options displayed in the chat window. Each category carries the identity context for an external user and resolves directly to an `Nexus AI Agent Profile`. This is the primary profile resolution mechanism for external users on chat channels.
+Pre-defined options displayed in the chat window. A category declares the user's intent; it does not directly grant access and does not directly store the AI profile. Profile resolution happens through `Nexus Category Identity Route`.
 
 | Field | Type | Notes |
 |---|---|---|
 | category_code | Data (unique) | |
 | category_label | Data | What the user sees in the chat window |
 | channel | Link → Nexus Live Channel | Which channel this category appears on |
-| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
-| ai_agent_profile | Link → Nexus AI Agent Profile | Profile resolved when this category is selected |
+| requires_authentication | Check | Hide from guests when enabled |
 | display_order | Int | Sort order in chat window |
 | enabled | Check | Controls visibility |
 | description | Small Text | |
 
-A channel must have at least one enabled chat category before conversations can start.
+A category must have at least one enabled identity route for the resolved identity type before a conversation can start.
+
+---
+
+### Nexus Category Identity Route
+
+Maps a channel + chat category + identity type to an AI Agent Profile. This is the primary profile resolution mechanism for chat-window users.
+
+| Field | Type | Notes |
+|---|---|---|
+| channel | Link → Nexus Live Channel | |
+| chat_category | Link → Nexus Chat Category | |
+| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
+| ai_agent_profile | Link → Nexus AI Agent Profile | Profile resolved for this category and identity |
+| enabled | Check | Disabled routes are ignored |
+| priority | Int | Lower number wins if multiple routes match |
+| description | Small Text | |
 
 ---
 
 ### Nexus Channel AI Profile Route
 
-Maps a channel + identity type to an AI Agent Profile. Used for non-chat channels (API, direct integrations) where no chat window exists. Also acts as fallback when chat category selection is not available.
+Maps a channel + identity type to an AI Agent Profile. Used for non-chat channels (API, direct integrations) where no chat window exists.
 
 | Field | Type | Notes |
 |---|---|---|
