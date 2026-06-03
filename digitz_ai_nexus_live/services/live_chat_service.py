@@ -5,6 +5,10 @@ from digitz_ai_nexus_live.services.agent_service import (
     get_agent_behavior,
     set_agent_status,
 )
+from digitz_ai_nexus_live.services.profile_resolver import (
+    resolve_behavior_from_chat_category,
+    resolve_behavior_from_conversation,
+)
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
     get_conversation,
@@ -182,6 +186,34 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
     }
 
 
+def _resolve_behavior(payload, conversation=None, agent=None):
+    """
+    Resolve AI behavior in priority order:
+    1. Stored profile on the conversation (follow-up messages / consistent across turns)
+    2. chat_category in payload (visitor selection at conversation start)
+    3. Agent behavior (legacy / non-chat-category path)
+    """
+    if conversation:
+        from_conversation = resolve_behavior_from_conversation(conversation)
+        if from_conversation:
+            return from_conversation
+
+    chat_category = payload.get("chat_category")
+    if chat_category:
+        from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+        is_authenticated = (
+            payload.get("user_type", "Guest") != "Guest"
+            and bool(payload.get("user"))
+        )
+        identity_type = resolve_identity_type(payload)
+        return resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
+
+    if agent:
+        return get_agent_behavior(agent)
+
+    return None
+
+
 def start_live_chat(payload):
     payload = payload or {}
 
@@ -203,9 +235,27 @@ def start_live_chat(payload):
     if not agent:
         frappe.throw("No approved idle AI agent available for live chat.")
 
+    # Resolve profile from chat_category if provided — passed as override so the
+    # correct profile is snapshotted on the conversation at creation time.
+    ai_profile_override = None
+    chat_category = payload.get("chat_category")
+    if chat_category:
+        from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+        is_authenticated = (
+            payload.get("user_type", "Guest") != "Guest"
+            and bool(payload.get("user"))
+        )
+        identity_type = resolve_identity_type(payload)
+        cat_behavior = resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
+        if cat_behavior and cat_behavior.profile_name:
+            ai_profile_override = frappe.get_doc(
+                "Nexus AI Agent Profile", cat_behavior.profile_name
+            )
+
     conversation = create_conversation(
         payload=payload,
         assigned_agent=agent,
+        ai_profile_override=ai_profile_override,
     )
 
     conversation = update_conversation_assignment(
@@ -247,7 +297,7 @@ def continue_live_chat(conversation_id, payload):
         conversation.assigned_agent,
     )
 
-    behavior = get_agent_behavior(agent)
+    behavior = _resolve_behavior(payload=payload, conversation=conversation, agent=agent)
 
     set_agent_status(
         agent,

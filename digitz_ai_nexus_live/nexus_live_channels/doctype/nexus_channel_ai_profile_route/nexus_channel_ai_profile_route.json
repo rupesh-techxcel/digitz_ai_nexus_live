@@ -13,7 +13,7 @@
     "enabled",
     "section_routing",
     "use_case",
-    "auth_scope",
+    "identity_type",
     "priority",
     "is_default",
     "section_context",
@@ -71,11 +71,11 @@
       "label": "Use Case"
     },
     {
-      "default": "Any",
-      "fieldname": "auth_scope",
+      "description": "The identity type this route serves. Resolved from auth state at runtime.",
+      "fieldname": "identity_type",
       "fieldtype": "Select",
-      "label": "Auth Scope",
-      "options": "Any\nPublic\nAuthenticated"
+      "label": "Identity Type",
+      "options": "\nPublic\nCustomer\nProspect\nPartner\nInternal\nAdmin"
     },
     {
       "default": "10",

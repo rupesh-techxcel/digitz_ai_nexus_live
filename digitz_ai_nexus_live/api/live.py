@@ -6,6 +6,7 @@ from digitz_ai_nexus_live.services.live_chat_service import (
     start_live_chat,
     continue_live_chat,
 )
+from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 
 
 def parse_payload(payload=None):
@@ -16,6 +17,63 @@ def parse_payload(payload=None):
             frappe.throw("Invalid JSON payload.")
 
     return payload or {}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_channel_categories(channel=None):
+    """
+    Return chat categories the current visitor may actually use.
+
+    Two filters applied:
+    1. requires_authentication — hide auth-only categories from guests
+    2. Route existence — only show categories that have an active route
+       configured for the visitor's resolved identity type. A category with
+       no route would cause a hard error when selected.
+    """
+    if not channel:
+        frappe.throw("Channel is required.")
+
+    is_authenticated = frappe.session.user not in ("Guest", None, "")
+
+    identity_type = resolve_identity_type({
+        "user_type": "Guest" if not is_authenticated else "Website User",
+    })
+
+    auth_filters = {"channel": channel, "enabled": 1}
+    if not is_authenticated:
+        auth_filters["requires_authentication"] = 0
+
+    candidates = frappe.get_all(
+        "Nexus Chat Category",
+        filters=auth_filters,
+        fields=["name", "category_code", "category_label", "display_order", "description"],
+        order_by="display_order asc",
+    )
+
+    if not candidates:
+        return {"channel": channel, "is_authenticated": is_authenticated, "categories": []}
+
+    candidate_codes = [c.category_code for c in candidates]
+
+    routed_codes = set(frappe.get_all(
+        "Nexus Category Identity Route",
+        filters={
+            "channel": channel,
+            "chat_category": ["in", candidate_codes],
+            "identity_type": identity_type,
+            "enabled": 1,
+        },
+        pluck="chat_category",
+    ))
+
+    categories = [c for c in candidates if c.category_code in routed_codes]
+
+    return {
+        "channel": channel,
+        "is_authenticated": is_authenticated,
+        "identity_type": identity_type,
+        "categories": categories,
+    }
 
 
 @frappe.whitelist(allow_guest=True)

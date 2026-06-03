@@ -2,6 +2,8 @@ import frappe
 
 from digitz_ai_nexus_live.services.agent_router import assign_agent
 from digitz_ai_nexus_live.services.agent_service import get_ai_profile
+from digitz_ai_nexus_live.services.profile_resolver import resolve_behavior_from_chat_category
+from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
     update_conversation_assignment,
@@ -40,21 +42,34 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
         "force_public_only": is_public,
     })
 
+    # Resolve profile: chat_category + identity takes precedence over agent profile
+    resolved_behavior = None
+    chat_category = payload.get("chat_category")
+
+    if chat_category:
+        is_authenticated = payload.get("user_type", "Guest") != "Guest"
+        identity_type = resolve_identity_type(payload)
+        resolved_behavior = resolve_behavior_from_chat_category(
+            chat_category, identity_type, is_authenticated
+        )
+    elif profile:
+        from digitz_ai_nexus_live.services.profile_resolver import _build_behavior_dict
+        resolved_behavior = _build_behavior_dict(profile, source="Nexus AI Agent Profile")
+
     ai_profile = {}
-    if profile:
+    if resolved_behavior:
         ai_profile = {
-            "name": profile.name,
-            "agent": profile.agent,
-            "behavior_prompt": profile.behavior_prompt,
-            "tone": profile.tone,
-            "response_style": profile.response_style,
-            "welcome_message": profile.welcome_message,
-            "fallback_message": profile.fallback_message,
-            "do_not_answer_rules": profile.do_not_answer_rules,
-            "confidence_threshold": profile.confidence_threshold,
-            "escalation_enabled": profile.escalation_enabled,
-            "escalation_policy": profile.escalation_policy,
-            "memory_mode": profile.memory_mode,
+            "name": resolved_behavior.profile_name or "",
+            "behavior_prompt": resolved_behavior.behavior_prompt,
+            "tone": resolved_behavior.tone,
+            "response_style": resolved_behavior.response_style,
+            "welcome_message": resolved_behavior.welcome_message,
+            "fallback_message": resolved_behavior.fallback_message,
+            "do_not_answer_rules": resolved_behavior.do_not_answer_rules,
+            "confidence_threshold": resolved_behavior.confidence_threshold,
+            "escalation_enabled": resolved_behavior.escalation_enabled,
+            "escalation_policy": resolved_behavior.escalation_policy,
+            "memory_mode": resolved_behavior.memory_mode,
             "default_response_mode": "qa",
         }
 

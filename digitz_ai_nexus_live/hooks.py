@@ -83,7 +83,7 @@ app_license = "mit"
 # ------------
 
 # before_install = "digitz_ai_nexus_live.install.before_install"
-# after_install = "digitz_ai_nexus_live.install.after_install"
+after_install = "digitz_ai_nexus_live.setup.install.after_install"
 
 # Uninstallation
 # ------------

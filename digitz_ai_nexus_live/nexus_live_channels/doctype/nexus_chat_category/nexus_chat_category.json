@@ -11,9 +11,8 @@
     "column_break_1",
     "channel",
     "enabled",
-    "section_identity",
-    "identity_type",
-    "ai_agent_profile",
+    "section_visibility",
+    "requires_authentication",
     "section_display",
     "display_order",
     "description"
@@ -55,27 +54,16 @@
       "label": "Enabled"
     },
     {
-      "fieldname": "section_identity",
+      "fieldname": "section_visibility",
       "fieldtype": "Section Break",
-      "label": "Identity and Profile"
+      "label": "Visibility"
     },
     {
-      "description": "The kind of person this category represents. Used for routing and reporting.",
-      "fieldname": "identity_type",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "label": "Identity Type",
-      "options": "\nPublic\nCustomer\nProspect\nPartner\nInternal\nAdmin",
-      "reqd": 1
-    },
-    {
-      "description": "The AI Agent Profile resolved when a user selects this category.",
-      "fieldname": "ai_agent_profile",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "AI Agent Profile",
-      "options": "Nexus AI Agent Profile",
-      "reqd": 1
+      "default": "0",
+      "description": "If checked, this category is only shown to authenticated users (portal login or desk session). Leave unchecked for public/guest visibility.",
+      "fieldname": "requires_authentication",
+      "fieldtype": "Check",
+      "label": "Requires Authentication"
     },
     {
       "fieldname": "section_display",

@@ -1,0 +1,90 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:identity_code",
+  "creation": "2026-06-03 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "identity_code",
+    "identity_label",
+    "column_break_1",
+    "enabled",
+    "sort_order",
+    "section_description",
+    "description"
+  ],
+  "fields": [
+    {
+      "description": "Unique identifier used in routing and code. e.g. Public, Customer, Premium-Customer",
+      "fieldname": "identity_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Identity Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "description": "Human-readable label shown in admin pages.",
+      "fieldname": "identity_label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Identity Label"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "10",
+      "description": "Display order in dropdowns and coverage views.",
+      "fieldname": "sort_order",
+      "fieldtype": "Int",
+      "label": "Sort Order"
+    },
+    {
+      "fieldname": "section_description",
+      "fieldtype": "Section Break",
+      "label": "Description"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-03 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Identity Type",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "sort_order",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "identity_label",
+  "track_changes": 1
+}

@@ -27,7 +27,7 @@ def get_conversation(conversation_id_or_name):
     return None
 
 
-def create_conversation(payload, assigned_agent=None):
+def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
     payload = payload or {}
 
     conversation = frappe.new_doc("Nexus Live Conversation")
@@ -48,7 +48,7 @@ def create_conversation(payload, assigned_agent=None):
         conversation.assigned_agent_type = assigned_agent.agent_type
 
         if getattr(assigned_agent, "agent_type", None) == "AI":
-            profile = get_ai_profile(assigned_agent)
+            profile = ai_profile_override or get_ai_profile(assigned_agent)
             if profile:
                 conversation.assigned_ai_agent_profile = profile.name
                 conversation.ai_profile_snapshot_json = json.dumps({

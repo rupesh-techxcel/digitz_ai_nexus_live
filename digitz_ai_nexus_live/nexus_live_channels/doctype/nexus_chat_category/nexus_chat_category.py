@@ -5,22 +5,22 @@ from frappe.model.document import Document
 class NexusChatCategory(Document):
 
     def validate(self):
-        self._validate_profile_has_access_category()
+        self._warn_if_no_routes()
 
-    def _validate_profile_has_access_category(self):
-        if not self.ai_agent_profile:
+    def _warn_if_no_routes(self):
+        if not self.name:
             return
 
-        has_access = frappe.db.exists(
-            "Nexus AI Agent Profile Access Category",
-            {"ai_agent_profile": self.ai_agent_profile, "enabled": 1},
+        has_routes = frappe.db.exists(
+            "Nexus Category Identity Route",
+            {"chat_category": self.name, "enabled": 1},
         )
 
-        if not has_access:
+        if not has_routes:
             frappe.msgprint(
-                f"Warning: AI Agent Profile '{self.ai_agent_profile}' has no Access Category "
-                "configured. Queries through this category will be denied until an access "
-                "category is assigned to the profile.",
-                title="Access Category Missing",
+                f"No identity routes are configured for '{self.category_label}'. "
+                "Visitors who select this category will receive an error until at least "
+                "one route is added in the Category Profile Routes page.",
+                title="No Routes Configured",
                 indicator="orange",
             )
