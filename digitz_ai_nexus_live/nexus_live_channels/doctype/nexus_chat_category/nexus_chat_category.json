@@ -1,0 +1,125 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:category_code",
+  "creation": "2026-06-03 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "category_code",
+    "category_label",
+    "column_break_1",
+    "channel",
+    "enabled",
+    "section_identity",
+    "identity_type",
+    "ai_agent_profile",
+    "section_display",
+    "display_order",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "category_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Category Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "description": "What the user sees in the chat window, e.g. Customer Support, Product Enquiry, Connect to Sales",
+      "fieldname": "category_label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Category Label",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Channel",
+      "options": "Nexus Live Channel",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "fieldname": "section_identity",
+      "fieldtype": "Section Break",
+      "label": "Identity and Profile"
+    },
+    {
+      "description": "The kind of person this category represents. Used for routing and reporting.",
+      "fieldname": "identity_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Identity Type",
+      "options": "\nPublic\nCustomer\nProspect\nPartner\nInternal\nAdmin",
+      "reqd": 1
+    },
+    {
+      "description": "The AI Agent Profile resolved when a user selects this category.",
+      "fieldname": "ai_agent_profile",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "AI Agent Profile",
+      "options": "Nexus AI Agent Profile",
+      "reqd": 1
+    },
+    {
+      "fieldname": "section_display",
+      "fieldtype": "Section Break",
+      "label": "Display"
+    },
+    {
+      "default": "10",
+      "description": "Lower number appears first in the chat window.",
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "label": "Display Order"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-03 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Chat Category",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "display_order",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "category_label",
+  "track_changes": 1
+}

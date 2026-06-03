@@ -35,29 +35,31 @@ Role detection during routing uses keyword inference from the query text (e.g. "
 
 ## Behavior Profiles
 
-Behavior is defined in `Nexus AI Behaviour` (preferred) or the legacy `Nexus AI Agent Profile`. The behavior profile is resolved at query time in this priority order:
+Behavior and access are both owned by `Nexus AI Agent Profile`. This is the primary runtime object — it is resolved at query time and passed as `ai_profile` in the query payload to Nexus Core.
 
-1. `Nexus AI Behaviour` linked on the agent (`agent.behaviour`)
-2. `Nexus AI Agent Profile` linked on the agent (legacy fallback)
+`Nexus AI Behaviour` is retained as an **optional reusable template only**. If a profile field is empty and the agent has a linked `Nexus AI Behaviour` record, the template value fills the gap. It is never the primary runtime selector.
 
-The resolved profile is passed as `ai_profile` in the query payload to Nexus Core.
+Resolution priority in `agent_service.get_agent_behavior()`:
+1. `Nexus AI Agent Profile` linked to the agent — **always primary**
+2. `Nexus AI Behaviour` on `agent.behaviour` — field-level fallback for empty profile fields only
 
-### Nexus AI Behaviour Fields
+### Nexus AI Agent Profile Fields
 
 | Field | Purpose |
 |---|---|
-| `behaviour_code` | Unique identifier for routing and referencing |
-| `behaviour_name` | Display name |
-| `designation` | Role label shown to visitors (e.g. "AI Assistant") |
-| `behavior_prompt` | System prompt injected into LLM context |
-| `tone` | Professional / Consultative / Supportive / Technical / Friendly / Formal |
-| `response_style` | Balanced / Concise / Step-by-step / Detailed / Persuasive |
-| `memory_mode` | None (stateless) / Session (conversation history) |
+| `agent` | Link to Nexus Live Agent (unique — one profile per agent) |
+| `behavior_prompt` | Main behavioural instruction for this profile |
+| `tone` | Free text style hint, e.g. Professional, Friendly, Technical |
+| `response_style` | Free text response structure hint, e.g. Concise, Balanced, Detailed |
+| `welcome_message` | Optional initial message for a new conversation |
+| `fallback_message` | Response when approved knowledge is insufficient |
+| `do_not_answer_rules` | Topics this profile must not address |
+| `default_response_mode` | qa or chat |
 | `confidence_threshold` | Below this score, escalation is triggered |
-| `escalation_enabled` | Whether this behavior supports escalation at all |
-| `welcome_message` | Greeting shown at conversation start |
-| `fallback_message` | Response when confidence is too low |
-| `do_not_answer_rules` | Topics the agent must not address |
+| `escalation_enabled` | Whether this profile may trigger escalation |
+| `escalation_policy` | Link to Nexus Escalation Rule |
+| `memory_mode` | None / Session / Conversation Summary / Long Term |
+| `system_notes` | Internal admin notes |
 
 ---
 
@@ -83,6 +85,22 @@ Draft → Onboarding → Idle → Assigned → Responding → Waiting → Unavai
 `agent_service.is_agent_available(agent)` returns `True` only for agents in `Idle` or `Assigned` status with `current_active_sessions < max_active_sessions`.
 
 ---
+
+## Profile Resolution
+
+Profile resolution is the step that determines which `Nexus AI Agent Profile` governs a conversation. It happens before agent assignment and before any query is sent to Nexus Core.
+
+### External users (chat window)
+
+The user selects a `Nexus Chat Category` from the chat window (e.g. "Customer Support", "Product Enquiry", "Connect to Sales"). The category carries the identity context and directly references the `ai_agent_profile` to use. No auth detection, no role inference.
+
+### Internal / desk users
+
+The admin directly assigns a profile via `Nexus User Profile Assignment`. At runtime, the system loads the active assignment for the authenticated user. If no assignment exists, the request is rejected.
+
+### API / non-chat channels
+
+`Nexus Channel AI Profile Route` records map a channel + `identity_type` to a profile. Used when there is no chat window (direct API callers, integrations).
 
 ## Agent Routing
 

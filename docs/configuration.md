@@ -4,66 +4,97 @@
 
 ## Initial Setup Checklist
 
-After installing `digitz_ai_nexus_live`, complete these steps before routing live traffic:
+After installing `digitz_ai_nexus_live`, complete these steps before routing live traffic.
 
-1. **Create at least one `Nexus AI Behaviour`** — configure tone, response style, and confidence threshold.
-2. **Create AI agents** — link each agent to a behaviour profile and assign a role.
-3. **Create channels** — set `channel_type`, link a `default_agent`, and configure `public_access` and `agent_based` flags.
-4. **Create escalation rules** — one rule per agent role that should be able to escalate. Link to a `Nexus Agent Queue`.
-5. **Assign human agents to queues** — create `Nexus Queue Assignment` records linking human agents to queues.
-6. **Create a `Nexus Live Experience`** (optional) — bundle Q&A and chat configurations for a deployment.
+### Step 1 — Access Policies and Categories (Nexus Core)
+
+1. Verify `Nexus Access Policy` records exist (seeded on install: PUBLIC, CUSTOMER_RESTRICTED, INTERNAL_EMPLOYEE, etc.)
+2. Create `Nexus Access Category` bundles that group the policies your profiles will need.
+   Example: "Customer Access" → [Public, Customer Restricted]
+3. Make sure knowledge chunks in Nexus Core have `access_policy` values matching these policies.
+
+### Step 2 — AI Agent Profiles
+
+1. Create a `Nexus Live Agent` (type: AI) for each AI responder.
+2. Create a `Nexus AI Agent Profile` for each agent — configure behaviour fields (tone, response style, fallback message, escalation settings).
+3. Open **Nexus Profile Access Allocation** (`/nexus-profile-access-allocation`) and assign at least one Access Category to each profile.
+
+### Step 3 — Channels
+
+1. Create `Nexus Live Channel` records (Website Chat, Portal, API, etc.).
+2. For each channel, open **Nexus Chat Category Manager** (`/nexus-chat-category-manager`) and configure one category per identity type the channel will serve:
+
+   | Identity Type | Example Label | Example Profile |
+   |---|---|---|
+   | Public | General Enquiry | Website Public Bot |
+   | Customer | Customer Support | Customer Support Bot |
+   | Prospect | Connect to Sales | Sales Bot |
+
+   A channel with no enabled categories cannot start a conversation.
+
+### Step 4 — Internal User Assignments
+
+1. Open **Nexus User Profile Manager** (`/nexus-user-profile-manager`).
+2. For every internal desk user who will query the system, assign an active AI Agent Profile.
+3. Verify the assigned profile has an Access Category configured — the page shows a warning if not.
+
+### Step 5 — Escalation
+
+1. Create a `Nexus Escalation Rule` per agent role that should escalate.
+2. Each rule must point to a `Nexus Agent Queue`.
+3. Assign human agents to queues via `Nexus Queue Assignment`.
+4. Set `escalation_enabled` and `escalation_policy` on each `Nexus AI Agent Profile` as required.
+
+### Step 6 — Experience Bundles (optional)
+
+Create a `Nexus Live Experience` to bundle Q&A config, chat config, and branding for a specific deployment.
+
+---
+
+## Admin Pages
+
+| Page | URL | Purpose |
+|---|---|---|
+| Nexus Profile Access Allocation | `/nexus-profile-access-allocation` | Assign Access Categories to AI Agent Profiles |
+| Nexus Chat Category Manager | `/nexus-chat-category-manager` | Configure chat window options per channel |
+| Nexus User Profile Manager | `/nexus-user-profile-manager` | Assign profiles to internal desk users |
+| Nexus Live Studio | `/nexus-live-studio` | Agent, channel, and behaviour configuration |
+| Nexus Live Console | `/nexus-live-console` | Live operations visibility |
 
 ---
 
 ## Channel Configuration
 
-Each channel has two key flags:
-
 | Flag | Effect |
 |---|---|
-| `public_access = True` | Forces `force_public_only` on all queries — only Public knowledge is retrieved |
-| `agent_based = True` | Enables agent routing logic; if False, queries use a simple static profile |
+| `public_access = True` | Forces `force_public_only` — only Public knowledge retrieved regardless of profile |
+| `agent_based = True` | Enables agent routing for Q&A channels; if False, queries use a direct profile lookup |
 
-For a public website widget, set both to `True`.
-
-For an internal desk channel, set `public_access = False` to allow authenticated access categories.
-
----
-
-## Experience Bundles
-
-An experience bundle (`Nexus Live Experience`) groups:
-- A `Nexus Q And A Configuration` — default channel, agent, welcome message, source display
-- A `Nexus Chat Configuration` — default channel, agent, input placeholder, agent name display
-- Branding JSON — color, logo, layout overrides
-
-Bundles are identified by `experience_code` and used by front-end widget integrations to pull all configuration in one call.
+For a public website widget set `public_access = True`.
+For internal desk channels set `public_access = False`.
 
 ---
 
 ## Escalation Configuration
 
 Escalation requires:
-1. A `Nexus Escalation Rule` per agent role (e.g. one for `Public Responder`, one for `Sales`)
+1. A `Nexus Escalation Rule` per agent role
 2. Each rule pointing to a `Nexus Agent Queue`
 3. Human agents assigned to those queues via `Nexus Queue Assignment`
 
-Without a rule for a role, escalation raises an error when triggered for that role. Set `escalation_enabled = False` on the `Nexus AI Behaviour` to suppress escalation entirely for an agent.
+Control escalation behaviour on each `Nexus AI Agent Profile`:
+- `escalation_enabled` — whether this profile may trigger escalation
+- `escalation_policy` — which escalation rule to use
+- `confidence_threshold` — below this score, escalation is triggered (default 0.65)
 
----
+Suggested starting values by role:
 
-## Confidence Threshold Tuning
-
-The confidence threshold on `Nexus AI Behaviour` controls how aggressively the system escalates. Starting values by role:
-
-| Role | Suggested Threshold |
+| Role | Threshold |
 |---|---|
 | Public Responder | 0.50 — tolerant; public knowledge coverage may be limited |
-| Sales | 0.65 — standard; escalate to human for pricing edge cases |
+| Sales | 0.65 — standard |
 | Support | 0.70 — strict; support answers must be reliable |
-| Consultant | 0.60 — moderate; advisory queries can tolerate some uncertainty |
-
-Lower values allow the AI to answer more aggressively; higher values escalate earlier.
+| Consultant | 0.60 — moderate |
 
 ---
 
@@ -77,7 +108,7 @@ bench --site your-site.local clear-cache
 # Test a live Q&A query from the shell
 bench --site your-site.local execute \
   "digitz_ai_nexus_live.services.live_qa_service.ask_live_question" \
-  --kwargs '{"payload": {"query": "What is the return policy?", "channel": "Website"}}'
+  --kwargs '{"payload": {"query": "What is the return policy?", "channel": "website-chat"}}'
 
 # Run app tests
 bench --site your-site.local run-tests --app digitz_ai_nexus_live

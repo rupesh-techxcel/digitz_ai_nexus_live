@@ -41,20 +41,29 @@ This app owns conversation state, agent lifecycle, and escalation. It must not d
 ```
 digitz_ai_nexus_live/
 ├── api/
-│   ├── live.py                 Public REST endpoints (ask, start_chat, send_message)
-│   ├── live_studio.py          Admin dashboard APIs (snapshot, workforce, behaviours)
-│   └── live_console.py         Live operations console (placeholder)
+│   ├── live.py                           Public REST endpoints (ask, start_chat, send_message)
+│   ├── live_studio.py                    Admin dashboard APIs (snapshot, workforce)
+│   ├── live_console.py                   Live operations console (placeholder)
+│   ├── nexus_profile_access_allocation.py  Profile → category assignment API
+│   ├── nexus_chat_category_manager.py    Chat category CRUD API
+│   └── nexus_user_profile_manager.py     User profile assignment API
 ├── services/
 │   ├── live_chat_service.py    Chat orchestration (start, continue, context enrichment)
 │   ├── live_qa_service.py      Q&A service (stateless single-exchange queries)
-│   ├── agent_service.py        Agent lifecycle (lookup, status, session tracking)
+│   ├── agent_service.py        Agent lifecycle and profile resolution
 │   ├── agent_router.py         Agent assignment (role inference, availability routing)
 │   ├── escalation_service.py   Escalation decisions and handover
-│   ├── conversation_service.py Conversation and message persistence
+│   ├── conversation_service.py Conversation and message persistence + profile snapshot
 │   └── conversation_context_service.py  Chat history and continuity payload building
-├── nexus_live_agents/          Agent and behaviour DocTypes
+├── digitz_ai_nexus_live/page/
+│   ├── nexus_profile_access_allocation/  Profile → Access Category single-window page
+│   ├── nexus_chat_category_manager/      Per-channel chat category configuration page
+│   ├── nexus_user_profile_manager/       Internal user profile assignment page
+│   ├── nexus_live_studio/                Agent/channel/behaviour admin studio
+│   └── nexus_live_console/               Live operations console
+├── nexus_live_agents/          Agent, profile, behaviour, user assignment DocTypes
 ├── nexus_live_conversations/   Conversation and message DocTypes
-├── nexus_live_channels/        Channel, routing rule, widget DocTypes
+├── nexus_live_channels/        Channel, chat category, routing rule, widget DocTypes
 ├── nexus_live_escalations/     Escalation rule, queue DocTypes
 ├── nexus_live_experience/      Experience bundle, config, welcome flow DocTypes
 └── nexus_live_analytics/       Interaction log, outcome, lead capture DocTypes
@@ -184,7 +193,8 @@ This app never calls OpenAI directly. All LLM and embedding calls go through Nex
 ## Design Principles
 
 1. **Stateful conversations, stateless queries** — Q&A exchanges are fire-and-forget; chat conversations maintain a document with full message history.
-2. **Agent-first routing** — every conversation has an assigned agent. The agent determines behavior, escalation rules, and channel defaults.
-3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Behaviour`, not string literals.
-4. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
-5. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.
+2. **Profile-first resolution** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile is the single authority for both behaviour and access.
+3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals. `Nexus AI Behaviour` is an optional template only.
+4. **Chat Category as identity declaration** — external users declare their intent by selecting a chat category. The category resolves the profile. No auth inference required.
+5. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
+6. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.

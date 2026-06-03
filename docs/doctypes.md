@@ -16,7 +16,7 @@ Registry of all AI and human agents. Every conversation is assigned to an agent.
 | agent_name | Data | Display name |
 | display_name | Data | Visitor-facing name |
 | agent_type | Select | AI / Human |
-| behaviour | Link → Nexus AI Behaviour | Preferred behavior profile |
+| behaviour | Link → Nexus AI Behaviour | Optional legacy template. Runtime uses Nexus AI Agent Profile. |
 | agent_role | Select | Public Responder / Sales / Support / Consultant / Internal Assistant / Admin Reviewer |
 | status | Select | Draft / Onboarding / Idle / Assigned / Responding / Waiting / Unavailable / Disabled |
 | enabled | Check | Excluded from routing when disabled |
@@ -33,32 +33,37 @@ Autoname: `field:agent_code`. Routing excludes agents where `enabled = 0` or `st
 
 ---
 
-### Nexus AI Behaviour
+### Nexus AI Agent Profile
 
-Runtime behavior configuration for AI agents. Preferred over the legacy `Nexus AI Agent Profile`.
+Primary runtime configuration for an AI agent. Owns both behaviour and access governance. One profile per agent (enforced via unique constraint on `agent` field).
 
 | Field | Type | Notes |
 |---|---|---|
-| behaviour_code | Data (unique) | |
-| behaviour_name | Data | |
-| designation | Data | Role label shown to visitors |
-| behavior_prompt | Long Text | System prompt injected into LLM context |
-| tone | Select | Professional / Consultative / Supportive / Technical / Friendly / Formal |
-| response_style | Select | Balanced / Concise / Step-by-step / Detailed / Persuasive |
-| memory_mode | Select | None / Session |
-| confidence_threshold | Float | Escalation trigger threshold (default 0.65) |
-| escalation_enabled | Check | Whether this behavior supports escalation |
+| agent | Link → Nexus Live Agent (unique) | One profile per agent |
+| behavior_prompt | Long Text | Main behavioural instruction |
+| tone | Data | Free text, e.g. Professional, Friendly, Technical |
+| response_style | Data | Free text, e.g. Concise, Balanced, Detailed |
 | welcome_message | Small Text | Shown at conversation start |
-| fallback_message | Small Text | Used when confidence is too low |
-| do_not_answer_rules | Long Text | Topics the agent must refuse |
+| fallback_message | Small Text | Used when approved knowledge is insufficient |
+| do_not_answer_rules | Long Text | Topics this profile must not address |
+| default_response_mode | Select | qa / chat |
+| confidence_threshold | Float | Escalation trigger threshold (default 0.65) |
+| escalation_enabled | Check | Whether this profile may trigger escalation |
+| escalation_policy | Link → Nexus Escalation Rule | |
+| memory_mode | Select | None / Session / Conversation Summary / Long Term |
+| system_notes | Small Text | Internal admin notes |
 
-Autoname: `field:behaviour_code`.
+Autoname: `hash`. Access categories are configured via `Nexus AI Agent Profile Access Category`.
 
 ---
 
-### Nexus AI Agent Profile *(Legacy)*
+### Nexus AI Behaviour *(Template Only)*
 
-Legacy AI behavior configuration. Used as fallback when no `Nexus AI Behaviour` is linked on the agent. New deployments should use `Nexus AI Behaviour` instead.
+Reusable behaviour template. No longer the primary runtime object. Used only as a field-level fallback — if a profile field is empty and the agent has a linked `Nexus AI Behaviour`, the template value fills the gap at runtime.
+
+`tone` and `response_style` are `Data` fields (free text). Existing `Select` options are retained as examples only.
+
+New deployments should configure all behaviour fields on `Nexus AI Agent Profile` directly.
 
 ---
 
@@ -92,9 +97,35 @@ Records agent status changes and session events. Used for activity tracking and 
 
 ---
 
-### Nexus AI Agent Profile Access Category *(Child Table)*
+### Nexus AI Agent Profile Access Category
 
-Maps an `Nexus AI Agent Profile` to an `Nexus Access Category`. Controls which knowledge policies the legacy profile can retrieve.
+Maps a `Nexus AI Agent Profile` to a `Nexus Access Category`. The sole runtime access mapping — determines which knowledge policies the profile may retrieve.
+
+| Field | Type | Notes |
+|---|---|---|
+| ai_agent_profile | Link → Nexus AI Agent Profile | |
+| access_category | Link → Nexus Access Category | |
+| enabled | Check | Excluded from resolution when disabled |
+| priority | Int | Ordering |
+
+Managed via the **Nexus Profile Access Allocation** page (`/nexus-profile-access-allocation`).
+
+---
+
+### Nexus User Profile Assignment
+
+Direct assignment of an AI Agent Profile to a specific internal desk user. The sole profile resolution mechanism for internal users.
+
+| Field | Type | Notes |
+|---|---|---|
+| user | Link → User | Frappe desk user |
+| ai_agent_profile | Link → Nexus AI Agent Profile | The assigned profile |
+| active | Check | Only one active record per user used at runtime |
+| assigned_by | Link → User | Set automatically on insert |
+| assigned_on | Datetime | Set automatically on insert |
+| notes | Small Text | Admin notes |
+
+Autoname: `NUPA-.#####`. Enforces one active assignment per user. Managed via the **Nexus User Profile Manager** page (`/nexus-user-profile-manager`).
 
 ---
 
@@ -106,7 +137,7 @@ Root document for a conversation session.
 
 | Field | Type | Notes |
 |---|---|---|
-| conversation_id | Data (unique) | Client-facing identifier (e.g. NLCV-00001) |
+| conversation_id | Data (unique) | Client-facing identifier |
 | conversation_type | Select | Q&A / Chat |
 | channel | Link → Nexus Live Channel | |
 | visitor_name | Data | |
@@ -115,16 +146,18 @@ Root document for a conversation session.
 | user_type | Select | Guest / Website User / Desk User |
 | assigned_agent | Link → Nexus Live Agent | |
 | assigned_agent_type | Select | AI / Human |
+| assigned_ai_agent_profile | Link → Nexus AI Agent Profile | Profile active at conversation start (read only) |
+| ai_profile_snapshot_json | Code (JSON) | Serialised profile behaviour snapshot at conversation start (read only) |
 | status | Select | Open / Waiting / Responding / Escalated / Handed Over / Closed |
 | intent | Data | Detected intent from first message |
 | last_message | Small Text | Preview of the last user message |
 | last_response | Small Text | Preview of the last AI response |
 | confidence | Float | Last confidence score |
-| escalation_status | Select | Pending / Assigned / Resolved |
+| escalation_status | Select | None / Pending / Accepted / Resolved / Rejected |
 | started_on | Datetime | |
 | closed_on | Datetime | |
 
-Autoname: `NLCV-.#####`. Conversation documents are never deleted; closed conversations are retained for audit.
+Autoname: `field:conversation_id`. The profile snapshot preserves the resolved profile behaviour at conversation creation — profile changes after that point do not affect in-progress conversations. Conversation documents are never deleted.
 
 ---
 
@@ -208,9 +241,40 @@ Dynamic routing configuration for a channel. Matches query patterns to specific 
 
 ---
 
-### Nexus Channel AI Profile Route *(Legacy)*
+### Nexus Chat Category
 
-Maps a channel to a legacy AI profile for routing. Superseded by `Nexus Channel Routing Rule`.
+Pre-defined options displayed in the chat window. Each category carries the identity context for an external user and resolves directly to an `Nexus AI Agent Profile`. This is the primary profile resolution mechanism for external users on chat channels.
+
+| Field | Type | Notes |
+|---|---|---|
+| category_code | Data (unique) | |
+| category_label | Data | What the user sees in the chat window |
+| channel | Link → Nexus Live Channel | Which channel this category appears on |
+| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
+| ai_agent_profile | Link → Nexus AI Agent Profile | Profile resolved when this category is selected |
+| display_order | Int | Sort order in chat window |
+| enabled | Check | Controls visibility |
+| description | Small Text | |
+
+A channel must have at least one enabled chat category before conversations can start.
+
+---
+
+### Nexus Channel AI Profile Route
+
+Maps a channel + identity type to an AI Agent Profile. Used for non-chat channels (API, direct integrations) where no chat window exists. Also acts as fallback when chat category selection is not available.
+
+| Field | Type | Notes |
+|---|---|---|
+| route_name | Data (unique) | |
+| channel | Link → Nexus Live Channel | |
+| ai_agent_profile | Link → Nexus AI Agent Profile | |
+| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
+| enabled | Check | |
+| use_case | Data | Optional further narrowing by use case |
+| priority | Int | Lower = higher priority |
+| is_default | Check | Fallback when no specific identity_type route matches |
+| context, sub_context, intent | Data | Optional context matching |
 
 ---
 
