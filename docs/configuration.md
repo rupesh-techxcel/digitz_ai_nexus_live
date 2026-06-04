@@ -35,7 +35,8 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
 
    A category with no enabled route for the resolved identity type cannot start a conversation.
 
-6. Use the chain preview to verify:
+6. Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to verify complete runtime resolution for a sample channel, category, email, and verification state.
+7. Use the route chain preview to verify:
 
    ```
    Chat Category → Identity Type → AI Agent Profile → Access Categories → Access Policies
@@ -70,6 +71,8 @@ Create a `Nexus Live Experience` to bundle Q&A config, chat config, and branding
 | Nexus Identity Registry | `/nexus-identity-registry` | Register verified people/parties and assign one or more identity types |
 | Nexus Chat Category Manager | `/nexus-chat-category-manager` | Configure chat window options per channel |
 | Nexus Category Profile Routes | `/nexus-category-profile-routes` | Map channel + chat category + identity type to AI Agent Profiles |
+| Nexus Chat Workflow Tester | `/nexus-chat-workflow-tester` | Preview category, verification, identity, profile, access categories, and policies |
+| Nexus Identity Verification Monitor | `/nexus-identity-verification-monitor` | Inspect email OTP challenges, status, attempts, expiry, and resolved identity |
 | Nexus User Profile Manager | `/nexus-user-profile-manager` | Assign profiles to internal desk users |
 | Nexus Live Studio | `/nexus-live-studio` | Agent, channel, and behaviour configuration |
 | Nexus Live Console | `/nexus-live-console` | Live operations visibility |

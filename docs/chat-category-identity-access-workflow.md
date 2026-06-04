@@ -123,6 +123,8 @@ The final policy set for a profile is the union of policies from all enabled acc
 
 ## Runtime Flow
 
+Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to preview the chain manually without sending an OTP or starting a real conversation.
+
 ### Start Chat
 
 `start_live_chat(payload)` must perform this sequence:

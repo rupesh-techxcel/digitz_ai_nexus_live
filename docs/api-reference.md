@@ -41,6 +41,32 @@ digitz_ai_nexus_live.api.identity_verification.verify_identity_verification(
 
 Marks the challenge as verified and returns the resolved identity type. Pass the returned `challenge_token` as `identity_verification_challenge` when calling `start_chat`.
 
+### Chat Workflow Tester
+
+```python
+digitz_ai_nexus_live.api.nexus_chat_workflow_tester.simulate_workflow(
+    channel,
+    chat_category,
+    visitor_email=None,
+    assume_authenticated=0,
+    assume_email_verified=0,
+)
+```
+
+Admin-only helper used by `/nexus-chat-workflow-tester`. It previews category gates, registry match, resolved identity, profile route, access categories, and policies without creating a conversation or sending OTP.
+
+### Identity Verification Monitor
+
+```python
+digitz_ai_nexus_live.api.nexus_identity_verification_monitor.get_challenges(
+    status=None,
+    email=None,
+    limit=100,
+)
+```
+
+Admin-only helper used by `/nexus-identity-verification-monitor` to inspect OTP challenge status, attempts, expiry, and resolved identity.
+
 Current public guardrail behavior forces guest requests to public-only access in Nexus Core. If category-routed public visitors should receive policies from the routed profile instead, Live must avoid setting `force_public_only` for those category-routed requests and the Public identity route must be configured with only safe public access categories.
 
 ---
