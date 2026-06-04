@@ -1,6 +1,37 @@
 import frappe
 
 
+def get_authenticated_session_user():
+    user = getattr(frappe.session, "user", None)
+    if not user or user == "Guest":
+        return None
+    return user
+
+
+def get_user_context(user=None):
+    user = user or get_authenticated_session_user()
+    if not user:
+        return None
+
+    return {
+        "name": user,
+        "email": frappe.db.get_value("User", user, "email") or user,
+        "roles": frappe.get_roles(user),
+    }
+
+
+def get_session_user_type(user=None):
+    user = user or get_authenticated_session_user()
+    if not user:
+        return "Guest"
+    return frappe.db.get_value("User", user, "user_type") or "System User"
+
+
+def is_internal_session_user(user=None):
+    user = user or get_authenticated_session_user()
+    return bool(user and get_session_user_type(user) == "System User")
+
+
 def resolve_behavior_from_chat_category(category_code, identity_type, is_authenticated=False):
     """
     Resolve AI behavior from a visitor-selected chat category and their identity type.
@@ -95,6 +126,9 @@ def resolve_behavior_for_internal_user(user):
     if not user or user == "Guest":
         return None
 
+    if get_session_user_type(user) != "System User":
+        return None
+
     assignment_name = frappe.db.get_value(
         "Nexus User Profile Assignment",
         {"user": user, "active": 1},
@@ -130,11 +164,6 @@ def _build_behavior_dict(
         "category_code": category_code,
         "category_label": category_label,
         "identity_type": identity_type,
-        "uses_assigned_behaviour": 0,
-        "behaviour": None,
-        "behaviour_code": None,
-        "behaviour_name": None,
-        "behaviour_designation": None,
         "behavior_prompt": profile.behavior_prompt,
         "tone": profile.tone,
         "response_style": profile.response_style,

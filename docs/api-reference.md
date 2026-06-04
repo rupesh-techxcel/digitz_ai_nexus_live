@@ -177,7 +177,6 @@ Returns a high-level overview for the Live Studio dashboard.
 {
   "ai_agents": 4,
   "human_agents": 2,
-  "behaviours": 3,
   "channels": 5,
   "escalation_rules": 2,
   "pending_approvals": 1
@@ -191,12 +190,6 @@ Returns a high-level overview for the Live Studio dashboard.
 Returns a list of all agents with their current status and session count.
 
 **Returns:** List of agent records with `agent_code`, `agent_name`, `agent_type`, `agent_role`, `status`, `current_active_sessions`.
-
----
-
-### `digitz_ai_nexus_live.api.live_studio.get_behaviour_profiles`
-
-Returns all active `Nexus AI Behaviour` records.
 
 ---
 

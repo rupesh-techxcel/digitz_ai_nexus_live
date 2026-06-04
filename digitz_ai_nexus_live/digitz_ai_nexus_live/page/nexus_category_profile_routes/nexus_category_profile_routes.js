@@ -171,7 +171,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             frappe.set_route('List', $(this).data('route-list'));
         });
         $(page.body).on('click', '[data-route-page]', function () {
-            frappe.set_route('Page', $(this).data('route-page'));
+            frappe.set_route($(this).data('route-page'));
         });
         $(page.body).on('click', '#ncpr_add_route_btn', () => openModal());
         $(page.body).on('click', '#ncpr_modal_close, #ncpr_modal_cancel', closeModal);

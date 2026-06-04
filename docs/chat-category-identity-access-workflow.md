@@ -51,7 +51,7 @@ Internal
 Admin
 ```
 
-Formal identity registration is handled by `Nexus Identity Registry`. One registry record represents the real person or party joining chat, usually keyed by verified email and optionally linked to `User`, `Customer`, and `Contact`.
+Formal identity registration is handled by `Nexus Identity Registry`. One registry record represents the real person or party joining chat, usually keyed by verified email and optionally linked to `User`, `Contact`, or any installed business DocType through the generic reference fields.
 
 One registry record can hold multiple enabled identity rows. For example, the same email can be registered as both `Customer` and `Partner` if both relationships are verified.
 
@@ -130,13 +130,16 @@ Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to preview th
 `start_live_chat(payload)` must perform this sequence:
 
 ```
-payload.chat_category
-    ↓
-resolve_identity_type(payload)
-    ↓
-resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
-    ↓
-load Nexus AI Agent Profile from Nexus Category Identity Route
+logged-in internal System User?
+    ├─ yes → load active Nexus User Profile Assignment
+    │       → load assigned Nexus AI Agent Profile
+    └─ no  → payload.chat_category
+            ↓
+            resolve_identity_type(payload)
+            ↓
+            resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
+            ↓
+            load Nexus AI Agent Profile from Nexus Category Identity Route
     ↓
 create Nexus Live Conversation with assigned_ai_agent_profile snapshot
     ↓

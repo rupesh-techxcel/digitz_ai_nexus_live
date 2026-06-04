@@ -1,7 +1,7 @@
-frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
+frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper) {
     const page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: 'Nexus Identity Registry',
+        title: 'Nexus Identity Registry Manager',
         single_column: true,
     });
 
@@ -22,7 +22,7 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
 <div class="nir-wrap">
     <div class="nir-toolbar">
         <div>
-            <div class="nir-title">Identity Registry</div>
+            <div class="nir-title">Identity Registry Manager</div>
             <div class="nir-muted">Register the real person behind a chat and assign one or more identity types.</div>
         </div>
         <div class="nir-actions">
@@ -56,7 +56,11 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
                 </div>
                 <div class="nir-two">
                     <div><label>User</label><input class="form-control" id="nir_user"></div>
-                    <div><label>Customer</label><input class="form-control" id="nir_customer"></div>
+                    <div><label>Reference DocType</label><input class="form-control" id="nir_reference_doctype" placeholder="e.g. Contact, Lead, Member"></div>
+                </div>
+                <div class="nir-two">
+                    <div><label>Reference Name</label><input class="form-control" id="nir_reference_name"></div>
+                    <div><label>Reference Label</label><input class="form-control" id="nir_reference_label"></div>
                 </div>
                 <div class="nir-two">
                     <div><label>Contact</label><input class="form-control" id="nir_contact"></div>
@@ -179,23 +183,21 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
 
     function renderIdentityRows() {
         syncIdentityRows(false);
+        const noIdentityTypes = !state.identityTypes.length;
         const options = ['<option value=""></option>'].concat(
             state.identityTypes.map(t => `<option value="${esc(t)}">${esc(t)}</option>`)
         ).join('');
 
         $('#nir_identity_rows').html(state.identities.map((row, idx) => `
             <div class="nir-identity-row" data-idx="${idx}">
-                <select class="form-control nir-identity-input" data-field="identity_type" data-idx="${idx}">
+                <select class="form-control nir-identity-input" data-field="identity_type" data-idx="${idx}" ${noIdentityTypes ? 'disabled' : ''}>
                     ${options}
                 </select>
                 <label><input type="checkbox" class="nir-identity-input" data-field="enabled" data-idx="${idx}" ${Number(row.enabled) ? 'checked' : ''}> Enabled</label>
                 <label><input type="checkbox" class="nir-identity-input" data-field="is_primary" data-idx="${idx}" ${Number(row.is_primary) ? 'checked' : ''}> Primary</label>
-                <select class="form-control nir-identity-input" data-field="verification_method" data-idx="${idx}">
-                    ${['', 'Email', 'Portal Login', 'Manual Review', 'Customer Record', 'API'].map(v => `<option value="${v}" ${v === (row.verification_method || '') ? 'selected' : ''}>${v}</option>`).join('')}
-                </select>
                 <button class="btn btn-default nir-remove-row" data-idx="${idx}">Remove</button>
             </div>
-        `).join('') || '<div class="nir-empty">No identities assigned yet.</div>');
+        `).join('') || `<div class="nir-empty">${noIdentityTypes ? 'No enabled Identity Types found. Configure Nexus Identity Type first.' : 'No identities assigned yet.'}</div>`);
 
         state.identities.forEach((row, idx) => {
             $(`.nir-identity-row[data-idx="${idx}"] [data-field="identity_type"]`).val(row.identity_type || '');
@@ -221,7 +223,7 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
 
     function newRegistry() {
         state.selected = null;
-        state.identities = [{ identity_type: 'Public', enabled: 1, is_primary: 1, verification_method: 'Email' }];
+        state.identities = [];
         fillForm({ enabled: 1, verification_status: 'Unverified' });
         renderIdentityRows();
         renderRegistryList();
@@ -234,7 +236,9 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
         $('#nir_email').val(registry.email || '');
         $('#nir_full_name').val(registry.full_name || '');
         $('#nir_user').val(registry.user || '');
-        $('#nir_customer').val(registry.customer || '');
+        $('#nir_reference_doctype').val(registry.reference_doctype || '');
+        $('#nir_reference_name').val(registry.reference_name || '');
+        $('#nir_reference_label').val(registry.reference_label || '');
         $('#nir_contact').val(registry.contact || '');
         $('#nir_mobile_no').val(registry.mobile_no || '');
         $('#nir_enabled').prop('checked', Number(registry.enabled || 0) === 1);
@@ -249,7 +253,9 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
             email: $('#nir_email').val(),
             full_name: $('#nir_full_name').val(),
             user: $('#nir_user').val(),
-            customer: $('#nir_customer').val(),
+            reference_doctype: $('#nir_reference_doctype').val(),
+            reference_name: $('#nir_reference_name').val(),
+            reference_label: $('#nir_reference_label').val(),
             contact: $('#nir_contact').val(),
             mobile_no: $('#nir_mobile_no').val(),
             enabled: $('#nir_enabled').is(':checked') ? 1 : 0,
@@ -280,7 +286,7 @@ frappe.pages['nexus-identity-registry'].on_page_load = function (wrapper) {
             .nir-form { display:flex; flex-direction:column; gap:12px; margin-bottom:18px; }
             .nir-two { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
             .nir-check { display:flex; gap:8px; align-items:center; margin-top:28px; }
-            .nir-identity-row { display:grid; grid-template-columns: minmax(160px,1fr) 110px 100px 160px 90px; gap:10px; align-items:center; border-top:1px solid #edf1f7; padding:10px 0; }
+            .nir-identity-row { display:grid; grid-template-columns: minmax(160px,1fr) 110px 100px 90px; gap:10px; align-items:center; border-top:1px solid #edf1f7; padding:10px 0; }
             .nir-empty { color:#667085; padding:12px; text-align:center; }
             @media (max-width: 900px) { .nir-grid, .nir-two, .nir-identity-row { grid-template-columns:1fr; } }
         `).appendTo('head');

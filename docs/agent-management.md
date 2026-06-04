@@ -37,11 +37,11 @@ Role detection during routing uses keyword inference from the query text (e.g. "
 
 Behavior and access are both owned by `Nexus AI Agent Profile`. This is the primary runtime object — it is resolved at query time and passed as `ai_profile` in the query payload to Nexus Core.
 
-`Nexus AI Behaviour` is retained as an **optional reusable template only**. If a profile field is empty and the agent has a linked `Nexus AI Behaviour` record, the template value fills the gap. It is never the primary runtime selector.
+`Nexus Live Agent` does not own behaviour. It is the operational worker record: code, name, type, role, status, visibility, channel, and session limits.
 
 Resolution priority in `agent_service.get_agent_behavior()`:
-1. `Nexus AI Agent Profile` linked to the agent — **always primary**
-2. `Nexus AI Behaviour` on `agent.behaviour` — field-level fallback for empty profile fields only
+1. `Nexus AI Agent Profile` linked to the agent — **only runtime source in the non-category agent path**
+2. Category-routed chats use the profile resolved by `Nexus Category Identity Route`
 
 ### Nexus AI Agent Profile Fields
 
@@ -106,7 +106,7 @@ The admin directly assigns a profile via `Nexus User Profile Assignment`. At run
 
 ### API / non-chat channels
 
-`Nexus Channel AI Profile Route` records map a channel + `identity_type` to a profile. Used when there is no chat window (direct API callers, integrations).
+Non-chat or direct integrations should pass an explicit agent/profile context or use the channel's configured agent path. There is no separate channel-level profile route DocType in the active runtime model.
 
 ### Access handoff
 

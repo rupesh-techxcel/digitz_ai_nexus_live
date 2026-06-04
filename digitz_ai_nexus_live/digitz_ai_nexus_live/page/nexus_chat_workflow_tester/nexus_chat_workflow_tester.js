@@ -27,7 +27,7 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
         </div>
         <div class="ncwt-actions">
             <button class="btn btn-default" data-page="nexus-chat-category-manager">Categories</button>
-            <button class="btn btn-default" data-page="nexus-identity-registry">Identity Registry</button>
+            <button class="btn btn-default" data-page="nexus-identity-registry-manager">Identity Registry</button>
             <button class="btn btn-default" data-page="nexus-category-profile-routes">Routes</button>
         </div>
     </div>
@@ -69,7 +69,7 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
 
     function bindEvents() {
         $(page.body).on('click', '[data-page]', function () {
-            frappe.set_route('Page', $(this).data('page'));
+            frappe.set_route($(this).data('page'));
         });
         $(page.body).on('change', '#ncwt_channel', function () {
             loadCategories($(this).val());
@@ -159,7 +159,7 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
                     ${registry ? `
                         <div class="ncwt-kv"><b>Email</b><span>${esc(registry.email)}</span></div>
                         <div class="ncwt-kv"><b>Status</b><span>${esc(registry.verification_status)}</span></div>
-                        <div class="ncwt-kv"><b>Customer</b><span>${esc(registry.customer || '')}</span></div>
+                        <div class="ncwt-kv"><b>Reference</b><span>${esc(formatReference(registry))}</span></div>
                         <div class="ncwt-tags">${(r.registered_identities || []).map(i => `<span>${esc(i.identity_type)}${i.is_primary ? ' primary' : ''}</span>`).join('')}</div>
                     ` : '<div class="ncwt-empty">No registry match.</div>'}
                 </div>
@@ -178,6 +178,15 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
 
     function node(label, value) {
         return `<div class="ncwt-node"><b>${esc(label)}</b><span>${esc(value || '')}</span></div>`;
+    }
+
+    function formatReference(registry) {
+        if (!registry) return '';
+        if (registry.reference_label) return registry.reference_label;
+        if (registry.reference_doctype && registry.reference_name) {
+            return `${registry.reference_doctype}: ${registry.reference_name}`;
+        }
+        return registry.reference_name || '';
     }
 
     function esc(value) {

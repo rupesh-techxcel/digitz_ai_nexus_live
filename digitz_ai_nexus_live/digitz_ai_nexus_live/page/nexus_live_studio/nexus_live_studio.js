@@ -46,8 +46,8 @@ class NexusLiveStudio {
 							Register AI Representative
 						</button>
 
-						<button class="btn btn-default nls-action-btn" id="nls-create-behaviour">
-							Create Behaviour
+						<button class="btn btn-default nls-action-btn" id="nls-open-profiles">
+							Agent Profiles
 						</button>
 					</div>
 				</div>
@@ -55,9 +55,8 @@ class NexusLiveStudio {
 				<div class="nls-overview-grid"></div>
 
 				<div class="nls-main-tabs">
-					<div class="nls-tab-header">
+						<div class="nls-tab-header">
 						<div class="nls-tab active" data-tab="workforce">Workforce</div>
-						<div class="nls-tab" data-tab="behaviours">Behaviours</div>
 						<div class="nls-tab" data-tab="channels">Channels</div>
 						<div class="nls-tab" data-tab="escalations">Escalations</div>
 					</div>
@@ -69,14 +68,6 @@ class NexusLiveStudio {
 								<p>Operational AI and Human representatives available in the Live ecosystem.</p>
 							</div>
 							<div class="nls-workforce-grid"></div>
-						</div>
-
-						<div class="nls-panel" data-panel="behaviours">
-							<div class="nls-section-header">
-								<h3>Conversational Behaviours</h3>
-								<p>Reusable conversational intelligence templates assignable to multiple AI representatives.</p>
-							</div>
-							<div class="nls-behaviour-grid"></div>
 						</div>
 
 						<div class="nls-panel" data-panel="channels">
@@ -121,8 +112,8 @@ class NexusLiveStudio {
 			frappe.set_route('List', 'Nexus Live Agent');
 		});
 
-		this.body.on('click', '#nls-create-behaviour', function() {
-			frappe.set_route('List', 'Nexus AI Behaviour');
+		this.body.on('click', '#nls-open-profiles', function() {
+			frappe.set_route('List', 'Nexus AI Agent Profile');
 		});
 	}
 
@@ -136,7 +127,6 @@ class NexusLiveStudio {
 
 			this.render_overview(data.overview || {});
 			this.render_workforce(data.agents || []);
-			this.render_behaviours(data.behaviours || []);
 			this.render_channels(data.channels || []);
 			this.render_escalations(data.escalations || []);
 
@@ -213,13 +203,6 @@ class NexusLiveStudio {
 				icon: 'user',
 				color: '#7c3aed',
 				bg: '#f3edff'
-			},
-			{
-				label: 'Behaviour Masters',
-				value: overview.behaviours || 0,
-				icon: 'message',
-				color: '#2563eb',
-				bg: '#eef4ff'
 			},
 			{
 				label: 'Channels',
@@ -325,47 +308,6 @@ class NexusLiveStudio {
 		});
 
 		this.body.find('.nls-workforce-grid').html(html);
-	}
-
-	render_behaviours(behaviours) {
-		let html = '';
-
-		behaviours.forEach(row => {
-			html += `
-				<div class="nls-behaviour-card">
-					<div class="nls-behaviour-title">
-						${row.name}
-					</div>
-
-					<div class="nls-meta-row">
-						<span>Tone</span>
-						<strong>${row.tone || '-'}</strong>
-					</div>
-
-					<div class="nls-meta-row">
-						<span>Style</span>
-						<strong>${row.response_style || '-'}</strong>
-					</div>
-
-					<div class="nls-meta-row">
-						<span>Memory</span>
-						<strong>${row.memory_mode || '-'}</strong>
-					</div>
-
-					<div class="nls-meta-row">
-						<span>Escalation</span>
-						<strong>${row.escalation_enabled ? 'Enabled' : 'Disabled'}</strong>
-					</div>
-
-					<div class="nls-meta-row">
-						<span>Confidence</span>
-						<strong>${row.confidence_threshold || 0}</strong>
-					</div>
-				</div>
-			`;
-		});
-
-		this.body.find('.nls-behaviour-grid').html(html);
 	}
 
 	render_channels(channels) {
@@ -644,18 +586,16 @@ class NexusLiveStudio {
 					font-size: 14px;
 				}
 
-				.nls-workforce-grid,
-				.nls-behaviour-grid,
-				.nls-channel-grid,
+					.nls-workforce-grid,
+					.nls-channel-grid,
 				.nls-escalation-grid {
 					display: grid;
 					grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 					gap: 18px;
 				}
 
-				.nls-agent-card,
-				.nls-behaviour-card,
-				.nls-channel-card,
+					.nls-agent-card,
+					.nls-channel-card,
 				.nls-escalation-card {
 					background: #fafcff;
 					border: 1px solid #dbe5ff;

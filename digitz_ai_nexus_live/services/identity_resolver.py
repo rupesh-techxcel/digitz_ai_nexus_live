@@ -17,7 +17,7 @@ def get_enabled_identity_types():
         order_by="sort_order asc, title asc",
     )
 
-    return identity_types or list(DEFAULT_IDENTITY_TYPES)
+    return identity_types
 
 
 def is_valid_identity_type(identity_type):

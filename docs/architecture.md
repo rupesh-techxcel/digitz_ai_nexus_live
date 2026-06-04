@@ -59,9 +59,9 @@ digitz_ai_nexus_live/
 │   ├── nexus_profile_access_allocation/  Profile → Access Category single-window page
 │   ├── nexus_chat_category_manager/      Per-channel chat category configuration page
 │   ├── nexus_user_profile_manager/       Internal user profile assignment page
-│   ├── nexus_live_studio/                Agent/channel/behaviour admin studio
+│   ├── nexus_live_studio/                Agent/channel admin studio
 │   └── nexus_live_console/               Live operations console
-├── nexus_live_agents/          Agent, profile, behaviour, user assignment DocTypes
+├── nexus_live_agents/          Agent, profile, user assignment DocTypes
 ├── nexus_live_conversations/   Conversation and message DocTypes
 ├── nexus_live_channels/        Channel, chat category, routing rule, widget DocTypes
 ├── nexus_live_escalations/     Escalation rule, queue DocTypes
@@ -203,7 +203,7 @@ This app never calls OpenAI directly. All LLM and embedding calls go through Nex
 
 1. **Stateful conversations, stateless queries** — Q&A exchanges are fire-and-forget; chat conversations maintain a document with full message history.
 2. **Profile-first resolution** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile is the single authority for both behaviour and access.
-3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals. `Nexus AI Behaviour` is an optional template only.
+3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals or agent fields.
 4. **Chat Category plus identity routes** — external users declare intent by selecting a chat category. Runtime derives identity type and resolves `Nexus Category Identity Route` to the governing profile.
 5. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
 6. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.

@@ -8,10 +8,12 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
 
 ### Step 1 — Access Policies and Categories (Nexus Core)
 
-1. Verify `Nexus Access Policy` records exist (seeded on install: PUBLIC, CUSTOMER_RESTRICTED, INTERNAL_EMPLOYEE, etc.)
+1. Verify `Nexus Access Policy` records exist. The default seed creates `Public`, `Internal`, and `Restricted`.
 2. Create `Nexus Access Category` bundles that group the policies your profiles will need.
-   Example: "Customer Access" → [Public, Customer Restricted]
+   Example: "Customer Access" → [Public, Customer]
 3. Make sure knowledge chunks in Nexus Core have `access_policy` values matching these policies.
+
+See [Default Seed Data](default-seed-data.md) for the records created by the install seed and the baseline public route.
 
 ### Step 2 — AI Agent Profiles
 
@@ -23,7 +25,7 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
 
 1. Create `Nexus Live Channel` records (Website Chat, Portal, API, etc.).
 2. For each channel, open **Nexus Chat Category Manager** (`/nexus-chat-category-manager`) and configure the categories the chat UI should show.
-3. Open **Nexus Identity Registry** (`/nexus-identity-registry`) and register known people or parties by verified email. Add one or more identity rows, such as Customer, Partner, or Premium Customer.
+3. Open **Nexus Identity Registry Manager** (`/app/nexus-identity-registry-manager`) and register known people or parties by verified email. Add one or more identity rows, such as Customer, Partner, or Premium Customer.
 4. On each chat category, choose an identity verification mode when needed: `None`, `Email OTP`, or `Registered Email OTP`.
 5. Open **Nexus Category Profile Routes** (`/nexus-category-profile-routes`) and map each category + identity type to an AI Agent Profile:
 
@@ -46,7 +48,7 @@ After installing `digitz_ai_nexus_live`, complete these steps before routing liv
 
 ### Step 4 — Internal User Assignments
 
-1. Open **Nexus User Profile Manager** (`/nexus-user-profile-manager`).
+1. Open **Nexus User Profile Manager** (`/app/nexus-user-profile-manager`).
 2. For every internal desk user who will query the system, assign an active AI Agent Profile.
 3. Verify the assigned profile has an Access Category configured — the page shows a warning if not.
 
@@ -68,13 +70,13 @@ Create a `Nexus Live Experience` to bundle Q&A config, chat config, and branding
 | Page | URL | Purpose |
 |---|---|---|
 | Nexus Profile Access Allocation | `/nexus-profile-access-allocation` | Assign Access Categories to AI Agent Profiles |
-| Nexus Identity Registry | `/nexus-identity-registry` | Register verified people/parties and assign one or more identity types |
+| Nexus Identity Registry Manager | `/app/nexus-identity-registry-manager` | Register verified people/parties and assign one or more identity types |
 | Nexus Chat Category Manager | `/nexus-chat-category-manager` | Configure chat window options per channel |
 | Nexus Category Profile Routes | `/nexus-category-profile-routes` | Map channel + chat category + identity type to AI Agent Profiles |
 | Nexus Chat Workflow Tester | `/nexus-chat-workflow-tester` | Preview category, verification, identity, profile, access categories, and policies |
 | Nexus Identity Verification Monitor | `/nexus-identity-verification-monitor` | Inspect email OTP challenges, status, attempts, expiry, and resolved identity |
-| Nexus User Profile Manager | `/nexus-user-profile-manager` | Assign profiles to internal desk users |
-| Nexus Live Studio | `/nexus-live-studio` | Agent, channel, and behaviour configuration |
+| Nexus User Profile Manager | `/app/nexus-user-profile-manager` | Assign profiles to internal desk users |
+| Nexus Live Studio | `/nexus-live-studio` | Agent and channel configuration |
 | Nexus Live Console | `/nexus-live-console` | Live operations visibility |
 
 ---
@@ -117,6 +119,9 @@ Suggested starting values by role:
 ## Development Commands
 
 ```bash
+# Recreate/update the default setup records on an existing site
+bench --site your-site.local execute digitz_ai_nexus_live.setup.install.seed_defaults
+
 # After DocType JSON changes
 bench --site your-site.local migrate
 bench --site your-site.local clear-cache

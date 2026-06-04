@@ -180,10 +180,10 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             frappe.set_route('List', $(this).data('route-list'));
         });
         $(page.body).on('click', '[data-route-page]', function () {
-            frappe.set_route('Page', $(this).data('route-page'));
+            frappe.set_route($(this).data('route-page'));
         });
         $(page.body).on('click', '#nccm_add_btn', () => openModal(null));
-        $(page.body).on('click', '#nccm_routes_btn', () => frappe.set_route('Page', 'nexus-category-profile-routes'));
+        $(page.body).on('click', '#nccm_routes_btn', () => frappe.set_route('nexus-category-profile-routes'));
         $(page.body).on('click', '#nccm_modal_close, #nccm_modal_cancel', closeModal);
         $(page.body).on('click', '#nccm_modal_overlay', function (e) {
             if ($(e.target).is('#nccm_modal_overlay')) closeModal();
@@ -473,7 +473,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
 
         if (!routes.length) {
             html += `<div class="nexus-empty-state">No identity routes configured for this category.
-                <a class="nccm-link" onclick="frappe.set_route('Page','nexus-category-profile-routes')">
+                <a class="nccm-link" onclick="frappe.set_route('nexus-category-profile-routes')">
                     Add routes →
                 </a></div>`;
             $('#nccm_chain_body').html(html);

@@ -2,7 +2,14 @@ import frappe
 
 from digitz_ai_nexus_live.services.agent_router import assign_agent
 from digitz_ai_nexus_live.services.agent_service import get_ai_profile
-from digitz_ai_nexus_live.services.profile_resolver import resolve_behavior_from_chat_category
+from digitz_ai_nexus_live.services.profile_resolver import (
+    get_authenticated_session_user,
+    get_session_user_type,
+    get_user_context,
+    is_internal_session_user,
+    resolve_behavior_for_internal_user,
+    resolve_behavior_from_chat_category,
+)
 from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
@@ -22,6 +29,19 @@ from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
 
 
+def apply_session_user_context(payload):
+    payload = payload or {}
+    user = get_authenticated_session_user()
+
+    if not user:
+        payload.setdefault("user_type", "Guest")
+        return payload
+
+    payload["user_type"] = get_session_user_type(user)
+    payload["user"] = get_user_context(user)
+    return payload
+
+
 def build_core_payload(payload, agent=None, profile=None, is_public=False):
     """
     Build payload for Nexus Core answer service.
@@ -36,17 +56,19 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
         "roles": payload.get("roles") or ["Guest"]
     }
 
-    access_resolution = resolve_allowed_policies({
-        "channel": payload.get("channel"),
-        "user": user_context,
-        "force_public_only": is_public,
-    })
-
-    # Resolve profile: chat_category + identity takes precedence over agent profile
+    # Resolve profile before access policies; the selected profile is the access authority.
     resolved_behavior = None
     chat_category = payload.get("chat_category")
 
-    if chat_category:
+    session_user = get_authenticated_session_user()
+    if is_internal_session_user(session_user):
+        resolved_behavior = resolve_behavior_for_internal_user(session_user)
+        if not resolved_behavior:
+            frappe.throw(
+                "No active Nexus User Profile Assignment exists for the logged-in user. "
+                "Please ask an administrator to assign an AI Agent Profile."
+            )
+    elif chat_category:
         is_authenticated = payload.get("user_type", "Guest") != "Guest"
         identity_type = resolve_identity_type(payload)
         resolved_behavior = resolve_behavior_from_chat_category(
@@ -72,6 +94,13 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
             "memory_mode": resolved_behavior.memory_mode,
             "default_response_mode": "qa",
         }
+
+    access_resolution = resolve_allowed_policies({
+        "channel": payload.get("channel"),
+        "user": user_context,
+        "force_public_only": is_public,
+        "ai_profile": ai_profile,
+    })
 
     core_payload = {
         "query": payload.get("query") or payload.get("question"),
@@ -138,6 +167,7 @@ def ask_live_question(payload):
 
     payload["query"] = question
     payload["conversation_type"] = "Q&A"
+    payload = apply_session_user_context(payload)
 
     payload = apply_tenant_context_to_payload(
         payload=payload,

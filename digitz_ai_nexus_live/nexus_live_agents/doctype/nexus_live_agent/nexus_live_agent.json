@@ -10,7 +10,6 @@
   "agent_name",
   "display_name",
   "agent_type",
-  "behaviour",
   "agent_role",
   "status",
   "enabled",
@@ -127,14 +126,6 @@
    "fieldtype": "Datetime",
    "label": "Last Active On",
    "read_only": 1
-  },
-  {
-   "depends_on": "eval:doc.agent_type==\"AI\"",
-   "description": "Optional legacy behaviour template. Runtime uses Nexus AI Agent Profile as primary source.",
-   "fieldname": "behaviour",
-   "fieldtype": "Link",
-   "label": "Behaviour (Template)",
-   "options": "Nexus AI Behaviour"
   }
  ],
  "index_web_pages_for_search": 1,

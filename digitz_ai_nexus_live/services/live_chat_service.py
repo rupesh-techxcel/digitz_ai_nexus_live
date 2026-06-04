@@ -6,8 +6,13 @@ from digitz_ai_nexus_live.services.agent_service import (
     set_agent_status,
 )
 from digitz_ai_nexus_live.services.profile_resolver import (
+    get_authenticated_session_user,
+    get_session_user_type,
+    get_user_context,
+    is_internal_session_user,
     resolve_behavior_from_chat_category,
     resolve_behavior_from_conversation,
+    resolve_behavior_for_internal_user,
 )
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
@@ -32,6 +37,19 @@ from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 MAX_HISTORY_MESSAGES = 20
 CHAT_RESPONSE_SENTENCE_LIMIT = 6
 DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
+
+
+def apply_session_user_context(payload):
+    payload = payload or {}
+    user = get_authenticated_session_user()
+
+    if not user:
+        payload.setdefault("user_type", "Guest")
+        return payload
+
+    payload["user_type"] = get_session_user_type(user)
+    payload["user"] = get_user_context(user)
+    return payload
 
 
 def build_chat_history(conversation):
@@ -125,6 +143,8 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
 
     chat_history = build_chat_history(conversation)
 
+    ai_profile = _build_ai_profile_dict(behavior)
+
     is_public = (payload.get("user_type", "Guest") == "Guest")
 
     user_context = payload.get("user") or {
@@ -135,9 +155,8 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "channel": payload.get("channel"),
         "user": user_context,
         "force_public_only": is_public,
+        "ai_profile": ai_profile,
     })
-
-    ai_profile = _build_ai_profile_dict(behavior)
 
     return {
         "query": continuity.get("effective_query") or payload.get("message"),
@@ -176,12 +195,6 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "agent_code": agent.agent_code,
         "agent_role": agent.agent_role,
 
-        "behaviour": behavior.behaviour if behavior else None,
-        "behaviour_code": behavior.behaviour_code if behavior else None,
-        "behaviour_name": behavior.behaviour_name if behavior else None,
-        "behaviour_source": behavior.source if behavior else None,
-        "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
-
         "_resolved_tenant_context": payload.get("_resolved_tenant_context"),
     }
 
@@ -190,13 +203,24 @@ def _resolve_behavior(payload, conversation=None, agent=None):
     """
     Resolve AI behavior in priority order:
     1. Stored profile on the conversation (follow-up messages / consistent across turns)
-    2. chat_category in payload (visitor selection at conversation start)
-    3. Agent behavior (legacy / non-chat-category path)
+    2. Internal desk user's active Nexus User Profile Assignment
+    3. chat_category in payload (visitor selection at conversation start)
+    4. Agent behavior (legacy / non-chat-category path)
     """
     if conversation:
         from_conversation = resolve_behavior_from_conversation(conversation)
         if from_conversation:
             return from_conversation
+
+    session_user = get_authenticated_session_user()
+    if is_internal_session_user(session_user):
+        internal_behavior = resolve_behavior_for_internal_user(session_user)
+        if not internal_behavior:
+            frappe.throw(
+                "No active Nexus User Profile Assignment exists for the logged-in user. "
+                "Please ask an administrator to assign an AI Agent Profile."
+            )
+        return internal_behavior
 
     chat_category = payload.get("chat_category")
     if chat_category:
@@ -224,8 +248,9 @@ def start_live_chat(payload):
 
     payload["message"] = message
     payload["conversation_type"] = "Chat"
+    payload = apply_session_user_context(payload)
 
-    if payload.get("chat_category"):
+    if payload.get("chat_category") and not is_internal_session_user():
         from digitz_ai_nexus_live.services.identity_verification import (
             enforce_category_verification,
         )
@@ -237,16 +262,23 @@ def start_live_chat(payload):
         require_tenant=True,
     )
 
-    agent = assign_agent(payload)
-
-    if not agent:
-        frappe.throw("No approved idle AI agent available for live chat.")
-
-    # Resolve profile from chat_category if provided — passed as override so the
-    # correct profile is snapshotted on the conversation at creation time.
+    # Resolve profile before agent assignment so category-routed chat uses the
+    # agent owned by the resolved AI Agent Profile. Ecosystem/channel defaults
+    # remain fallback paths for non-category flows.
     ai_profile_override = None
     chat_category = payload.get("chat_category")
-    if chat_category:
+    session_user = get_authenticated_session_user()
+    if is_internal_session_user(session_user):
+        internal_behavior = resolve_behavior_for_internal_user(session_user)
+        if not internal_behavior:
+            frappe.throw(
+                "No active Nexus User Profile Assignment exists for the logged-in user. "
+                "Please ask an administrator to assign an AI Agent Profile."
+            )
+        ai_profile_override = frappe.get_doc(
+            "Nexus AI Agent Profile", internal_behavior.profile_name
+        )
+    elif chat_category:
         from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
         is_authenticated = (
             payload.get("user_type", "Guest") != "Guest"
@@ -258,6 +290,14 @@ def start_live_chat(payload):
             ai_profile_override = frappe.get_doc(
                 "Nexus AI Agent Profile", cat_behavior.profile_name
             )
+
+    if ai_profile_override and ai_profile_override.get("agent"):
+        payload["agent"] = ai_profile_override.agent
+
+    agent = assign_agent(payload)
+
+    if not agent:
+        frappe.throw("No approved idle AI agent available for live chat.")
 
     conversation = create_conversation(
         payload=payload,
@@ -278,6 +318,7 @@ def start_live_chat(payload):
 
 def continue_live_chat(conversation_id, payload):
     payload = payload or {}
+    payload = apply_session_user_context(payload)
 
     conversation = get_conversation(conversation_id)
 
@@ -431,13 +472,6 @@ def continue_live_chat(conversation_id, payload):
 
         "escalated": bool(escalation_created),
         "escalation": escalation_created.name if escalation_created else None,
-
-        "behaviour": behavior.behaviour if behavior else None,
-        "behaviour_code": behavior.behaviour_code if behavior else None,
-        "behaviour_name": behavior.behaviour_name if behavior else None,
-        "behaviour_designation": behavior.behaviour_designation if behavior else None,
-        "behaviour_source": behavior.source if behavior else None,
-        "uses_assigned_behaviour": behavior.uses_assigned_behaviour if behavior else 0,
 
         "confidence_threshold": threshold,
         "confidence_threshold_source": behavior.confidence_threshold_source if behavior else None,

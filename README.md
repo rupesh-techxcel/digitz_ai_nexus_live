@@ -35,19 +35,18 @@ This app is the real-time conversation layer of the platform. It manages AI and 
 
 ### Agents
 
-Every conversation is handled by an agent. Agents have a type (AI or Human), a role, and a behavior profile:
+Every conversation is handled by an agent. Agents have a type (AI or Human), a role, and a profile-driven behavior configuration:
 
 ```
 Nexus Live Agent
 ├── agent_type: AI | Human
 ├── agent_role: Public Responder | Sales | Support | Consultant | Internal Assistant | Admin Reviewer
-├── behaviour → Nexus AI Behaviour (preferred)
-└── [fallback] → Nexus AI Agent Profile (legacy)
+└── Nexus AI Agent Profile (behavior + access authority)
 ```
 
 Behavior resolution priority:
-1. Assigned `Nexus AI Behaviour` on the agent
-2. Legacy `Nexus AI Agent Profile` as fallback
+1. `Nexus AI Agent Profile` resolved from chat category, conversation snapshot, user assignment, or agent profile
+2. No agent-level behaviour fallback is used
 
 AI agents answer queries through Nexus Core. Human agents receive escalated conversations.
 
@@ -93,6 +92,7 @@ Channels define the entry point for a conversation. Each channel can have routin
 | [Agent Management](docs/agent-management.md) | Agent lifecycle, behavior profiles, routing, availability |
 | [Conversation Flow](docs/conversation-flow.md) | Chat and Q&A lifecycle, context continuity, message history |
 | [Escalation](docs/escalation.md) | Escalation rules, queues, confidence thresholds, handover flow |
+| [Default Seed Data](docs/default-seed-data.md) | Installed default tenant, access policies, identity types, public chat route, and first-run validation |
 | [DocType Reference](docs/doctypes.md) | All DocTypes with fields, autoname, and purpose |
 | [API Reference](docs/api-reference.md) | All whitelisted endpoints and payload contracts |
 | [Configuration](docs/configuration.md) | Experience bundles, channel setup, development commands |

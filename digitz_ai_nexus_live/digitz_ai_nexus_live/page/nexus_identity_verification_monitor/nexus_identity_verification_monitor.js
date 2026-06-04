@@ -48,7 +48,7 @@ frappe.pages['nexus-identity-verification-monitor'].on_page_load = function (wra
             frappe.set_route('List', $(this).data('list'));
         });
         $(page.body).on('click', '[data-page]', function () {
-            frappe.set_route('Page', $(this).data('page'));
+            frappe.set_route($(this).data('page'));
         });
         $(page.body).on('click', '#nivm_refresh', loadChallenges);
     }

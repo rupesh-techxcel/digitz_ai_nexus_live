@@ -9,7 +9,6 @@
     "enabled",
     "is_primary",
     "column_break_1",
-    "verification_method",
     "valid_from",
     "valid_until",
     "section_reference",
@@ -42,13 +41,6 @@
     {
       "fieldname": "column_break_1",
       "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "verification_method",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "label": "Verification Method",
-      "options": "\nEmail\nPortal Login\nManual Review\nCustomer Record\nAPI"
     },
     {
       "fieldname": "valid_from",

@@ -104,7 +104,9 @@ def simulate_workflow(
             "enabled": registry.enabled,
             "verification_status": registry.verification_status,
             "user": registry.user,
-            "customer": registry.customer,
+            "reference_doctype": registry.reference_doctype,
+            "reference_name": registry.reference_name,
+            "reference_label": registry.reference_label,
             "contact": registry.contact,
         }
         result["registered_identities"] = [
@@ -112,7 +114,6 @@ def simulate_workflow(
                 "identity_type": row.identity_type,
                 "enabled": row.enabled,
                 "is_primary": row.is_primary,
-                "verification_method": row.verification_method,
                 "valid_from": row.valid_from,
                 "valid_until": row.valid_until,
             }

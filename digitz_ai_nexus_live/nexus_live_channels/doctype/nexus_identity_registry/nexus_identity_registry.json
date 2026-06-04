@@ -14,8 +14,10 @@
     "verified_on",
     "section_links",
     "user",
-    "customer",
+    "reference_doctype",
+    "reference_name",
     "column_break_2",
+    "reference_label",
     "contact",
     "mobile_no",
     "section_identities",
@@ -79,14 +81,27 @@
       "options": "User"
     },
     {
-      "fieldname": "customer",
+      "description": "Optional business record type linked to this identity, such as Contact, Lead, Customer, Member, or a custom DocType.",
+      "fieldname": "reference_doctype",
       "fieldtype": "Link",
-      "label": "Customer",
-      "options": "Customer"
+      "label": "Reference DocType",
+      "options": "DocType"
+    },
+    {
+      "fieldname": "reference_name",
+      "fieldtype": "Dynamic Link",
+      "label": "Reference Name",
+      "options": "reference_doctype"
     },
     {
       "fieldname": "column_break_2",
       "fieldtype": "Column Break"
+    },
+    {
+      "description": "Optional readable label when the referenced record is external or not installed on this site.",
+      "fieldname": "reference_label",
+      "fieldtype": "Data",
+      "label": "Reference Label"
     },
     {
       "fieldname": "contact",

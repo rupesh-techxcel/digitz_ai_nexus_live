@@ -16,7 +16,6 @@ Registry of all AI and human agents. Every conversation is assigned to an agent.
 | agent_name | Data | Display name |
 | display_name | Data | Visitor-facing name |
 | agent_type | Select | AI / Human |
-| behaviour | Link → Nexus AI Behaviour | Optional legacy template. Runtime uses Nexus AI Agent Profile. |
 | agent_role | Select | Public Responder / Sales / Support / Consultant / Internal Assistant / Admin Reviewer |
 | status | Select | Draft / Onboarding / Idle / Assigned / Responding / Waiting / Unavailable / Disabled |
 | enabled | Check | Excluded from routing when disabled |
@@ -57,13 +56,11 @@ Autoname: `hash`. Access categories are configured via `Nexus AI Agent Profile A
 
 ---
 
-### Nexus AI Behaviour *(Template Only)*
+### Nexus AI Behaviour *(Deprecated)*
 
-Reusable behaviour template. No longer the primary runtime object. Used only as a field-level fallback — if a profile field is empty and the agent has a linked `Nexus AI Behaviour`, the template value fills the gap at runtime.
+Deprecated behaviour master retained only until the DocType can be removed safely from the app. Runtime behaviour is owned by `Nexus AI Agent Profile`; `Nexus Live Agent` no longer links to `Nexus AI Behaviour`.
 
-`tone` and `response_style` are `Data` fields (free text). Existing `Select` options are retained as examples only.
-
-New deployments should configure all behaviour fields on `Nexus AI Agent Profile` directly.
+New deployments should configure all behaviour fields on `Nexus AI Agent Profile`.
 
 ---
 
@@ -127,7 +124,7 @@ Direct assignment of an AI Agent Profile to a specific internal desk user. The s
 | assigned_on | Datetime | Set automatically on insert |
 | notes | Small Text | Admin notes |
 
-Autoname: `NUPA-.#####`. Enforces one active assignment per user. Managed via the **Nexus User Profile Manager** page (`/nexus-user-profile-manager`).
+Autoname: `NUPA-.#####`. Enforces one active assignment per user. Managed via the **Nexus User Profile Manager** page (`/app/nexus-user-profile-manager`) or the standard Frappe list/form.
 
 ---
 
@@ -290,7 +287,9 @@ Formal registry for the real person or party joining chat. The registry is looke
 | verification_status | Select | Unverified, Verified, or Blocked |
 | verified_on | Datetime | Set when the registry becomes Verified |
 | user | Link → User | Optional authenticated portal/desk user |
-| customer | Link → Customer | Optional customer relationship |
+| reference_doctype | Link → DocType | Optional business record type, such as Contact, Lead, Member, Customer if installed, or a custom DocType |
+| reference_name | Dynamic Link | Optional linked business record |
+| reference_label | Data | Optional readable external/reference label |
 | contact | Link → Contact | Optional contact relationship |
 | mobile_no | Data | Optional phone identifier |
 | identities | Table → Nexus Registered Identity | One or more identity rows |
@@ -307,7 +306,6 @@ Child table under `Nexus Identity Registry`. Each row grants one identity type t
 | identity_type | Link → Nexus Identity Type | Identity this person may resolve as |
 | enabled | Check | Disabled rows are ignored |
 | is_primary | Check | Fallback identity when no category-specific route matches |
-| verification_method | Select | Email, Portal Login, Manual Review, Customer Record, or API |
 | valid_from, valid_until | Date | Optional validity window |
 | reference_doctype | Link → DocType | Optional source record type |
 | reference_name | Dynamic Link | Optional source record |
@@ -351,24 +349,6 @@ Maps a channel + chat category + identity type to an AI Agent Profile. This is t
 | enabled | Check | Disabled routes are ignored |
 | priority | Int | Lower number wins if multiple routes match |
 | description | Small Text | |
-
----
-
-### Nexus Channel AI Profile Route
-
-Maps a channel + identity type to an AI Agent Profile. Used for non-chat channels (API, direct integrations) where no chat window exists.
-
-| Field | Type | Notes |
-|---|---|---|
-| route_name | Data (unique) | |
-| channel | Link → Nexus Live Channel | |
-| ai_agent_profile | Link → Nexus AI Agent Profile | |
-| identity_type | Link → Nexus Identity Type | Visitor identity served by this route |
-| enabled | Check | |
-| use_case | Data | Optional further narrowing by use case |
-| priority | Int | Lower = higher priority |
-| is_default | Check | Fallback when no specific identity_type route matches |
-| context, sub_context, intent | Data | Optional context matching |
 
 ---
 
