@@ -40,10 +40,10 @@
     {
       "description": "The identity type of the visitor for whom this route applies.",
       "fieldname": "identity_type",
-      "fieldtype": "Select",
+      "fieldtype": "Link",
       "in_list_view": 1,
       "label": "Identity Type",
-      "options": "\nPublic\nCustomer\nProspect\nPartner\nInternal\nAdmin",
+      "options": "Nexus Identity Type",
       "reqd": 1
     },
     {

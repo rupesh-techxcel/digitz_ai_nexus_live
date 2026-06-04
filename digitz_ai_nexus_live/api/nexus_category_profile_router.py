@@ -1,6 +1,9 @@
 import frappe
 
-IDENTITY_TYPES = ["Public", "Customer", "Prospect", "Partner", "Internal", "Admin"]
+from digitz_ai_nexus_live.services.identity_resolver import (
+    get_enabled_identity_types,
+    is_valid_identity_type,
+)
 
 
 @frappe.whitelist()
@@ -16,7 +19,11 @@ def get_page_data():
         fields=["name", "agent"],
         order_by="name asc",
     )
-    return {"channels": channels, "profiles": profiles, "identity_types": IDENTITY_TYPES}
+    return {
+        "channels": channels,
+        "profiles": profiles,
+        "identity_types": get_enabled_identity_types(),
+    }
 
 
 @frappe.whitelist()
@@ -40,7 +47,11 @@ def get_category_routes(channel, category_code):
     )
 
     configured_types = {r.identity_type for r in routes}
-    available_types = [t for t in IDENTITY_TYPES if t not in configured_types]
+    available_types = [
+        identity_type
+        for identity_type in get_enabled_identity_types()
+        if identity_type not in configured_types
+    ]
 
     return {
         "routes": routes,
@@ -50,6 +61,9 @@ def get_category_routes(channel, category_code):
 
 @frappe.whitelist()
 def save_route(channel, category_code, identity_type, ai_agent_profile, priority=10, description=None, name=None):
+    if not is_valid_identity_type(identity_type):
+        frappe.throw(f"Identity Type '{identity_type}' is not enabled or does not exist.")
+
     if name and frappe.db.exists("Nexus Category Identity Route", name):
         doc = frappe.get_doc("Nexus Category Identity Route", name)
     else:

@@ -36,9 +36,9 @@ The category does not grant access by itself.
 
 ### 2. Identity Type
 
-`identity_type` identifies who is asking through chat.
+`identity_type` identifies who is asking through chat. It is a Link to the `Nexus Identity Type` DocType, not a fixed Select field.
 
-Supported values:
+Seeded default identity records:
 
 ```
 Public
@@ -57,7 +57,7 @@ digitz_ai_nexus_live.services.identity_resolver.resolve_identity_type
 
 Resolution priority:
 
-1. Explicit `identity_type` in the payload, for trusted API integrations.
+1. Explicit `identity_type` in the payload, for trusted API integrations. The value must reference an enabled `Nexus Identity Type`.
 2. Frappe session user and `user_type`.
 3. `api_scope` for partner/prospect integrations.
 4. `Public` fallback.

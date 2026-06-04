@@ -267,7 +267,7 @@ Maps a channel + chat category + identity type to an AI Agent Profile. This is t
 |---|---|---|
 | channel | Link → Nexus Live Channel | |
 | chat_category | Link → Nexus Chat Category | |
-| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
+| identity_type | Link → Nexus Identity Type | Visitor identity served by this route |
 | ai_agent_profile | Link → Nexus AI Agent Profile | Profile resolved for this category and identity |
 | enabled | Check | Disabled routes are ignored |
 | priority | Int | Lower number wins if multiple routes match |
@@ -284,7 +284,7 @@ Maps a channel + identity type to an AI Agent Profile. Used for non-chat channel
 | route_name | Data (unique) | |
 | channel | Link → Nexus Live Channel | |
 | ai_agent_profile | Link → Nexus AI Agent Profile | |
-| identity_type | Select | Public / Customer / Prospect / Partner / Internal / Admin |
+| identity_type | Link → Nexus Identity Type | Visitor identity served by this route |
 | enabled | Check | |
 | use_case | Data | Optional further narrowing by use case |
 | priority | Int | Lower = higher priority |
