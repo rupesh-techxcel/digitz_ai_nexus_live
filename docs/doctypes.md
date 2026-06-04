@@ -101,6 +101,8 @@ Records agent status changes and session events. Used for activity tracking and 
 
 Maps a `Nexus AI Agent Profile` to a `Nexus Access Category`. The sole runtime access mapping — determines which knowledge policies the profile may retrieve.
 
+One AI Agent Profile can have multiple enabled access category rows. At runtime the profile receives the union of policies from every enabled category assigned to it.
+
 | Field | Type | Notes |
 |---|---|---|
 | ai_agent_profile | Link → Nexus AI Agent Profile | |
@@ -251,11 +253,88 @@ Pre-defined options displayed in the chat window. A category declares the user's
 | category_label | Data | What the user sees in the chat window |
 | channel | Link → Nexus Live Channel | Which channel this category appears on |
 | requires_authentication | Check | Hide from guests when enabled |
+| identity_verification_mode | Select | None, Email OTP, or Registered Email OTP |
+| allow_public_fallback | Check | For Registered Email OTP, allow unregistered verified emails to continue as Public |
 | display_order | Int | Sort order in chat window |
 | enabled | Check | Controls visibility |
 | description | Small Text | |
 
 A category must have at least one enabled identity route for the resolved identity type before a conversation can start.
+
+---
+
+### Nexus Identity Type
+
+Configurable visitor identity used by category/profile routing. The document name and display value are both the `title`; there is no separate code or label field.
+
+| Field | Type | Notes |
+|---|---|---|
+| title | Data (unique) | Human-readable identity name and Link value |
+| enabled | Check | Disabled identities are hidden from route allocation |
+| sort_order | Int | Display order in route allocation pages |
+| description | Small Text | |
+
+Autoname: `field:title`.
+
+---
+
+### Nexus Identity Registry
+
+Formal registry for the real person or party joining chat. The registry is looked up by session user or email before fallback identity resolution.
+
+| Field | Type | Notes |
+|---|---|---|
+| email | Data (unique) | Primary verified email used for chat identity lookup |
+| full_name | Data | Human-readable person or party name |
+| enabled | Check | Disabled registries are ignored |
+| verification_status | Select | Unverified, Verified, or Blocked |
+| verified_on | Datetime | Set when the registry becomes Verified |
+| user | Link → User | Optional authenticated portal/desk user |
+| customer | Link → Customer | Optional customer relationship |
+| contact | Link → Contact | Optional contact relationship |
+| mobile_no | Data | Optional phone identifier |
+| identities | Table → Nexus Registered Identity | One or more identity rows |
+| notes | Small Text | |
+
+Autoname: `field:email`.
+
+### Nexus Registered Identity
+
+Child table under `Nexus Identity Registry`. Each row grants one identity type to the registered person or party.
+
+| Field | Type | Notes |
+|---|---|---|
+| identity_type | Link → Nexus Identity Type | Identity this person may resolve as |
+| enabled | Check | Disabled rows are ignored |
+| is_primary | Check | Fallback identity when no category-specific route matches |
+| verification_method | Select | Email, Portal Login, Manual Review, Customer Record, or API |
+| valid_from, valid_until | Date | Optional validity window |
+| reference_doctype | Link → DocType | Optional source record type |
+| reference_name | Dynamic Link | Optional source record |
+| notes | Small Text | |
+
+Only one enabled row should be marked primary per registry. A registry can hold multiple identity rows, such as Customer plus Partner.
+
+---
+
+### Nexus Identity Verification Challenge
+
+Stores a short-lived email OTP challenge for chat categories that require email validation.
+
+| Field | Type | Notes |
+|---|---|---|
+| challenge_token | Data (unique) | Token returned to the browser while OTP is pending |
+| status | Select | Pending, Verified, Expired, or Failed |
+| verification_mode | Select | Email OTP or Registered Email OTP |
+| email | Data | Email being verified |
+| channel | Link → Nexus Live Channel | Channel used for the challenge |
+| chat_category | Link → Nexus Chat Category | Category being verified |
+| otp_hash | Data | Hashed OTP; raw OTP is never stored |
+| expires_on | Datetime | Expiry timestamp |
+| attempts, max_attempts | Int | Attempt control |
+| verified_on | Datetime | Set on successful OTP verification |
+| identity_registry | Link → Nexus Identity Registry | Set when registry matched |
+| resolved_identity_type | Link → Nexus Identity Type | Identity granted after OTP succeeds |
 
 ---
 

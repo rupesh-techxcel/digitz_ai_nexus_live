@@ -129,6 +129,23 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                         </label>
                     </div>
                 </div>
+                <div class="nccm-field-row">
+                    <div class="nccm-field-group">
+                        <label>Identity Verification</label>
+                        <select id="nccm_f_identity_verification_mode" class="form-control">
+                            <option>None</option>
+                            <option>Email OTP</option>
+                            <option>Registered Email OTP</option>
+                        </select>
+                        <div class="nexus-admin-muted">Email OTP is not login. Registered Email OTP requires a verified registry match unless public fallback is enabled.</div>
+                    </div>
+                    <div class="nccm-field-group" style="justify-content:flex-end; padding-top:20px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input id="nccm_f_public_fallback" type="checkbox" style="width:14px; height:14px;">
+                            Allow Public Fallback
+                        </label>
+                    </div>
+                </div>
                 <div class="nccm-field-group">
                     <label>Description</label>
                     <textarea id="nccm_f_description" class="form-control" rows="2" placeholder="Optional admin notes"></textarea>
@@ -272,6 +289,9 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                         ${cat.requires_authentication
                             ? `<span class="nexus-status-pill" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:9px;">Auth</span>`
                             : `<span class="nexus-status-pill" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:9px;">Public</span>`}
+                        ${cat.identity_verification_mode && cat.identity_verification_mode !== 'None'
+                            ? `<div style="margin-top:4px;"><span class="nexus-status-pill" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:9px;">${esc(cat.identity_verification_mode)}</span></div>`
+                            : ''}
                     </td>
                     <td style="text-align:center; vertical-align:middle;">
                         <span class="nexus-status-pill ${cat.enabled ? 'enabled' : 'disabled'}">${cat.enabled ? 'On' : 'Off'}</span>
@@ -328,6 +348,8 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             $('#nccm_f_label').val(cat.category_label);
             $('#nccm_f_order').val(cat.display_order);
             $('#nccm_f_auth').prop('checked', !!cat.requires_authentication);
+            $('#nccm_f_identity_verification_mode').val(cat.identity_verification_mode || 'None');
+            $('#nccm_f_public_fallback').prop('checked', !!cat.allow_public_fallback);
             $('#nccm_f_description').val(cat.description || '');
             $('#nccm_f_enabled').prop('checked', !!cat.enabled);
         } else {
@@ -335,6 +357,8 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             $('#nccm_f_label').val('');
             $('#nccm_f_order').val(10);
             $('#nccm_f_auth').prop('checked', false);
+            $('#nccm_f_identity_verification_mode').val('None');
+            $('#nccm_f_public_fallback').prop('checked', false);
             $('#nccm_f_description').val('');
             $('#nccm_f_enabled').prop('checked', true);
         }
@@ -367,6 +391,8 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                 description: $('#nccm_f_description').val().trim(),
                 enabled: $('#nccm_f_enabled').is(':checked') ? 1 : 0,
                 requires_authentication: $('#nccm_f_auth').is(':checked') ? 1 : 0,
+                identity_verification_mode: $('#nccm_f_identity_verification_mode').val() || 'None',
+                allow_public_fallback: $('#nccm_f_public_fallback').is(':checked') ? 1 : 0,
                 name: state.editingName || null,
             },
             callback(r) {

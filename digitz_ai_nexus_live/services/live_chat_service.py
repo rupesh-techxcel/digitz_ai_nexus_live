@@ -225,6 +225,13 @@ def start_live_chat(payload):
     payload["message"] = message
     payload["conversation_type"] = "Chat"
 
+    if payload.get("chat_category"):
+        from digitz_ai_nexus_live.services.identity_verification import (
+            enforce_category_verification,
+        )
+
+        enforce_category_verification(payload)
+
     payload = apply_tenant_context_to_payload(
         payload=payload,
         require_tenant=True,

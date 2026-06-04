@@ -16,7 +16,30 @@ X-Frappe-CSRF-Token: {token}   # Not required for guest-accessible endpoints
 
 These endpoints use `allow_guest=True`. No authentication is required.
 
-For chat-category workflows, callers should pass `chat_category`. Trusted integrations may also pass `identity_type`; otherwise Live derives it from the Frappe session and payload context.
+For chat-category workflows, callers should pass `chat_category`. Website chat should pass `visitor_email` once known, but email only elevates identity after OTP verification. Trusted server-side integrations may pass `identity_type` with `trust_payload_identity`; otherwise Live derives identity from verified OTP challenges, the registry, Frappe session, and payload context.
+
+### Request Identity Verification
+
+```python
+digitz_ai_nexus_live.api.identity_verification.request_identity_verification(
+    channel,
+    chat_category,
+    email,
+)
+```
+
+Starts an OTP challenge when the selected category uses `Email OTP` or `Registered Email OTP`. Returns a `challenge_token` that the browser keeps until OTP verification succeeds.
+
+### Verify Identity Verification
+
+```python
+digitz_ai_nexus_live.api.identity_verification.verify_identity_verification(
+    challenge_token,
+    otp,
+)
+```
+
+Marks the challenge as verified and returns the resolved identity type. Pass the returned `challenge_token` as `identity_verification_challenge` when calling `start_chat`.
 
 Current public guardrail behavior forces guest requests to public-only access in Nexus Core. If category-routed public visitors should receive policies from the routed profile instead, Live must avoid setting `force_public_only` for those category-routed requests and the Public identity route must be configured with only safe public access categories.
 

@@ -30,6 +30,8 @@ Key fields:
 | category_label | Display label shown to the user |
 | channel | Live channel this category belongs to |
 | requires_authentication | Whether guests may use this category |
+| identity_verification_mode | Whether the category needs email OTP before chat starts |
+| allow_public_fallback | Whether registered-email OTP may continue as Public when no registry match exists |
 | enabled | Whether the category is selectable |
 
 The category does not grant access by itself.
@@ -49,6 +51,10 @@ Internal
 Admin
 ```
 
+Formal identity registration is handled by `Nexus Identity Registry`. One registry record represents the real person or party joining chat, usually keyed by verified email and optionally linked to `User`, `Customer`, and `Contact`.
+
+One registry record can hold multiple enabled identity rows. For example, the same email can be registered as both `Customer` and `Partner` if both relationships are verified.
+
 Runtime resolution lives in:
 
 ```
@@ -57,10 +63,25 @@ digitz_ai_nexus_live.services.identity_resolver.resolve_identity_type
 
 Resolution priority:
 
-1. Explicit `identity_type` in the payload, for trusted API integrations. The value must reference an enabled `Nexus Identity Type`.
-2. Frappe session user and `user_type`.
-3. `api_scope` for partner/prospect integrations.
-4. `Public` fallback.
+1. Trusted explicit `identity_type` in the payload, for server-side integrations only. The value must reference an enabled `Nexus Identity Type`.
+2. Verified OTP challenge, or authenticated session matched to `Nexus Identity Registry`.
+3. If a chat category is selected, pick the registered identity that has an enabled `Nexus Category Identity Route` for that category.
+4. If no category route matches, use the registry row marked primary, then the first enabled valid identity row.
+5. Frappe session user and `user_type`.
+6. `api_scope` for partner/prospect integrations.
+7. `Public` fallback.
+
+Unverified registry records do not elevate access. Blocked registry records are denied. A manually supplied email is not trusted for identity elevation unless it has passed OTP verification or comes from a trusted server-side integration.
+
+Category verification modes:
+
+| Mode | Meaning |
+|---|---|
+| None | No OTP required. Public fallback is allowed unless the category requires login. |
+| Email OTP | Visitor must prove control of the email. Registry may improve identity if one exists; otherwise identity resolves as Public. |
+| Registered Email OTP | Visitor must prove control of a verified registry email. The registry identity is used for routing. |
+
+For `Registered Email OTP`, `allow_public_fallback` can be enabled to let unregistered but OTP-verified emails continue as `Public`.
 
 ### 3. Category Identity Route
 
@@ -80,13 +101,13 @@ This lets the same chat category route differently for different users. For exam
 
 ### 4. AI Agent Profile Access Category
 
-`Nexus AI Agent Profile Access Category` maps the resolved profile to one or more access categories.
+`Nexus AI Agent Profile Access Category` maps the resolved profile to one or more access categories. The same `Nexus AI Agent Profile` may be linked to multiple categories when the agent needs access to several policy bundles.
 
 ```
 Nexus AI Agent Profile → Nexus Access Category
 ```
 
-The effective access categories for a profile are all enabled assignment records.
+The effective access categories for a profile are all enabled assignment records for that profile.
 
 ### 5. Access Policies
 

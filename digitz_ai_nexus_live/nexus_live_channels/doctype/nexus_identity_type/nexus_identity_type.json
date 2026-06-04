@@ -1,13 +1,12 @@
 {
   "actions": [],
   "allow_rename": 1,
-  "autoname": "field:identity_code",
+  "autoname": "field:title",
   "creation": "2026-06-03 00:00:00.000000",
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
-    "identity_code",
-    "identity_label",
+    "title",
     "column_break_1",
     "enabled",
     "sort_order",
@@ -16,20 +15,13 @@
   ],
   "fields": [
     {
-      "description": "Unique identifier used in routing and code. e.g. Public, Customer, Premium-Customer",
-      "fieldname": "identity_code",
+      "description": "Unique human-readable identity name used in routing. e.g. Public, Customer, Premium Customer",
+      "fieldname": "title",
       "fieldtype": "Data",
       "in_list_view": 1,
-      "label": "Identity Code",
+      "label": "Title",
       "reqd": 1,
       "unique": 1
-    },
-    {
-      "description": "Human-readable label shown in admin pages.",
-      "fieldname": "identity_label",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Identity Label"
     },
     {
       "fieldname": "column_break_1",
@@ -85,6 +77,6 @@
   "sort_field": "sort_order",
   "sort_order": "ASC",
   "states": [],
-  "title_field": "identity_label",
+  "title_field": "title",
   "track_changes": 1
 }

@@ -13,6 +13,8 @@
     "enabled",
     "section_visibility",
     "requires_authentication",
+    "identity_verification_mode",
+    "allow_public_fallback",
     "section_display",
     "display_order",
     "description"
@@ -64,6 +66,22 @@
       "fieldname": "requires_authentication",
       "fieldtype": "Check",
       "label": "Requires Authentication"
+    },
+    {
+      "default": "None",
+      "description": "Additional non-login identity proof required before chat starts.",
+      "fieldname": "identity_verification_mode",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Identity Verification Mode",
+      "options": "None\nEmail OTP\nRegistered Email OTP"
+    },
+    {
+      "default": "0",
+      "description": "For Registered Email OTP only: allow unregistered verified emails to continue as Public when no registry match exists.",
+      "fieldname": "allow_public_fallback",
+      "fieldtype": "Check",
+      "label": "Allow Public Fallback"
     },
     {
       "fieldname": "section_display",

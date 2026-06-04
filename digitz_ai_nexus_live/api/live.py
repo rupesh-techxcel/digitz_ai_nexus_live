@@ -20,7 +20,7 @@ def parse_payload(payload=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_channel_categories(channel=None):
+def get_channel_categories(channel=None, visitor_email=None, email=None):
     """
     Return chat categories the current visitor may actually use.
 
@@ -37,6 +37,7 @@ def get_channel_categories(channel=None):
 
     identity_type = resolve_identity_type({
         "user_type": "Guest" if not is_authenticated else "Website User",
+        "visitor_email": visitor_email or email,
     })
 
     auth_filters = {"channel": channel, "enabled": 1}
@@ -46,7 +47,15 @@ def get_channel_categories(channel=None):
     candidates = frappe.get_all(
         "Nexus Chat Category",
         filters=auth_filters,
-        fields=["name", "category_code", "category_label", "display_order", "description"],
+        fields=[
+            "name",
+            "category_code",
+            "category_label",
+            "display_order",
+            "description",
+            "identity_verification_mode",
+            "allow_public_fallback",
+        ],
         order_by="display_order asc",
     )
 
@@ -65,6 +74,23 @@ def get_channel_categories(channel=None):
         },
         pluck="chat_category",
     ))
+
+    verification_codes = {
+        c.category_code
+        for c in candidates
+        if c.identity_verification_mode in ("Email OTP", "Registered Email OTP")
+    }
+
+    if verification_codes:
+        routed_codes.update(frappe.get_all(
+            "Nexus Category Identity Route",
+            filters={
+                "channel": channel,
+                "chat_category": ["in", list(verification_codes)],
+                "enabled": 1,
+            },
+            pluck="chat_category",
+        ))
 
     categories = [c for c in candidates if c.category_code in routed_codes]
 

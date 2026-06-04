@@ -1,0 +1,153 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "hash",
+  "creation": "2026-06-04 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "challenge_token",
+    "status",
+    "verification_mode",
+    "column_break_1",
+    "email",
+    "channel",
+    "chat_category",
+    "section_otp",
+    "otp_hash",
+    "expires_on",
+    "attempts",
+    "max_attempts",
+    "verified_on",
+    "section_resolution",
+    "identity_registry",
+    "resolved_identity_type"
+  ],
+  "fields": [
+    {
+      "fieldname": "challenge_token",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Challenge Token",
+      "read_only": 1,
+      "unique": 1
+    },
+    {
+      "default": "Pending",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Pending\nVerified\nExpired\nFailed"
+    },
+    {
+      "fieldname": "verification_mode",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Verification Mode",
+      "options": "Email OTP\nRegistered Email OTP"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Email",
+      "reqd": 1
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Link",
+      "label": "Channel",
+      "options": "Nexus Live Channel"
+    },
+    {
+      "fieldname": "chat_category",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Chat Category",
+      "options": "Nexus Chat Category"
+    },
+    {
+      "fieldname": "section_otp",
+      "fieldtype": "Section Break",
+      "label": "OTP"
+    },
+    {
+      "fieldname": "otp_hash",
+      "fieldtype": "Data",
+      "label": "OTP Hash",
+      "read_only": 1
+    },
+    {
+      "fieldname": "expires_on",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Expires On"
+    },
+    {
+      "default": "0",
+      "fieldname": "attempts",
+      "fieldtype": "Int",
+      "label": "Attempts"
+    },
+    {
+      "default": "5",
+      "fieldname": "max_attempts",
+      "fieldtype": "Int",
+      "label": "Max Attempts"
+    },
+    {
+      "fieldname": "verified_on",
+      "fieldtype": "Datetime",
+      "label": "Verified On"
+    },
+    {
+      "fieldname": "section_resolution",
+      "fieldtype": "Section Break",
+      "label": "Resolved Identity"
+    },
+    {
+      "fieldname": "identity_registry",
+      "fieldtype": "Link",
+      "label": "Identity Registry",
+      "options": "Nexus Identity Registry"
+    },
+    {
+      "fieldname": "resolved_identity_type",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Resolved Identity Type",
+      "options": "Nexus Identity Type"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-04 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Identity Verification Challenge",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

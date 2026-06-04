@@ -1,0 +1,151 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:email",
+  "creation": "2026-06-04 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "email",
+    "full_name",
+    "column_break_1",
+    "enabled",
+    "verification_status",
+    "verified_on",
+    "section_links",
+    "user",
+    "customer",
+    "column_break_2",
+    "contact",
+    "mobile_no",
+    "section_identities",
+    "identities",
+    "section_notes",
+    "notes"
+  ],
+  "fields": [
+    {
+      "description": "Primary verified email used to identify the person joining chat.",
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "in_global_search": 1,
+      "in_list_view": 1,
+      "label": "Email",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "full_name",
+      "fieldtype": "Data",
+      "in_global_search": 1,
+      "in_list_view": 1,
+      "label": "Full Name"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "Unverified",
+      "fieldname": "verification_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Verification Status",
+      "options": "Unverified\nVerified\nBlocked"
+    },
+    {
+      "fieldname": "verified_on",
+      "fieldtype": "Datetime",
+      "label": "Verified On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_links",
+      "fieldtype": "Section Break",
+      "label": "Linked Records"
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "User",
+      "options": "User"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "contact",
+      "fieldtype": "Link",
+      "label": "Contact",
+      "options": "Contact"
+    },
+    {
+      "fieldname": "mobile_no",
+      "fieldtype": "Data",
+      "label": "Mobile No"
+    },
+    {
+      "fieldname": "section_identities",
+      "fieldtype": "Section Break",
+      "label": "Registered Identities"
+    },
+    {
+      "fieldname": "identities",
+      "fieldtype": "Table",
+      "label": "Identities",
+      "options": "Nexus Registered Identity"
+    },
+    {
+      "fieldname": "section_notes",
+      "fieldtype": "Section Break",
+      "label": "Notes"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-04 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Identity Registry",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "title_field": "email",
+  "track_changes": 1
+}

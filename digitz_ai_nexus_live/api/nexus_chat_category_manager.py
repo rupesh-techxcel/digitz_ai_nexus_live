@@ -23,12 +23,14 @@ def get_category_chain(category_code):
     )
 
     result = {
-        "category": {
-            "code": cat.category_code,
-            "label": cat.category_label,
-            "requires_authentication": cat.requires_authentication,
-            "enabled": cat.enabled,
-        },
+            "category": {
+                "code": cat.category_code,
+                "label": cat.category_label,
+                "requires_authentication": cat.requires_authentication,
+                "identity_verification_mode": cat.identity_verification_mode,
+                "allow_public_fallback": cat.allow_public_fallback,
+                "enabled": cat.enabled,
+            },
         "routes": [],
         "warnings": [],
     }
@@ -118,7 +120,8 @@ def get_channel_categories(channel):
         filters={"channel": channel},
         fields=[
             "name", "category_code", "category_label",
-            "requires_authentication", "display_order", "enabled", "description",
+            "requires_authentication", "identity_verification_mode",
+            "allow_public_fallback", "display_order", "enabled", "description",
         ],
         order_by="display_order asc",
     )
@@ -143,6 +146,8 @@ def save_category(
     description,
     enabled,
     requires_authentication=0,
+    identity_verification_mode="None",
+    allow_public_fallback=0,
     name=None,
     category_code=None,
 ):
@@ -164,6 +169,8 @@ def save_category(
     doc.channel = channel
     doc.category_label = category_label
     doc.requires_authentication = int(requires_authentication or 0)
+    doc.identity_verification_mode = identity_verification_mode or "None"
+    doc.allow_public_fallback = int(allow_public_fallback or 0)
     doc.display_order = int(display_order or 10)
     doc.description = description or ""
     doc.enabled = int(enabled)
