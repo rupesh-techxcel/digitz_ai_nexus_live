@@ -32,6 +32,11 @@ def is_internal_session_user(user=None):
     return bool(user and get_session_user_type(user) == "System User")
 
 
+def is_system_manager_session_user(user=None):
+    user = user or get_authenticated_session_user()
+    return bool(user and "System Manager" in frappe.get_roles(user))
+
+
 def resolve_behavior_from_chat_category(category_code, identity_type, is_authenticated=False):
     """
     Resolve AI behavior from a visitor-selected chat category and their identity type.
@@ -63,30 +68,34 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
             "Please sign in and try again."
         )
 
-    profile_name = frappe.db.get_value(
+    routes = frappe.get_all(
         "Nexus Category Identity Route",
-        {
+        filters={
             "channel": category.channel,
             "chat_category": category_code,
             "identity_type": identity_type,
             "enabled": 1,
         },
-        "ai_agent_profile",
+        fields=["name", "ai_agent_profile"],
         order_by="priority asc",
+        limit_page_length=1,
     )
 
-    if not profile_name:
+    if not routes:
         frappe.throw(
             f"No profile configured for category '{category.category_label}' "
             f"with identity '{identity_type}'. "
             "Please contact support or try a different option."
         )
 
+    route = routes[0]
+    profile_name = route.ai_agent_profile
     profile = frappe.get_doc("Nexus AI Agent Profile", profile_name)
 
     return _build_behavior_dict(
         profile=profile,
         source="Nexus Category Identity Route",
+        route_name=route.name,
         category_code=category.category_code,
         category_label=category.category_label,
         identity_type=identity_type,
@@ -115,6 +124,8 @@ def resolve_behavior_from_conversation(conversation):
     return _build_behavior_dict(
         profile=profile,
         source="Nexus Live Conversation (snapshot)",
+        category_code=getattr(conversation, "chat_category", None),
+        identity_type=getattr(conversation, "resolved_identity_type", None),
     )
 
 
@@ -150,6 +161,7 @@ def resolve_behavior_for_internal_user(user):
 def _build_behavior_dict(
     profile,
     source,
+    route_name=None,
     category_code=None,
     category_label=None,
     identity_type=None,
@@ -160,6 +172,7 @@ def _build_behavior_dict(
     """
     return frappe._dict({
         "source": source,
+        "route_name": route_name,
         "profile_name": profile.name,
         "category_code": category_code,
         "category_label": category_label,

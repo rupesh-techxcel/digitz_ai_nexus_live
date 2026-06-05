@@ -57,11 +57,12 @@ def request_verification(channel, chat_category, email):
                 title="Registered Identity Required",
             )
     else:
-        resolved_identity_type = _resolve_optional_registered_identity(
+        identity_registry, resolved_identity_type = _resolve_optional_registered_identity(
             channel=channel,
             chat_category=chat_category,
             email=email,
-        ) or "Public"
+        )
+        resolved_identity_type = resolved_identity_type or "Public"
 
     otp = _generate_otp()
     challenge_token = frappe.generate_hash(length=32)
@@ -230,16 +231,18 @@ def _resolve_optional_registered_identity(channel, chat_category, email):
         "name",
     )
     if not registry_name:
-        return None
+        return None, None
 
     from digitz_ai_nexus_live.services.identity_resolver import resolve_registered_identity_type
 
-    return resolve_registered_identity_type({
+    identity_type = resolve_registered_identity_type({
         "channel": channel,
         "chat_category": chat_category,
         "visitor_email": email,
         "trust_visitor_email": 1,
     })
+
+    return registry_name, identity_type
 
 
 def _send_otp_email(email, otp, category_label):

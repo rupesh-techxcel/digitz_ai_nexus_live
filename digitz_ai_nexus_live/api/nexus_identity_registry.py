@@ -34,6 +34,12 @@ def get_page_data(search=None):
     return {
         "registries": registries,
         "identity_types": get_enabled_identity_types(),
+        "access_categories": frappe.get_all(
+            "Nexus Access Category",
+            filters={"disabled": 0},
+            fields=["name", "category_name"],
+            order_by="category_name asc",
+        ),
     }
 
 
@@ -56,6 +62,13 @@ def get_registry(name):
             "verification_status": doc.verification_status,
             "verified_on": doc.verified_on,
             "notes": doc.notes,
+            "safe_guard_access_categories": [
+                {
+                    "name": row.name,
+                    "access_category": row.access_category,
+                }
+                for row in doc.safe_guard_access_categories
+            ],
         },
         "identities": [
             {
@@ -96,6 +109,15 @@ def save_registry(registry, identities):
     doc.enabled = int(registry_data.get("enabled") or 0)
     doc.verification_status = registry_data.get("verification_status") or "Unverified"
     doc.notes = registry_data.get("notes")
+
+    doc.set("safe_guard_access_categories", [])
+    for row in registry_data.get("safe_guard_access_categories") or []:
+        if not row.get("access_category"):
+            continue
+
+        doc.append("safe_guard_access_categories", {
+            "access_category": row.get("access_category"),
+        })
 
     doc.set("identities", [])
     for row in identity_rows:

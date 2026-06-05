@@ -31,7 +31,6 @@ This app owns conversation state, agent lifecycle, and escalation. It must not d
 - Channel definitions, chat categories, identity routes, and routing rules
 - Conversation documents and message history
 - Escalation rules, agent queues, and queue assignments
-- Experience bundles (Q&A config, chat config, branding, welcome flows)
 - Analytics: interaction logs, conversation outcomes, lead capture, performance snapshots
 
 ---
@@ -65,7 +64,6 @@ digitz_ai_nexus_live/
 ├── nexus_live_conversations/   Conversation and message DocTypes
 ├── nexus_live_channels/        Channel, chat category, routing rule, widget DocTypes
 ├── nexus_live_escalations/     Escalation rule, queue DocTypes
-├── nexus_live_experience/      Experience bundle, config, welcome flow DocTypes
 └── nexus_live_analytics/       Interaction log, outcome, lead capture DocTypes
 ```
 
@@ -191,8 +189,8 @@ This app calls into `digitz_ai_nexus` for all AI work:
 | Nexus Core Service | Called By | Purpose |
 |---|---|---|
 | `services.answer_service.answer_query` | `live_qa_service`, `live_chat_service` | Answer a query using retrieval + LLM |
-| `services.tenant_context.apply_tenant_context_to_payload` | Both services | Enrich payload with tenant defaults |
-| `services.tenant_context.resolve_tenant_context` | Both services | Resolve tenant from user context |
+| `services.tenant_context.apply_tenant_context_to_payload` | Both services | Enrich payload with tenant defaults; Chat and Q&A use their purpose-specific ecosystem channel defaults |
+| `services.tenant_context.resolve_tenant_context` | Both services | Resolve tenant, user context, and tenant ecosystem defaults |
 | `engine.access_resolver.resolve_allowed_policies` | Both services | Compute allowed access policies |
 
 This app never calls OpenAI directly. All LLM and embedding calls go through Nexus Core.
@@ -202,7 +200,7 @@ This app never calls OpenAI directly. All LLM and embedding calls go through Nex
 ## Design Principles
 
 1. **Stateful conversations, stateless queries** — Q&A exchanges are fire-and-forget; chat conversations maintain a document with full message history.
-2. **Profile-first resolution** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile is the single authority for both behaviour and access.
+2. **Profile-first resolution with identity cap** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile owns behaviour and access capability; registered identities can further reduce access through the Identity Registry Safe Guard.
 3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals or agent fields.
 4. **Chat Category plus identity routes** — external users declare intent by selecting a chat category. Runtime derives identity type and resolves `Nexus Category Identity Route` to the governing profile.
 5. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.

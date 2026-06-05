@@ -20,6 +20,8 @@
     "reference_label",
     "contact",
     "mobile_no",
+    "section_safe_guard",
+    "safe_guard_access_categories",
     "section_identities",
     "identities",
     "section_notes",
@@ -113,6 +115,19 @@
       "fieldname": "mobile_no",
       "fieldtype": "Data",
       "label": "Mobile No"
+    },
+    {
+      "description": "Maximum access categories this verified identity registry may use during chat. Runtime intersects these categories with the routed AI Agent Profile access categories.",
+      "fieldname": "section_safe_guard",
+      "fieldtype": "Section Break",
+      "label": "Safe Guard"
+    },
+    {
+      "description": "The verified person can retrieve only policies allowed by these categories, further intersected with the resolved profile access.",
+      "fieldname": "safe_guard_access_categories",
+      "fieldtype": "Table MultiSelect",
+      "label": "Safe Guard Access Categories",
+      "options": "Nexus Identity Safe Guard Access Category"
     },
     {
       "fieldname": "section_identities",

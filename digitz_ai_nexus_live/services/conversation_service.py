@@ -34,6 +34,13 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
     conversation.conversation_id = payload.get("conversation_id") or generate_conversation_id()
     conversation.conversation_type = payload.get("conversation_type") or "Chat"
     conversation.channel = payload.get("channel")
+    conversation.chat_category = payload.get("chat_category")
+    conversation.resolved_identity_type = payload.get("identity_type")
+    conversation.identity_registry = payload.get("identity_registry")
+    if "identity_safeguard_access_categories" in payload:
+        conversation.identity_safeguard_access_json = json.dumps(
+            payload.get("identity_safeguard_access_categories") or []
+        )
     conversation.visitor_name = payload.get("visitor_name")
     conversation.visitor_email = payload.get("visitor_email")
     conversation.visitor_phone = payload.get("visitor_phone")
@@ -54,6 +61,12 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
                 conversation.ai_profile_snapshot_json = json.dumps({
                     "name": profile.name,
                     "agent": profile.agent,
+                    "chat_category": payload.get("chat_category"),
+                    "identity_type": payload.get("identity_type"),
+                    "identity_registry": payload.get("identity_registry"),
+                    "identity_safeguard_access_categories": payload.get(
+                        "identity_safeguard_access_categories"
+                    ),
                     "behavior_prompt": profile.behavior_prompt,
                     "tone": profile.tone,
                     "response_style": profile.response_style,

@@ -8,8 +8,10 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
     const state = {
         registries: [],
         identityTypes: [],
+        accessCategories: [],
         selected: null,
         identities: [],
+        safeGuardAccessCategories: [],
     };
 
     inject_css();
@@ -82,6 +84,14 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 
             <div class="nir-section-head">
                 <div>
+                    <div class="nir-panel-title">Safe Guard</div>
+                    <div class="nir-muted">Limit this verified person to these access categories. Runtime intersects this with the routed AI Agent Profile access.</div>
+                </div>
+            </div>
+            <div id="nir_safe_guard_rows"></div>
+
+            <div class="nir-section-head">
+                <div>
                     <div class="nir-panel-title">Registered Identities</div>
                     <div class="nir-muted">Add every identity this person may resolve as. Mark one primary identity for fallback routing.</div>
                 </div>
@@ -115,6 +125,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             renderIdentityRows();
         });
         $(page.body).on('change input', '.nir-identity-input', syncIdentityRows);
+        $(page.body).on('change input', '.nir-safe-guard-input', syncSafeGuardRows);
     }
 
     function loadData(search) {
@@ -125,6 +136,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
                 if (!r.message) return;
                 state.registries = r.message.registries || [];
                 state.identityTypes = r.message.identity_types || [];
+                state.accessCategories = r.message.access_categories || [];
                 renderRegistryList();
                 if (!state.selected) newRegistry();
             },
@@ -138,7 +150,9 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             callback(r) {
                 if (!r.message) return;
                 fillForm(r.message.registry);
+                state.safeGuardAccessCategories = r.message.registry.safe_guard_access_categories || [];
                 state.identities = r.message.identities || [];
+                renderSafeGuardRows();
                 renderIdentityRows();
             },
         });
@@ -146,6 +160,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 
     function saveRegistry() {
         syncIdentityRows();
+        syncSafeGuardRows();
         const registry = collectForm();
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_identity_registry.save_registry',
@@ -161,6 +176,28 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
                 loadRegistry(r.message.name);
             },
         });
+    }
+
+    function renderSafeGuardRows() {
+        syncSafeGuardRows(false);
+        const noAccessCategories = !state.accessCategories.length;
+        if (noAccessCategories) {
+            $('#nir_safe_guard_rows').html('<div class="nir-empty">No Access Categories found. Configure Nexus Access Category first.</div>');
+            return;
+        }
+
+        const selected = new Set(state.safeGuardAccessCategories.map(row => row.access_category));
+        $('#nir_safe_guard_rows').html(`
+            <div class="nir-safe-guard-list">
+                ${state.accessCategories.map(c => `
+                    <label class="nir-safe-guard-option">
+                        <input type="checkbox" class="nir-safe-guard-input" value="${esc(c.name)}" ${selected.has(c.name) ? 'checked' : ''}>
+                        <span>${esc(c.category_name || c.name)}</span>
+                    </label>
+                `).join('')}
+            </div>
+            ${selected.size ? '' : '<div class="nir-muted" style="margin-top:8px;">No safeguard categories selected. Registered identity access will fail closed until configured.</div>'}
+        `);
     }
 
     function renderRegistryList() {
@@ -221,10 +258,19 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
         });
     }
 
+    function syncSafeGuardRows(readDom = true) {
+        if (!readDom) return;
+        state.safeGuardAccessCategories = $('.nir-safe-guard-input:checked').map(function () {
+            return { access_category: $(this).val() };
+        }).get();
+    }
+
     function newRegistry() {
         state.selected = null;
         state.identities = [];
+        state.safeGuardAccessCategories = [];
         fillForm({ enabled: 1, verification_status: 'Unverified' });
+        renderSafeGuardRows();
         renderIdentityRows();
         renderRegistryList();
     }
@@ -261,6 +307,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             enabled: $('#nir_enabled').is(':checked') ? 1 : 0,
             verification_status: $('#nir_verification_status').val(),
             notes: $('#nir_notes').val(),
+            safe_guard_access_categories: state.safeGuardAccessCategories,
         };
     }
 
@@ -287,6 +334,8 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             .nir-two { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
             .nir-check { display:flex; gap:8px; align-items:center; margin-top:28px; }
             .nir-identity-row { display:grid; grid-template-columns: minmax(160px,1fr) 110px 100px 90px; gap:10px; align-items:center; border-top:1px solid #edf1f7; padding:10px 0; }
+            .nir-safe-guard-list { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid #edf1f7; padding-top:10px; }
+            .nir-safe-guard-option { display:inline-flex; align-items:center; gap:8px; border:1px solid #d9e2f2; border-radius:999px; padding:7px 12px; color:#344054; font-size:12px; font-weight:700; }
             .nir-empty { color:#667085; padding:12px; text-align:center; }
             @media (max-width: 900px) { .nir-grid, .nir-two, .nir-identity-row { grid-template-columns:1fr; } }
         `).appendTo('head');

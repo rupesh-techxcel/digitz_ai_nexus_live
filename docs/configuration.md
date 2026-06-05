@@ -59,10 +59,6 @@ See [Default Seed Data](default-seed-data.md) for the records created by the ins
 3. Assign human agents to queues via `Nexus Queue Assignment`.
 4. Set `escalation_enabled` and `escalation_policy` on each `Nexus AI Agent Profile` as required.
 
-### Step 6 — Experience Bundles (optional)
-
-Create a `Nexus Live Experience` to bundle Q&A config, chat config, and branding for a specific deployment.
-
 ---
 
 ## Admin Pages

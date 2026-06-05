@@ -62,6 +62,8 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
             tenant_code=TEST_TENANT,
             business_unit_name=TEST_BU,
         )
+        self.ensure_synthetic_live_agent()
+        self.ensure_synthetic_live_channels()
 
         save_ecosystem_configuration({
             "tenant": TEST_TENANT,
@@ -82,9 +84,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
 
             "live_chat_enabled": 1,
             "default_chat_channel": CHAT_CHANNEL,
-            "default_live_channel": CHAT_CHANNEL,
-            "default_public_agent": PUBLIC_AGENT,
-            "default_escalation_enabled": 1,
 
             "website_widget_enabled": 1,
             "widget_title": "DIGITZ AI Nexus",
@@ -105,6 +104,70 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
         )
 
         frappe.db.commit()
+
+    def ensure_synthetic_live_agent(self):
+        if not frappe.db.exists("DocType", "Nexus Live Agent"):
+            self.skipTest("Nexus Live Agent DocType is not installed.")
+
+        if frappe.db.exists("Nexus Live Agent", PUBLIC_AGENT):
+            agent = frappe.get_doc("Nexus Live Agent", PUBLIC_AGENT)
+        else:
+            agent = frappe.new_doc("Nexus Live Agent")
+            agent.agent_code = PUBLIC_AGENT
+
+        agent.agent_name = "Synthetic Live Public AI"
+        agent.display_name = "Synthetic Live AI"
+        agent.agent_type = "AI"
+        agent.agent_role = "Public Responder"
+        agent.status = "Idle"
+        agent.enabled = 1
+        agent.visibility = "Public"
+        agent.business_unit = TEST_BU
+        agent.priority = 1
+        agent.max_active_sessions = 5
+        agent.current_active_sessions = 0
+        agent.save(ignore_permissions=True)
+
+    def ensure_synthetic_live_channels(self):
+        if not frappe.db.exists("DocType", "Nexus Live Channel"):
+            self.skipTest("Nexus Live Channel DocType is not installed.")
+
+        if frappe.db.exists("Nexus Live Channel", CHAT_CHANNEL):
+            chat_channel = frappe.get_doc("Nexus Live Channel", CHAT_CHANNEL)
+        else:
+            chat_channel = frappe.new_doc("Nexus Live Channel")
+            chat_channel.channel_code = CHAT_CHANNEL
+
+        chat_channel.channel_name = "Synthetic Website Chat"
+        chat_channel.channel_type = "Website Chat"
+        chat_channel.enabled = 1
+        chat_channel.default_agent = PUBLIC_AGENT
+        chat_channel.public_access = 1
+        chat_channel.requires_visitor_email = 0
+        chat_channel.agent_based = 1
+        chat_channel.save(ignore_permissions=True)
+
+        if frappe.db.exists("Nexus Live Channel", QA_CHANNEL):
+            qa_channel = frappe.get_doc("Nexus Live Channel", QA_CHANNEL)
+        else:
+            qa_channel = frappe.new_doc("Nexus Live Channel")
+            qa_channel.channel_code = QA_CHANNEL
+
+        qa_channel.channel_name = "Synthetic Website Q&A"
+        qa_channel.channel_type = "Website Q&A"
+        qa_channel.enabled = 1
+        qa_channel.public_access = 1
+        qa_channel.requires_visitor_email = 0
+        qa_channel.agent_based = 0
+        qa_channel.save(ignore_permissions=True)
+
+        frappe.db.set_value(
+            "Nexus Live Agent",
+            PUBLIC_AGENT,
+            "default_channel",
+            CHAT_CHANNEL,
+            update_modified=False,
+        )
 
     def reset_synthetic_live_agents(self):
         """

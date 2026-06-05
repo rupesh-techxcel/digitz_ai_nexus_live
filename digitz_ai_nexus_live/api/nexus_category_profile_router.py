@@ -4,6 +4,7 @@ from digitz_ai_nexus_live.services.identity_resolver import (
     get_enabled_identity_types,
     is_valid_identity_type,
 )
+from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
 
 @frappe.whitelist()
@@ -42,7 +43,14 @@ def get_category_routes(channel, category_code):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"channel": channel, "chat_category": category_code},
-        fields=["name", "identity_type", "ai_agent_profile", "enabled", "priority", "description"],
+        fields=[
+            "name",
+            "identity_type",
+            "ai_agent_profile",
+            "enabled",
+            "priority",
+            "description",
+        ],
         order_by="priority asc",
     )
 
@@ -60,7 +68,15 @@ def get_category_routes(channel, category_code):
 
 
 @frappe.whitelist()
-def save_route(channel, category_code, identity_type, ai_agent_profile, priority=10, description=None, name=None):
+def save_route(
+    channel,
+    category_code,
+    identity_type,
+    ai_agent_profile,
+    priority=10,
+    description=None,
+    name=None,
+):
     if not is_valid_identity_type(identity_type):
         frappe.throw(f"Identity Type '{identity_type}' is not enabled or does not exist.")
 
@@ -108,24 +124,32 @@ def delete_route(name):
 @frappe.whitelist()
 def get_route_chain(channel, category_code, identity_type):
     """Return the full chain for one route: identity_type → profile → access → policies."""
-    profile_name = frappe.db.get_value(
+    routes = frappe.get_all(
         "Nexus Category Identity Route",
-        {"channel": channel, "chat_category": category_code, "identity_type": identity_type, "enabled": 1},
-        "ai_agent_profile",
+        filters={"channel": channel, "chat_category": category_code, "identity_type": identity_type, "enabled": 1},
+        fields=["name", "ai_agent_profile"],
         order_by="priority asc",
+        limit_page_length=1,
     )
 
     result = {
         "identity_type": identity_type,
+        "route": None,
         "profile": None,
+        "profile_access_categories": [],
         "access_categories": [],
+        "profile_policies": [],
         "policies": [],
         "warnings": [],
     }
 
-    if not profile_name:
+    if not routes:
         result["warnings"].append(f"No enabled route for identity '{identity_type}'.")
         return result
+
+    route = routes[0]
+    profile_name = route.ai_agent_profile
+    result["route"] = route.name
 
     profile = frappe.get_doc("Nexus AI Agent Profile", profile_name)
     result["profile"] = {
@@ -146,6 +170,7 @@ def get_route_chain(channel, category_code, identity_type):
         result["warnings"].append(f"Profile '{profile_name}' has no Access Category. Retrieval will be denied.")
         return result
 
+    result["profile_access_categories"] = cat_names
     result["access_categories"] = cat_names
 
     policy_names = frappe.get_all(
@@ -155,7 +180,7 @@ def get_route_chain(channel, category_code, identity_type):
     )
 
     if policy_names:
-        result["policies"] = frappe.get_all(
+        result["profile_policies"] = frappe.get_all(
             "Nexus Access Policy",
             filters={"policy_name": ["in", list(set(policy_names))], "disabled": 0},
             fields=["policy_name", "is_primitive"],
@@ -163,5 +188,28 @@ def get_route_chain(channel, category_code, identity_type):
         )
     else:
         result["warnings"].append("Access categories exist but contain no policies.")
+
+    access_resolution = resolve_allowed_policies({
+        "ai_profile": {
+            "name": profile_name,
+            "identity_type": identity_type,
+        },
+        "identity_type": identity_type,
+    })
+
+    allowed_policy_names = access_resolution.get("allowed_access_policies") or []
+    if allowed_policy_names:
+        result["policies"] = frappe.get_all(
+            "Nexus Access Policy",
+            filters={"policy_name": ["in", allowed_policy_names], "disabled": 0},
+            fields=["policy_name", "is_primitive"],
+            order_by="policy_name asc",
+        )
+    else:
+        result["warnings"].append(
+            "Effective policy set is empty after applying identity cap. Retrieval will be denied."
+        )
+
+    result["access_resolution"] = access_resolution
 
     return result

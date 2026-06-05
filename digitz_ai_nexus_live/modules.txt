@@ -3,5 +3,4 @@ Nexus Live Agents
 Nexus Live Conversations
 Nexus Live Channels
 Nexus Live Escalations
-Nexus Live Experience
 Nexus Live Analytics

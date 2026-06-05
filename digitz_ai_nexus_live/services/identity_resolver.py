@@ -129,7 +129,51 @@ def resolve_registered_identity_type(payload):
     return identities[0].identity_type
 
 
+def resolve_identity_registry_name(payload):
+    """Return the matched enabled identity registry for this payload, if any."""
+    return _find_identity_registry(payload)
+
+
+def resolve_identity_safeguard_access_categories(payload):
+    """
+    Return parent-level Safe Guard access categories for the matched registry.
+
+    Returns:
+    - None when no registry is resolved, so no registry safeguard cap applies.
+    - [] when a registry exists but no enabled safeguards are configured, so
+      registered identity access fails closed.
+    - list[str] of access category names when safeguards are configured.
+    """
+    if not frappe.db.exists("DocType", "Nexus Identity Registry"):
+        return None
+
+    registry_name = _find_identity_registry(payload)
+    if not registry_name:
+        return None
+
+    registry = frappe.get_doc("Nexus Identity Registry", registry_name)
+
+    if registry.verification_status == "Blocked":
+        frappe.throw(
+            "This identity is blocked from chat access. Please contact support.",
+            title="Identity Blocked",
+        )
+
+    if registry.verification_status != "Verified":
+        return []
+
+    return [
+        row.access_category
+        for row in registry.safe_guard_access_categories or []
+        if row.access_category
+    ]
+
+
 def _find_identity_registry(payload):
+    verified_registry = _resolve_verified_challenge_registry(payload)
+    if verified_registry:
+        return verified_registry
+
     user = frappe.session.user
     if user and user != "Guest":
         registry_name = frappe.db.get_value(
@@ -149,6 +193,24 @@ def _find_identity_registry(payload):
         )
 
     return None
+
+
+def _resolve_verified_challenge_registry(payload):
+    if not payload.get("identity_verification_challenge"):
+        return None
+
+    from digitz_ai_nexus_live.services.identity_verification import get_verified_challenge
+
+    challenge = get_verified_challenge(
+        challenge_token=payload.get("identity_verification_challenge"),
+        chat_category=payload.get("chat_category"),
+        email=payload.get("visitor_email") or payload.get("email"),
+    )
+
+    if not challenge:
+        return None
+
+    return challenge.identity_registry
 
 
 def _get_payload_email(payload):

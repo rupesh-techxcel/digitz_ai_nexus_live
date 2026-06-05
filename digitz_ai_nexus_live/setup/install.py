@@ -82,14 +82,14 @@ def seed_defaults():
     seed_identity_types()
 
     tenant = ensure_default_tenant()
-    channel = ensure_default_live_channel()
+    channel = ensure_default_chat_channel()
     category = ensure_default_chat_category(channel)
     agent = ensure_default_agent(channel)
     profile = ensure_default_ai_agent_profile(agent)
 
     ensure_profile_access_category(profile, "Public Access")
     ensure_default_category_route(channel, category, "Public", profile)
-    ensure_default_ecosystem(tenant, channel, agent)
+    ensure_default_ecosystem(tenant, channel)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live defaults seeded.")
@@ -142,7 +142,7 @@ def ensure_default_tenant():
     return doc.name
 
 
-def ensure_default_live_channel():
+def ensure_default_chat_channel():
     name = DEFAULT_LIVE_CHANNEL["channel_code"]
     if frappe.db.exists("Nexus Live Channel", name):
         doc = frappe.get_doc("Nexus Live Channel", name)
@@ -281,7 +281,10 @@ def ensure_default_category_route(channel, category, identity_type, profile):
     return doc.name
 
 
-def ensure_default_ecosystem(tenant, channel, agent):
+def ensure_default_ecosystem(tenant, channel):
+    ensure_nexus_master("Nexus Business Unit", "Default", "business_unit_name", tenant)
+    ensure_nexus_master("Nexus Public Context", "Website Chat", "public_context_name", tenant)
+
     existing = frappe.get_all(
         "Nexus Ecosystem",
         filters={"tenant": tenant, "ecosystem_name": "Default Live"},
@@ -308,9 +311,6 @@ def ensure_default_ecosystem(tenant, channel, agent):
     doc.default_qa_channel = channel
     doc.live_chat_enabled = 1
     doc.default_chat_channel = channel
-    doc.default_live_channel = channel
-    doc.default_public_agent = agent
-    doc.default_escalation_enabled = 1
     doc.website_widget_enabled = 0
     doc.widget_title = "Nexus Assistant"
     doc.widget_welcome_message = "Hello. How can I help you today?"
@@ -319,3 +319,24 @@ def ensure_default_ecosystem(tenant, channel, agent):
     doc.notes = "Seeded default ecosystem for Nexus Live setup."
     doc.save(ignore_permissions=True)
     return doc.name
+
+
+def ensure_nexus_master(doctype, name, name_field, tenant=None):
+    if not frappe.db.exists("DocType", doctype):
+        return
+
+    if frappe.db.exists(doctype, name):
+        return
+
+    doc = frappe.new_doc(doctype)
+    doc.set(name_field, name)
+
+    meta = frappe.get_meta(doctype)
+
+    if meta.has_field("tenant"):
+        doc.tenant = tenant
+
+    if meta.has_field("enabled"):
+        doc.enabled = 1
+
+    doc.insert(ignore_permissions=True)

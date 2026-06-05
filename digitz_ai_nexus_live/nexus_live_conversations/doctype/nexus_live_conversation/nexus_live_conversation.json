@@ -9,6 +9,10 @@
     "conversation_id",
     "conversation_type",
     "channel",
+    "chat_category",
+    "resolved_identity_type",
+    "identity_registry",
+    "identity_safeguard_access_json",
     "visitor_name",
     "visitor_email",
     "visitor_phone",
@@ -46,6 +50,38 @@
       "fieldtype": "Link",
       "label": "Channel",
       "options": "Nexus Live Channel"
+    },
+    {
+      "description": "Chat category selected at conversation start.",
+      "fieldname": "chat_category",
+      "fieldtype": "Link",
+      "label": "Chat Category",
+      "options": "Nexus Chat Category",
+      "read_only": 1
+    },
+    {
+      "description": "Identity type resolved during the opening chat handshake.",
+      "fieldname": "resolved_identity_type",
+      "fieldtype": "Link",
+      "label": "Resolved Identity Type",
+      "options": "Nexus Identity Type",
+      "read_only": 1
+    },
+    {
+      "description": "Identity registry resolved during the opening chat handshake.",
+      "fieldname": "identity_registry",
+      "fieldtype": "Link",
+      "label": "Identity Registry",
+      "options": "Nexus Identity Registry",
+      "read_only": 1
+    },
+    {
+      "description": "Snapshot of registry Safe Guard access categories at conversation start.",
+      "fieldname": "identity_safeguard_access_json",
+      "fieldtype": "Code",
+      "label": "Identity Safe Guard Access (JSON)",
+      "options": "JSON",
+      "read_only": 1
     },
     {
       "fieldname": "visitor_name",

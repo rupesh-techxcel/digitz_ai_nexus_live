@@ -1,3 +1,5 @@
+import json
+
 import frappe
 
 from digitz_ai_nexus_live.services.agent_router import assign_agent
@@ -10,6 +12,7 @@ from digitz_ai_nexus_live.services.profile_resolver import (
     get_session_user_type,
     get_user_context,
     is_internal_session_user,
+    is_system_manager_session_user,
     resolve_behavior_from_chat_category,
     resolve_behavior_from_conversation,
     resolve_behavior_for_internal_user,
@@ -85,6 +88,9 @@ def enrich_payload_from_conversation(payload, conversation):
         "business_unit": "business_unit",
         "project": "project",
         "channel": "channel",
+        "chat_category": "chat_category",
+        "identity_type": "resolved_identity_type",
+        "identity_registry": "identity_registry",
         "context": "context",
         "sub_context": "sub_context",
         "entity_type": "entity_type",
@@ -101,6 +107,11 @@ def enrich_payload_from_conversation(payload, conversation):
 
             if value:
                 payload[payload_field] = value
+
+    if not payload.get("identity_safeguard_access_categories"):
+        raw_safeguard = getattr(conversation, "identity_safeguard_access_json", None)
+        if raw_safeguard:
+            payload["identity_safeguard_access_categories"] = json.loads(raw_safeguard)
 
     return apply_tenant_context_to_payload(
         payload=payload,
@@ -126,6 +137,8 @@ def _build_ai_profile_dict(behavior):
         "escalation_policy": behavior.escalation_policy,
         "memory_mode": behavior.memory_mode,
         "default_response_mode": "chat",
+        "category_code": behavior.category_code,
+        "identity_type": behavior.identity_type,
     }
 
 
@@ -145,7 +158,17 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
 
     ai_profile = _build_ai_profile_dict(behavior)
 
-    is_public = (payload.get("user_type", "Guest") == "Guest")
+    resolved_identity_type = (
+        ai_profile.get("identity_type")
+        or payload.get("identity_type")
+    )
+    force_public_only = bool(
+        not ai_profile.get("name")
+        and (
+            resolved_identity_type == "Public"
+            or payload.get("user_type", "Guest") == "Guest"
+        )
+    )
 
     user_context = payload.get("user") or {
         "roles": payload.get("roles") or ["Guest"]
@@ -154,7 +177,9 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
     access_resolution = resolve_allowed_policies({
         "channel": payload.get("channel"),
         "user": user_context,
-        "force_public_only": is_public,
+        "force_public_only": force_public_only,
+        "identity_type": resolved_identity_type,
+        "identity_safeguard_access_categories": payload.get("identity_safeguard_access_categories"),
         "ai_profile": ai_profile,
     })
 
@@ -187,7 +212,7 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "is_follow_up": continuity.get("is_follow_up"),
 
         "user": user_context,
-        "force_public_only": is_public,
+        "force_public_only": force_public_only,
         "allowed_access_policies": access_resolution["allowed_access_policies"],
 
         "ai_profile": ai_profile,
@@ -215,7 +240,7 @@ def _resolve_behavior(payload, conversation=None, agent=None):
     session_user = get_authenticated_session_user()
     if is_internal_session_user(session_user):
         internal_behavior = resolve_behavior_for_internal_user(session_user)
-        if not internal_behavior:
+        if not internal_behavior and not is_system_manager_session_user(session_user):
             frappe.throw(
                 "No active Nexus User Profile Assignment exists for the logged-in user. "
                 "Please ask an administrator to assign an AI Agent Profile."
@@ -255,7 +280,9 @@ def start_live_chat(payload):
             enforce_category_verification,
         )
 
-        enforce_category_verification(payload)
+        challenge = enforce_category_verification(payload)
+        if challenge and challenge.identity_registry:
+            payload["identity_registry"] = challenge.identity_registry
 
     payload = apply_tenant_context_to_payload(
         payload=payload,
@@ -263,23 +290,27 @@ def start_live_chat(payload):
     )
 
     # Resolve profile before agent assignment so category-routed chat uses the
-    # agent owned by the resolved AI Agent Profile. Ecosystem/channel defaults
-    # remain fallback paths for non-category flows.
+    # agent owned by the resolved AI Agent Profile.
     ai_profile_override = None
     chat_category = payload.get("chat_category")
     session_user = get_authenticated_session_user()
     if is_internal_session_user(session_user):
         internal_behavior = resolve_behavior_for_internal_user(session_user)
-        if not internal_behavior:
+        if not internal_behavior and not is_system_manager_session_user(session_user):
             frappe.throw(
                 "No active Nexus User Profile Assignment exists for the logged-in user. "
                 "Please ask an administrator to assign an AI Agent Profile."
             )
-        ai_profile_override = frappe.get_doc(
-            "Nexus AI Agent Profile", internal_behavior.profile_name
-        )
+        if internal_behavior:
+            ai_profile_override = frappe.get_doc(
+                "Nexus AI Agent Profile", internal_behavior.profile_name
+            )
     elif chat_category:
-        from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+        from digitz_ai_nexus_live.services.identity_resolver import (
+            resolve_identity_registry_name,
+            resolve_identity_safeguard_access_categories,
+            resolve_identity_type,
+        )
         is_authenticated = (
             payload.get("user_type", "Guest") != "Guest"
             and bool(payload.get("user"))
@@ -287,8 +318,18 @@ def start_live_chat(payload):
         identity_type = resolve_identity_type(payload)
         cat_behavior = resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
         if cat_behavior and cat_behavior.profile_name:
+            payload["identity_type"] = identity_type
+            payload["identity_registry"] = payload.get("identity_registry") or resolve_identity_registry_name(payload)
+            safeguard_categories = resolve_identity_safeguard_access_categories(payload)
+            if safeguard_categories is not None:
+                payload["identity_safeguard_access_categories"] = safeguard_categories
             ai_profile_override = frappe.get_doc(
                 "Nexus AI Agent Profile", cat_behavior.profile_name
+            )
+        else:
+            frappe.throw(
+                "No active AI Agent Profile route exists for this chat category "
+                f"and identity type ({identity_type})."
             )
 
     if ai_profile_override and ai_profile_override.get("agent"):

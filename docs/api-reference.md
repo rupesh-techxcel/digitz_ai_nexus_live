@@ -215,7 +215,7 @@ payload = {
     "query": "What is the refund policy?",
 
     # Routing
-    "channel": "Website",           # Nexus Live Channel code
+    "channel": "Website",           # Optional; Nexus Live Channel code
     "tenant": "ACME",               # Optional; resolved from user context if absent
 
     # Visitor context (for chat)
@@ -242,6 +242,7 @@ payload = {
 
 - `channel` must match a `Nexus Live Channel.channel_code`.
 - `tenant` is resolved from the authenticated user's `Nexus User Context` if absent.
+- `business_unit`, `project`, `context`, `channel`, and `top_k` can be filled from the selected tenant ecosystem defaults when the payload does not provide them.
 - Public endpoints force `force_public_only = True` regardless of any payload field. You cannot override this.
 - `requested_agent` bypasses role inference and routes directly to the named agent if it is available.
 

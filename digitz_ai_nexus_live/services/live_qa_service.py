@@ -7,10 +7,14 @@ from digitz_ai_nexus_live.services.profile_resolver import (
     get_session_user_type,
     get_user_context,
     is_internal_session_user,
+    is_system_manager_session_user,
     resolve_behavior_for_internal_user,
     resolve_behavior_from_chat_category,
 )
-from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+from digitz_ai_nexus_live.services.identity_resolver import (
+    resolve_identity_safeguard_access_categories,
+    resolve_identity_type,
+)
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
     update_conversation_assignment,
@@ -63,7 +67,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
     session_user = get_authenticated_session_user()
     if is_internal_session_user(session_user):
         resolved_behavior = resolve_behavior_for_internal_user(session_user)
-        if not resolved_behavior:
+        if not resolved_behavior and not is_system_manager_session_user(session_user):
             frappe.throw(
                 "No active Nexus User Profile Assignment exists for the logged-in user. "
                 "Please ask an administrator to assign an AI Agent Profile."
@@ -93,12 +97,26 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
             "escalation_policy": resolved_behavior.escalation_policy,
             "memory_mode": resolved_behavior.memory_mode,
             "default_response_mode": "qa",
+            "category_code": resolved_behavior.category_code,
+            "identity_type": resolved_behavior.identity_type,
         }
+
+    resolved_identity_type = ai_profile.get("identity_type") or payload.get("identity_type")
+    force_public_only = bool(
+        is_public
+        and not ai_profile.get("name")
+    )
 
     access_resolution = resolve_allowed_policies({
         "channel": payload.get("channel"),
         "user": user_context,
-        "force_public_only": is_public,
+        "force_public_only": force_public_only,
+        "identity_type": resolved_identity_type,
+        "identity_safeguard_access_categories": (
+            payload.get("identity_safeguard_access_categories")
+            if "identity_safeguard_access_categories" in payload
+            else resolve_identity_safeguard_access_categories(payload)
+        ),
         "ai_profile": ai_profile,
     })
 
@@ -124,7 +142,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
 
         "channel": payload.get("channel"),
         "user": user_context,
-        "force_public_only": is_public,
+        "force_public_only": force_public_only,
         "allowed_access_policies": access_resolution["allowed_access_policies"],
 
         "ai_profile": ai_profile,

@@ -99,7 +99,19 @@ This lets the same chat category route differently for different users. For exam
 | Product Support | Customer | Customer Support Bot |
 | Product Support | Internal | Internal Support Bot |
 
-### 4. AI Agent Profile Access Category
+The route is not an access grant. It only selects the profile that should answer for this category and identity.
+
+### 4. Identity Registry Safe Guard
+
+`Nexus Identity Registry` holds the verified person behind the chat. Its parent-level **Safe Guard** section lists the maximum access categories this verified person may use.
+
+```
+Nexus Identity Registry → Safe Guard Access Categories
+```
+
+This avoids scattering access limits across each identity row. A person may resolve as several identity types, but the person-level safeguard stays in one place.
+
+### 5. AI Agent Profile Access Category
 
 `Nexus AI Agent Profile Access Category` maps the resolved profile to one or more access categories. The same `Nexus AI Agent Profile` may be linked to multiple categories when the agent needs access to several policy bundles.
 
@@ -109,7 +121,7 @@ Nexus AI Agent Profile → Nexus Access Category
 
 The effective access categories for a profile are all enabled assignment records for that profile.
 
-### 5. Access Policies
+### 6. Access Policies
 
 Each `Nexus Access Category` contains child rows in `Nexus Access Category Policy`.
 
@@ -117,7 +129,15 @@ Each `Nexus Access Category` contains child rows in `Nexus Access Category Polic
 Nexus Access Category → Nexus Access Policy
 ```
 
-The final policy set for a profile is the union of policies from all enabled access categories assigned to that profile.
+The profile policy set is the union of policies from all enabled access categories assigned to that profile.
+
+For category-routed chat, the final retrieval policy set is:
+
+```
+Profile Policies ∩ Identity Registry Safe Guard Policies ∩ Identity Cap
+```
+
+If the intersection is empty, retrieval is denied. This prevents a route mistake from exposing broad profile access to a narrower person. Example: a customer registry safeguarded to `Customer Access` will not receive internal policies even if the selected route accidentally points to an internal profile.
 
 ---
 
@@ -133,6 +153,7 @@ Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to preview th
 logged-in internal System User?
     ├─ yes → load active Nexus User Profile Assignment
     │       → load assigned Nexus AI Agent Profile
+    │       → System Manager without assignment may continue with default behavior
     └─ no  → payload.chat_category
             ↓
             resolve_identity_type(payload)
@@ -147,6 +168,8 @@ continue_live_chat(conversation_id, payload)
 ```
 
 The profile snapshot is important. Follow-up messages should use the same profile as the first message, even if admin configuration changes during the conversation.
+
+For `System Manager` sessions, Core grants all enabled access policies unless the request is public-only. This is an admin bypass of policy narrowing, not a public visitor bypass.
 
 ### Continue Chat
 
@@ -224,35 +247,32 @@ If the product requirement is that public visitors can receive profile-specific 
 
 ---
 
-## Current Implementation Status
+## Implementation Status
 
-Implemented:
+All items below are implemented and active in the runtime.
 
 - `Nexus Chat Category` DocType.
-- `Nexus Category Identity Route` DocType.
+- `Nexus Category Identity Route` DocType for category + identity → profile routing.
 - `Nexus AI Agent Profile Access Category` DocType.
 - Identity resolution service.
-- Chat category + identity profile resolver.
-- Profile snapshot on `Nexus Live Conversation`.
-- Admin pages/APIs for chat categories, category routes, and profile access allocation.
-- Chain preview APIs showing identity → profile → access categories → policies.
-
-Needs runtime alignment:
-
-- `build_core_chat_payload()` must build `ai_profile` before calling `resolve_allowed_policies()`.
-- The call to `resolve_allowed_policies()` must receive `{"ai_profile": {"name": ...}}`.
-- Tests should assert that a selected chat category and identity produce the expected `allowed_access_policies` in the core payload.
+- Chat category + identity profile resolver (`profile_resolver.resolve_behavior_from_chat_category`).
+- Identity Safe Guard intersection in `access_resolver.resolve_allowed_policies`.
+- Hard identity cap for `Public` identity.
+- `chat_category`, `resolved_identity_type`, `assigned_ai_agent_profile`, and identity safeguard categories stored on `Nexus Live Conversation` at creation — follow-up messages use the same boundary.
+- `build_core_chat_payload()` builds `ai_profile` before calling `resolve_allowed_policies()`.
+- Admin pages/APIs for chat categories, category routes, profile access allocation, and chain preview.
+- Default seed creates a `Public` identity route whose profile has `Public Access`.
 
 ---
 
 ## Acceptance Checklist
 
-[ ] Guest selects a public chat category and resolves to the configured Public identity route.
-[ ] Customer selects the same category and resolves to the Customer identity route.
-[ ] The conversation stores `assigned_ai_agent_profile`.
-[ ] Follow-up messages use the conversation profile snapshot.
-[ ] The core payload includes `ai_profile.name` before access resolution.
-[ ] `allowed_access_policies` matches the profile's access categories and policies.
-[ ] Empty or missing profile access categories fail closed.
-[ ] A missing category identity route returns a clear configuration error.
+[x] Guest selects a public chat category and resolves to the configured Public identity route.
+[x] Customer selects the same category and resolves to the Customer identity route.
+[x] The conversation stores `assigned_ai_agent_profile`.
+[x] Follow-up messages use the conversation profile snapshot.
+[x] The core payload includes `ai_profile.name` before access resolution.
+[x] `allowed_access_policies` matches profile access categories intersected with identity safeguard and identity cap.
+[x] Empty or missing profile access categories fail closed.
+[x] A missing category identity route returns a clear configuration error.
 [ ] Automated tests cover the category → identity → profile → policy chain.

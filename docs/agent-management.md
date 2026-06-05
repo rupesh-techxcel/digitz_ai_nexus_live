@@ -102,7 +102,9 @@ The selected profile then controls behavior and access. The category itself does
 
 ### Internal / desk users
 
-The admin directly assigns a profile via `Nexus User Profile Assignment`. At runtime, the system loads the active assignment for the authenticated user. If no assignment exists, the request is rejected.
+The admin directly assigns a profile via `Nexus User Profile Assignment`. At runtime, the system loads the active assignment for the authenticated user. If no assignment exists, a normal internal user is rejected.
+
+`System Manager` sessions are allowed to continue without a profile assignment for admin/test use. When a System Manager does have an assignment, the assigned profile still provides behavior. Access policy narrowing is bypassed in Core for authenticated System Managers unless the request is explicitly public-only.
 
 ### API / non-chat channels
 

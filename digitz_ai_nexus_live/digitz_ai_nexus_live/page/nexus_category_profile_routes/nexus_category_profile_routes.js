@@ -36,10 +36,11 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             <p>
                 For each chat category, define which <b>AI Agent Profile</b> is used for each
                 <b>Identity Type</b>. The same category can serve different visitors with
-                different profiles and knowledge access.
+                different profiles. Access safeguards are configured on the verified
+                identity registry, then intersected with profile access at runtime.
             </p>
             <div class="nexus-admin-flow-pill">
-                Chat Category &nbsp;+&nbsp; Identity Type &nbsp;→&nbsp; AI Agent Profile &nbsp;→&nbsp; Knowledge Access
+                Chat Category &nbsp;+&nbsp; Identity Type &nbsp;→&nbsp; AI Agent Profile
             </div>
         </div>
         <div class="nexus-admin-hero-actions">
@@ -568,10 +569,10 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
 
         html += `<div class="ncpr-chain-arrow">→</div>`;
 
-        // Access categories node
-        html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Access Categories</div><div class="ncpr-chain-node-card">`;
-        if (chain.access_categories && chain.access_categories.length) {
-            html += chain.access_categories.map(c =>
+        // Profile access categories node
+        html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Profile Access</div><div class="ncpr-chain-node-card">`;
+        if (chain.profile_access_categories && chain.profile_access_categories.length) {
+            html += chain.profile_access_categories.map(c =>
                 `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     <span style="color:#16a34a;">✓</span>
                     <span style="font-size:12px; font-weight:850; color:#173b8c;">${esc(c)}</span>

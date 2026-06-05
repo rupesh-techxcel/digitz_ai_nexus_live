@@ -10,6 +10,7 @@ class NexusIdentityRegistry(Document):
         self._set_verified_on()
         self._validate_unique_active_keys()
         self._validate_identity_rows()
+        self._validate_safe_guard_rows()
 
     def _normalize_email(self):
         if self.email:
@@ -78,3 +79,17 @@ class NexusIdentityRegistry(Document):
                 "Only one enabled identity row can be marked as primary.",
                 title="Multiple Primary Identities",
             )
+
+    def _validate_safe_guard_rows(self):
+        seen = set()
+
+        for row in self.safe_guard_access_categories or []:
+            if not row.access_category:
+                continue
+
+            if row.access_category in seen:
+                frappe.throw(
+                    f"Access Category '{row.access_category}' is duplicated in Safe Guard.",
+                    title="Duplicate Safe Guard Access Category",
+                )
+            seen.add(row.access_category)

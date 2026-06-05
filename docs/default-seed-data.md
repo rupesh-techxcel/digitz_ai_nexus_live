@@ -38,6 +38,18 @@ These records are owned by `digitz_ai_nexus` and provide the access and tenant f
 |---|---|---|
 | Nexus Tenant | `DIGITZ-NEXUS` | Default tenant for setup and validation |
 
+### Ecosystem Defaults
+
+The Live install seed also creates the tenant runtime defaults used by context resolution:
+
+| DocType | Name | Purpose |
+|---|---|---|
+| Nexus Business Unit | `Default` | Default business-unit scope |
+| Nexus Public Context | `Website Chat` | Default public context for website chat |
+| Nexus Ecosystem | `Default Live` | Default ecosystem for `DIGITZ-NEXUS`; sets Q&A and chat channel defaults to `WEBSITE-CHAT` |
+
+`Default Live` is marked enabled and tenant-default. It is intended as a starting point for validation, not a required production naming convention.
+
 ### Access Policies
 
 | Policy | Purpose |
@@ -56,22 +68,7 @@ Only `Public` is treated as the primitive system policy. `Internal` and `Restric
 | `Internal Access` | `Public`, `Internal` |
 | `Restricted Access` | `Public`, `Internal`, `Restricted` |
 
-Runtime retrieval is governed through the access categories assigned to the resolved `Nexus AI Agent Profile`.
-
-### Core Channels
-
-The core access seed also creates legacy/reporting channel records:
-
-| Nexus Channel |
-|---|
-| `Website Q&A` |
-| `Website Chat` |
-| `Internal Desk` |
-| `Studio Simulation` |
-| `Public API` |
-| `Internal API` |
-
-These are core access records. The actual live chat entry point uses `Nexus Live Channel`.
+Runtime retrieval starts from the access categories assigned to the resolved `Nexus AI Agent Profile`. For registered identities, this is narrowed by the parent `Nexus Identity Registry` Safe Guard and any identity hard cap.
 
 ---
 
@@ -126,7 +123,7 @@ The default runtime route is:
 ```text
 WEBSITE-CHAT + GENERAL-SUPPORT + Public
     -> PUBLIC-AI-ASSISTANT profile
-    -> Public Access
+    -> profile access: Public Access
     -> Public policy
 ```
 
@@ -186,4 +183,4 @@ Once the public route is working, add tenant-specific routes:
 | Internal desk assistant | Internal AI profile, internal access category, user profile assignment |
 | Registered email flow | Chat Category with `Registered Email OTP`, Identity Registry records, route per resolved identity |
 
-Keep the rule simple: every identity that can select a category needs an enabled route to an AI profile, and that profile needs at least one enabled access category.
+Keep the rule simple: every identity that can select a category needs an enabled route to an AI profile, and that profile needs at least one enabled access category. For registered identities, configure the parent registry Safe Guard so runtime can intersect the person's allowed categories with the profile access categories.

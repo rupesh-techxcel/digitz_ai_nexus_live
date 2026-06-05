@@ -5,9 +5,6 @@ from digitz_ai_nexus_live.services.agent_service import (
     increment_active_sessions,
 )
 
-from digitz_ai_nexus.services.tenant_context import resolve_tenant_context
-
-
 def normalize_role(role):
     if not role:
         return None
@@ -152,10 +149,7 @@ def get_available_specific_agent(
     """
     Returns a specific agent only if it is usable for the current request.
 
-    Used for:
-    - explicit payload agent
-    - ecosystem default_public_agent
-    - channel default_agent
+    Used for explicit payload/profile-owned agent and channel default agent.
     """
     agent = get_agent_by_code_or_name(agent_code_or_name)
 
@@ -207,54 +201,6 @@ def get_default_agent_for_channel(channel_code_or_name):
     )
 
 
-def get_ecosystem_default_public_agent(payload):
-    """
-    Returns the tenant ecosystem default public agent if configured.
-
-    Important:
-    Do not resolve implicit user context here unless the payload already carries
-    tenant context. This avoids low-level router tests and internal calls being
-    affected by the current user's active tenant.
-
-    Expected caller behaviour:
-    - live_chat_service.py enriches payload first using apply_tenant_context_to_payload()
-    - then agent_router can safely use _resolved_tenant_context / tenant
-    """
-    payload = payload or {}
-
-    resolved_context = payload.get("_resolved_tenant_context") or {}
-
-    if resolved_context.get("ecosystem"):
-        try:
-            resolved = resolve_tenant_context(
-                payload=payload,
-                require_tenant=False,
-            )
-            return resolved.default_public_agent if resolved else None
-        except Exception:
-            frappe.log_error(
-                frappe.get_traceback(),
-                "Nexus Agent Router Tenant Context Resolution Failed",
-            )
-            return None
-
-    if not payload.get("tenant"):
-        return None
-
-    try:
-        resolved = resolve_tenant_context(
-            payload=payload,
-            require_tenant=False,
-        )
-    except Exception:
-        frappe.log_error(
-            frappe.get_traceback(),
-            "Nexus Agent Router Tenant Context Resolution Failed",
-        )
-        return None
-
-    return resolved.default_public_agent if resolved else None
-
 def find_available_agent(payload):
     """
     Find the best available approved idle agent for the incoming request.
@@ -262,10 +208,8 @@ def find_available_agent(payload):
     Priority:
     1. Explicit agent from payload
        - if requested but unavailable, return None
-    2. Ecosystem default_public_agent
-       - only when payload is tenant-enriched or explicitly carries tenant
-    3. Channel default_agent
-    4. Role/intent-based routing fallback
+    2. Channel default_agent
+    3. Role/intent-based routing fallback
     """
     payload = payload or {}
 
@@ -287,24 +231,7 @@ def find_available_agent(payload):
         )
 
     # ---------------------------------------------------------------------
-    # 2. Tenant ecosystem default public agent
-    # ---------------------------------------------------------------------
-    ecosystem_default_agent = get_ecosystem_default_public_agent(payload)
-
-    if ecosystem_default_agent:
-        agent = get_available_specific_agent(
-            agent_code_or_name=ecosystem_default_agent,
-            channel_name=channel_name,
-            visibility=visibility,
-            required_role=required_role,
-            enforce_role=False,
-        )
-
-        if agent:
-            return agent
-
-    # ---------------------------------------------------------------------
-    # 3. Channel default agent
+    # 2. Channel default agent
     # ---------------------------------------------------------------------
     if channel_name:
         channel_default_agent = frappe.db.get_value(
@@ -326,7 +253,7 @@ def find_available_agent(payload):
                 return agent
 
     # ---------------------------------------------------------------------
-    # 4. Role/intent-based routing fallback
+    # 3. Role/intent-based routing fallback
     # ---------------------------------------------------------------------
     filters = {
         "enabled": 1,

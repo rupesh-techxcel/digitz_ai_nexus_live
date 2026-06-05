@@ -113,7 +113,7 @@ Managed via the **Nexus Profile Access Allocation** page (`/nexus-profile-access
 
 ### Nexus User Profile Assignment
 
-Direct assignment of an AI Agent Profile to a specific internal desk user. The sole profile resolution mechanism for internal users.
+Direct assignment of an AI Agent Profile to a specific internal desk user. The normal profile resolution mechanism for internal users.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -124,7 +124,7 @@ Direct assignment of an AI Agent Profile to a specific internal desk user. The s
 | assigned_on | Datetime | Set automatically on insert |
 | notes | Small Text | Admin notes |
 
-Autoname: `NUPA-.#####`. Enforces one active assignment per user. Managed via the **Nexus User Profile Manager** page (`/app/nexus-user-profile-manager`) or the standard Frappe list/form.
+Autoname: `NUPA-.#####`. Enforces one active assignment per user. Managed via the **Nexus User Profile Manager** page (`/app/nexus-user-profile-manager`) or the standard Frappe list/form. `System Manager` sessions may bypass the assignment requirement for admin/test use, but profile assignment remains the preferred way to control behavior.
 
 ---
 
@@ -139,6 +139,9 @@ Root document for a conversation session.
 | conversation_id | Data (unique) | Client-facing identifier |
 | conversation_type | Select | Q&A / Chat |
 | channel | Link → Nexus Live Channel | |
+| chat_category | Link → Nexus Chat Category | Category selected at conversation start (read only) |
+| resolved_identity_type | Link → Nexus Identity Type | Identity resolved during the opening handshake (read only) |
+| route_access_category | Link → Nexus Access Category | Route access ceiling active at conversation start (read only) |
 | visitor_name | Data | |
 | visitor_email | Data | |
 | visitor_phone | Data | |
@@ -292,6 +295,7 @@ Formal registry for the real person or party joining chat. The registry is looke
 | reference_label | Data | Optional readable external/reference label |
 | contact | Link → Contact | Optional contact relationship |
 | mobile_no | Data | Optional phone identifier |
+| safe_guard_access_categories | Table MultiSelect → Nexus Identity Safe Guard Access Category | Parent-level maximum access categories allowed for this verified person |
 | identities | Table → Nexus Registered Identity | One or more identity rows |
 | notes | Small Text | |
 
@@ -312,6 +316,18 @@ Child table under `Nexus Identity Registry`. Each row grants one identity type t
 | notes | Small Text | |
 
 Only one enabled row should be marked primary per registry. A registry can hold multiple identity rows, such as Customer plus Partner.
+
+---
+
+### Nexus Identity Safe Guard Access Category
+
+Table MultiSelect child under the parent `Nexus Identity Registry` Safe Guard section. It stores the maximum access categories this verified person may use during chat.
+
+| Field | Type | Notes |
+|---|---|---|
+| access_category | Link → Nexus Access Category | Allowed safeguard category |
+
+Runtime access for a registered identity is the intersection of profile access categories and these safeguard categories.
 
 ---
 
@@ -338,7 +354,7 @@ Stores a short-lived email OTP challenge for chat categories that require email 
 
 ### Nexus Category Identity Route
 
-Maps a channel + chat category + identity type to an AI Agent Profile. This is the primary profile resolution mechanism for chat-window users.
+Maps a channel + chat category + identity type to an AI Agent Profile and an access ceiling. This is the primary profile resolution mechanism for chat-window users.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -346,9 +362,12 @@ Maps a channel + chat category + identity type to an AI Agent Profile. This is t
 | chat_category | Link → Nexus Chat Category | |
 | identity_type | Link → Nexus Identity Type | Visitor identity served by this route |
 | ai_agent_profile | Link → Nexus AI Agent Profile | Profile resolved for this category and identity |
+| access_category | Link → Nexus Access Category | **Access Ceiling** — final retrieval policies are profile policies intersected with this category's policies. Optional; when absent, only the identity hard cap applies. |
 | enabled | Check | Disabled routes are ignored |
 | priority | Int | Lower number wins if multiple routes match |
 | description | Small Text | |
+
+The route access ceiling is a safety boundary. A `Public` identity is always hard-capped to the `Public` policy regardless of the ceiling setting. For all other identities the ceiling is the only cap, so it should be set explicitly for each route.
 
 ---
 
@@ -418,86 +437,6 @@ Maps an agent to a queue. One agent may be in multiple queues.
 | enabled | Check | |
 
 Autoname: `NQA-.#####`.
-
----
-
-## nexus_live_experience
-
-### Nexus Live Experience
-
-Experience bundle — a named deployment configuration grouping Q&A config, chat config, and branding.
-
-| Field | Type | Notes |
-|---|---|---|
-| experience_code | Data (unique) | |
-| experience_name | Data | |
-| experience_type | Select | Public Website / Customer Portal / Internal Desk / Demo |
-| default_qa_config | Link → Nexus Q And A Configuration | |
-| default_chat_config | Link → Nexus Chat Configuration | |
-| branding_json | Long Text | Brand color, logo, and layout overrides as JSON |
-| enabled | Check | |
-
-Autoname: `field:experience_code`.
-
----
-
-### Nexus Chat Configuration
-
-Chat-mode behavior and UI configuration.
-
-| Field | Type | Notes |
-|---|---|---|
-| config_name | Data (unique) | |
-| default_agent | Link → Nexus Live Agent | |
-| channel | Link → Nexus Live Channel | |
-| welcome_message | Small Text | |
-| input_placeholder | Data | |
-| show_agent_name | Check | |
-| show_sources | Check | |
-| enabled | Check | |
-
----
-
-### Nexus Q And A Configuration
-
-Q&A-mode behavior and UI configuration.
-
-| Field | Type | Notes |
-|---|---|---|
-| config_name | Data (unique) | |
-| default_agent | Link → Nexus Live Agent | |
-| channel | Link → Nexus Live Channel | |
-| welcome_message | Small Text | |
-| show_sources | Check | |
-| max_questions_per_session | Int | |
-| enabled | Check | |
-
----
-
-### Nexus Welcome Flow
-
-Defines the initial greeting sequence shown to a visitor before their first message.
-
-| Field | Type | Notes |
-|---|---|---|
-| flow_name | Data | |
-| experience | Link → Nexus Live Experience | |
-| welcome_text | Small Text | |
-| show_suggested_prompts | Check | |
-| enabled | Check | |
-
----
-
-### Nexus Suggested Prompt
-
-AI-suggested follow-up question shown to visitors.
-
-| Field | Type | Notes |
-|---|---|---|
-| prompt_text | Data | The suggested question |
-| experience | Link → Nexus Live Experience | |
-| display_order | Int | |
-| enabled | Check | |
 
 ---
 
