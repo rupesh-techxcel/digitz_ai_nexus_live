@@ -1,4 +1,4 @@
-# Chat Initialisation Reference
+# Chat Session Lifecycle
 
 User stories, DocType references, and function calls for the chat startup and messaging flow.
 
@@ -63,7 +63,7 @@ POST api/method/digitz_ai_nexus_live.api.live.start_chat
 start_chat(payload)
 │
 ├── 1. apply_session_user_context(payload)
-│       Sets user_type: "Guest" | "Website User" | "System User"
+│       Sets user_type: "Guest" | "Website User" | "Desk User"
 │
 ├── 2. enforce_category_verification(payload)
 │       Checks if the category needs OTP — looks up Nexus Identity Verification Challenge
@@ -169,18 +169,42 @@ _process_ai_response(conversation_id, payload_json)
 │       → Browser shows typing indicator
 │
 ├── 6. build_core_chat_payload(payload, conversation, agent, behavior)
-│   ├── build_chat_continuity_payload()  — detects follow-up, builds conversation_context
-│   ├── build_chat_history()             — loads last 20 Nexus Live Message records
-│   ├── _build_ai_profile_dict(behavior) — packages tone, fallback, rules, thresholds
-│   └── resolve_allowed_policies(...)    — computes final allowed access policies
+│   ├── build_chat_continuity_payload()     — detects follow-up, builds conversation_context
+│   ├── build_chat_history()                — loads last 20 Nexus Live Message records
+│   ├── _build_ai_profile_dict(behavior)    — packages tone, fallback, rules, thresholds
+│   ├── resolve_intents_for_profile(name)   — merges global intent handlers + profile overrides
+│   └── resolve_allowed_policies(...)       — computes final allowed access policies
 │           = Profile access categories ∩ Identity safe guard categories
 │           = ["Public"] when force_public_only = True
 │
-├── 7. answer_query(core_payload)        ← digitz_ai_nexus core
-│       (see retrieval-and-answer.md for the full pipeline)
-│       Returns: { answer, confidence, sources, access_status }
+├── 7. answer_query(core_payload)  ← digitz_ai_nexus core
+│   │
+│   ├── Length Guard (chat mode)
+│   │       Message > 500 chars → LLM nudges user to shorten; return immediately
+│   │
+│   ├── Intent Router (chat mode)
+│   │       LLM receives: user message + conversation context + resolved intent handlers
+│   │       │
+│   │       ├── ACTION:ESCALATE
+│   │       │       → answer with intent handler's response_template
+│   │       │       → user_requested_human: True in response
+│   │       │
+│   │       ├── ACTION:PREDEFINED:<name>
+│   │       │       → answer with handler's response_template
+│   │       │
+│   │       ├── ACTION:DECLINED:<name>
+│   │       │       → answer with profile's decline_response
+│   │       │
+│   │       ├── Conversational
+│   │       │       → LLM generates 1-2 sentence social response
+│   │       │
+│   │       └── ROUTE_TO_KNOWLEDGE → RAG pipeline
+│   │
+│   └── RAG pipeline (if knowledge_seeking)
+│           → see retrieval-and-answer.md
+│           Chat fallback: LLM Host generates warm response, no facts, no "connect with team"
 │
-├── 8. Fallback resolution
+├── 8. Fallback safety net
 │       Empty answer → use behavior.fallback_message or default fallback
 │
 ├── 9. add_message(conversation, sender_type="AI Agent", message, confidence, sources)
@@ -188,13 +212,12 @@ _process_ai_response(conversation_id, payload_json)
 │
 ├── 10. set_agent_status(agent, "Waiting")
 │
-├── 11. Escalation check (should_escalate)
-│       Escalates when ANY of:
-│         - user_requested_human = True
-│         - answer is the fallback message (no knowledge)
-│         - confidence < confidence_threshold (default 0.65)
-│       AND escalation_enabled = True on the profile
-│       Creates: Nexus Live Escalation, updates conversation status = "Escalated"
+├── 11. Escalation check
+│       Fires ONLY when:
+│         - user_requested_human = True  (set by ACTION:ESCALATE in router)
+│         - escalation_enabled = True on profile
+│       Low confidence and RAG fallback do NOT trigger escalation.
+│       Creates: Nexus Live Escalation, updates conversation.status = "Escalated"
 │
 └── 12. publish_chat_response(conversation_id, result)
         Fires Socket.io event: nexus_chat_response
@@ -208,12 +231,14 @@ _process_ai_response(conversation_id, payload_json)
 | `Nexus Live Conversation` | Read + updated | Load context; update status |
 | `Nexus Live Agent` | Updated | Status toggled Responding → Waiting |
 | `Nexus Live Message` | Created | AI answer stored |
-| `Nexus AI Agent Profile` | Read | Behavior, thresholds, access categories |
+| `Nexus AI Agent Profile` | Read | Behavior, thresholds, access categories, intent overrides |
+| `Nexus Intent Handler` | Read | Global intent handler definitions |
+| `Nexus Profile Intent Override` | Read | Profile-level overrides for intent handlers |
 | `Nexus Access Category` | Read | Resolves allowed policies from profile |
 | `Nexus Access Policy` | Read | Final retrieval filter applied to chunks |
 | `Nexus Knowledge Chunk` | Read | Filtered by access_policy, scored, returned as sources |
 | `Nexus Query Log` | Created | Audit record of every query |
-| `Nexus Live Escalation` | Created (if triggered) | Escalation record |
+| `Nexus Live Escalation` | Created (if user requested) | Escalation record |
 
 **Realtime events:**
 
@@ -246,7 +271,7 @@ frappe.realtime.on("nexus_chat_response", function(data) {
 ```
 POST api/method/digitz_ai_nexus_live.api.live.send_chat_message
     Args: conversation_id
-    Body: { message }
+    Body: { message, tenant }
 ```
 
 **Step-by-step inside `send_chat_message`:**
@@ -277,6 +302,7 @@ send_chat_message(conversation_id, payload)
 - No agent assignment (already assigned)
 - No identity/profile resolution (restored from conversation snapshot)
 - `build_chat_continuity_payload()` detects `is_follow_up = True` and injects prior message pairs as `conversation_context`
+- Intent handlers are resolved fresh each turn (in case global config has changed)
 
 **DocTypes read/written:**
 
@@ -284,6 +310,24 @@ send_chat_message(conversation_id, payload)
 |---|---|---|
 | `Nexus Live Conversation` | Read | Load stored identity, profile, tenant, channel |
 | `Nexus Live Message` | Created (visitor) + Created (AI) | New turn stored |
+
+---
+
+## User Story 5 — Visitor Asks to Speak to a Human
+
+**Story:** Visitor types "I'd like to speak to someone" or "Can you connect me to support?". The system acknowledges the request and escalates the conversation.
+
+**What happens:**
+
+1. The router LLM sees `resolved_intents` which includes the "Human Agent Request" handler.
+2. The LLM matches the user's message to the escalation trigger description.
+3. The router returns `ACTION:ESCALATE`.
+4. `answer_query()` returns `{ user_requested_human: True, answer: "<acknowledgement>" }`.
+5. `live_chat_service` creates a `Nexus Live Escalation` record.
+6. Conversation status becomes `Escalated`.
+7. The AI's acknowledgement message is sent to the visitor via realtime.
+
+The visitor receives a warm acknowledgement (from the intent handler's `response_template`) rather than a cold system message.
 
 ---
 
@@ -304,7 +348,7 @@ send_chat_message(conversation_id, payload)
 create_conversation()             → Open
 update_conversation_assignment()  → Responding
 _process_ai_response() ends       → (implicit Waiting — agent status changes)
-should_escalate() = True          → Escalated  (escalation_status = Pending)
+user_requested_human = True       → Escalated  (escalation_status = Pending)
 close_conversation()              → Closed
 ```
 
@@ -333,5 +377,6 @@ An empty result fails closed — retrieval is denied, not opened.
 | `start_chat` returns error "no agent available" | `Nexus Live Agent` — check an approved, Idle agent exists for the channel |
 | AI answer never arrives (typing indicator stays) | Background worker — run `bench worker --queue short`; check Redis |
 | Answer is the fallback "I do not have enough approved knowledge" | `Nexus Knowledge Chunk` — verify chunks exist, are Published, and `access_policy` matches the resolved allowed policies |
-| Escalation triggers unexpectedly | `Nexus AI Agent Profile.confidence_threshold` — default is 0.65; lower it if knowledge is sparse |
+| User asks for human but escalation does not trigger | Check `escalation_enabled = True` on the `Nexus AI Agent Profile`; verify "Human Agent Request" handler is enabled in `Nexus Intent Handler` and not disabled in `Nexus Profile Intent Override` |
 | `conversation_id` not found on follow-up | Client is sending document name (`NLC-00001`) instead of `conversation_id` hex string |
+| Greeting treated as a knowledge query | Router LLM is making the wrong classification; check that the user message is a clear social exchange, not ambiguous |

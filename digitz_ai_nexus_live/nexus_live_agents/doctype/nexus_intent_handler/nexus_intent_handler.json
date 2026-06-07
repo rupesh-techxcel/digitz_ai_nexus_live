@@ -1,0 +1,87 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:intent_name",
+  "creation": "2026-06-07 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "intent_name",
+    "trigger_description",
+    "action_type",
+    "response_template",
+    "priority",
+    "enabled"
+  ],
+  "fields": [
+    {
+      "fieldname": "intent_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Intent Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "description": "Describe in natural language when this intent should fire. The LLM uses this description to match user messages.",
+      "fieldname": "trigger_description",
+      "fieldtype": "Small Text",
+      "label": "Trigger Description",
+      "reqd": 1
+    },
+    {
+      "fieldname": "action_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Action Type",
+      "options": "escalate\npredefined_answer",
+      "reqd": 1
+    },
+    {
+      "description": "The response to deliver when this intent is matched. Required for predefined_answer; optional for escalate (escalation service provides a confirmation message).",
+      "fieldname": "response_template",
+      "fieldtype": "Text",
+      "label": "Response Template"
+    },
+    {
+      "default": "10",
+      "description": "Lower number = evaluated first. Global handlers are checked in priority order.",
+      "fieldname": "priority",
+      "fieldtype": "Int",
+      "label": "Priority"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-07 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Agents",
+  "name": "Nexus Intent Handler",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "priority",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "intent_name",
+  "track_changes": 1
+}

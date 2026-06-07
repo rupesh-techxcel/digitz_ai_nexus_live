@@ -23,6 +23,8 @@
   "escalation_enabled",
   "escalation_policy",
   "memory_mode",
+  "section_intent_handlers",
+  "intent_overrides",
   "system_notes"
  ],
  "fields": [
@@ -137,6 +139,18 @@
    "fieldtype": "Select",
    "label": "Memory Mode",
    "options": "None\nSession\nConversation Summary\nLong Term"
+  },
+  {
+   "fieldname": "section_intent_handlers",
+   "fieldtype": "Section Break",
+   "label": "Intent Handlers"
+  },
+  {
+   "description": "Profile-level overrides for global Nexus Intent Handlers. Use this to disable, customise, or change the action of any global intent for this specific agent profile.",
+   "fieldname": "intent_overrides",
+   "fieldtype": "Table",
+   "label": "Intent Overrides",
+   "options": "Nexus Profile Intent Override"
   },
   {
    "fieldname": "system_notes",

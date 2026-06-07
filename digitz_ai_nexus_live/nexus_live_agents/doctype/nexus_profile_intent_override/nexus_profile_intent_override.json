@@ -1,0 +1,61 @@
+{
+  "actions": [],
+  "creation": "2026-06-07 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "intent_handler",
+    "disabled",
+    "override_action_type",
+    "override_response",
+    "decline_response"
+  ],
+  "fields": [
+    {
+      "fieldname": "intent_handler",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Intent Handler",
+      "options": "Nexus Intent Handler",
+      "reqd": 1
+    },
+    {
+      "default": "0",
+      "description": "Disable this intent handler for this profile. The LLM will be told it is unavailable and will respond gracefully using the Decline Response.",
+      "fieldname": "disabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Disabled"
+    },
+    {
+      "description": "If set, overrides the global action type for this profile only.",
+      "fieldname": "override_action_type",
+      "fieldtype": "Select",
+      "label": "Override Action Type",
+      "options": "\nescalate\npredefined_answer"
+    },
+    {
+      "description": "Custom response template for this profile. Overrides the global response template when this intent is matched.",
+      "fieldname": "override_response",
+      "fieldtype": "Text",
+      "label": "Override Response"
+    },
+    {
+      "description": "Message to return when this intent is disabled for this profile. If blank, a generic decline message is used.",
+      "fieldname": "decline_response",
+      "fieldtype": "Text",
+      "label": "Decline Response"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-07 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Agents",
+  "name": "Nexus Profile Intent Override",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": [],
+  "track_changes": 0
+}

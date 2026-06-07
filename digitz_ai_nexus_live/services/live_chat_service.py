@@ -25,8 +25,10 @@ from digitz_ai_nexus_live.services.conversation_service import (
     get_conversation_messages,
 )
 from digitz_ai_nexus_live.services.escalation_service import (
-    should_escalate,
     create_escalation,
+)
+from digitz_ai_nexus_live.services.intent_handler_service import (
+    resolve_intents_for_profile,
 )
 from digitz_ai_nexus_live.services.conversation_context_service import (
     build_chat_continuity_payload,
@@ -162,6 +164,8 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
 
     ai_profile = _build_ai_profile_dict(behavior)
 
+    resolved_intents = resolve_intents_for_profile(ai_profile.get("name") if ai_profile else None)
+
     resolved_identity_type = (
         ai_profile.get("identity_type")
         or payload.get("identity_type")
@@ -220,6 +224,7 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "allowed_access_policies": access_resolution["allowed_access_policies"],
 
         "ai_profile": ai_profile,
+        "resolved_intents": resolved_intents,
 
         "agent_code": agent.agent_code,
         "agent_role": agent.agent_role,
@@ -504,11 +509,6 @@ def _process_ai_response(conversation_id, payload_json):
             remarks="Waiting for next visitor message.",
         )
 
-        no_knowledge = (
-            answer.strip() == DEFAULT_FALLBACK_ANSWER
-            or answer.strip() == fallback_message
-        )
-
         threshold = (
             behavior.confidence_threshold
             if behavior and behavior.confidence_threshold is not None
@@ -523,19 +523,14 @@ def _process_ai_response(conversation_id, payload_json):
 
         escalation_created = None
 
-        if should_escalate(
-            confidence=confidence,
-            no_knowledge=no_knowledge,
-            user_requested_human=payload.get("user_requested_human") or False,
-            escalation_enabled=escalation_enabled,
-            threshold=threshold,
-        ):
+        user_requested_human = bool(core_response.get("user_requested_human"))
+        if user_requested_human and escalation_enabled:
             escalation_created = create_escalation(
                 conversation=conversation,
-                reason="Low Confidence" if not no_knowledge else "No Approved Knowledge",
+                reason="User Requested Human",
                 from_agent=agent,
                 confidence=confidence,
-                remarks="Auto escalation triggered from Live Chat.",
+                remarks="User explicitly requested escalation to a human agent.",
             )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
@@ -556,7 +551,7 @@ def _process_ai_response(conversation_id, payload_json):
             "escalation": escalation_created.name if escalation_created else None,
 
             "confidence_threshold": threshold,
-            "fallback_used": 1 if no_knowledge else 0,
+            "fallback_used": 1 if core_response.get("fallback_used") else 0,
 
             "tenant": payload.get("tenant"),
             "channel": payload.get("channel"),

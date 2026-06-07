@@ -21,10 +21,13 @@ live_chat_service.py
     ▼
 Background Worker
     │  _process_ai_response()
-    │      ├── build payload
+    │      ├── build payload (incl. resolved_intents)
     │      ├── answer_query()  ← digitz_ai_nexus core
+    │      │       ├── length guard
+    │      │       ├── LLM router (intent / conversational / knowledge)
+    │      │       └── RAG pipeline (if knowledge_seeking)
     │      ├── persist AI message
-    │      ├── check escalation
+    │      ├── check escalation (user_requested_human only)
     │      └── publish_realtime
     │
     │  frappe.realtime (Socket.io)
@@ -36,6 +39,53 @@ Render AI message
 ```
 
 The HTTP call returns immediately. The AI answer is pushed separately via Frappe's Socket.io realtime layer. This means the browser never blocks waiting for the LLM.
+
+---
+
+## Chat Mode Pipeline (answer_query in chat mode)
+
+Before the RAG pipeline runs, `answer_query()` applies two pre-checks in chat mode:
+
+```
+answer_query(chat mode)
+│
+├── 1. Length Guard
+│       If message > 500 characters:
+│           → LLM generates a friendly nudge to shorten the question
+│           → Return immediately, no RAG
+│
+├── 2. LLM Router + Intent Handler
+│       route_intent(payload)
+│           → LLM receives: user message + conversation context + resolved intent handlers
+│           │
+│           ├── ACTION:ESCALATE
+│           │       User explicitly wants a human agent
+│           │       → Return answer from intent handler's response_template
+│           │       → Set user_requested_human = True in response
+│           │       → live_chat_service creates escalation
+│           │
+│           ├── ACTION:PREDEFINED:<name>
+│           │       Matched a configured special case
+│           │       → Return that handler's response_template
+│           │
+│           ├── ACTION:DECLINED:<name>
+│           │       Intent exists but is disabled for this profile
+│           │       → Return the profile's decline_response
+│           │
+│           ├── Conversational response (1-2 sentences)
+│           │       Greeting, introduction, small talk, social exchange
+│           │       → Return LLM response directly, skip RAG
+│           │
+│           └── ROUTE_TO_KNOWLEDGE
+│                   Question needs knowledge lookup
+│                   → Fall through to RAG pipeline
+│
+└── 3. RAG Pipeline (knowledge_seeking only)
+        If RAG finds no usable knowledge:
+            → LLM Host generates graceful fallback (no facts, no "connect with team" offers)
+        If RAG finds knowledge:
+            → LLM answers from approved knowledge only
+```
 
 ---
 
@@ -169,7 +219,7 @@ Starts a new live chat conversation. Stores the visitor's first message immediat
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `message` | String | Yes | The visitor's first message |
+| `message` | String | Yes | The visitor's first message (max 500 characters) |
 | `channel` | String | Recommended | `Nexus Live Channel.channel_code`; resolved from tenant config if absent |
 | `chat_category` | String | Recommended | `Nexus Chat Category.category_code`; drives profile routing |
 | `tenant` | String | No | Resolved from user context if absent |
@@ -182,7 +232,6 @@ Starts a new live chat conversation. Stores the visitor's first message immediat
 | `topic` | String | No | |
 | `visitor_name` | String | No | |
 | `visitor_email` | String | No | Used for identity resolution |
-| `user_requested_human` | Boolean | No | Triggers escalation regardless of confidence |
 
 **Response:**
 ```json
@@ -212,10 +261,10 @@ Sends a follow-up message in an existing conversation. Same async pattern as `st
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `message` | String | Yes | |
-| `user_requested_human` | Boolean | No | Triggers escalation |
+| `message` | String | Yes | Max 500 characters |
+| `tenant` | String | Recommended | Must match the conversation's tenant |
 
-All other fields (channel, tenant, context, etc.) are re-enriched from the conversation document automatically and do not need to be re-sent.
+All other fields (channel, context, identity, etc.) are re-enriched from the conversation document automatically and do not need to be re-sent.
 
 **Response:**
 ```json
@@ -238,31 +287,6 @@ Args   : limit (default: 50)
 
 Returns conversations with status `Open`, `Responding`, or `Escalated`. Used by the Nexus Live Console.
 
-**Response:**
-```json
-{
-    "conversations": [
-        {
-            "name": "NLC-00001",
-            "conversation_id": "ABC123DEF456",
-            "status": "Responding",
-            "escalation_status": "None",
-            "assigned_agent": "PUBLIC-AI-ASSISTANT",
-            "channel": "WEBSITE-CHAT",
-            "chat_category": "GENERAL-SUPPORT",
-            "resolved_identity_type": "Public",
-            "user_type": "Guest",
-            "visitor_name": null,
-            "visitor_email": null,
-            "last_message": "Tell me about pricing",
-            "last_response": "Our pricing starts at...",
-            "confidence": 0.87,
-            "started_on": "2026-06-07 10:23:00"
-        }
-    ]
-}
-```
-
 ---
 
 ### `get_conversation_detail`
@@ -275,44 +299,6 @@ Args   : conversation_id (required)
 
 Returns full conversation metadata and all messages. Used by the Nexus Live Console when a conversation is opened.
 
-**Response:**
-```json
-{
-    "conversation": {
-        "name": "NLC-00001",
-        "conversation_id": "ABC123DEF456",
-        "status": "Responding",
-        "escalation_status": "None",
-        "assigned_agent": "PUBLIC-AI-ASSISTANT",
-        "channel": "WEBSITE-CHAT",
-        "chat_category": "GENERAL-SUPPORT",
-        "resolved_identity_type": "Public",
-        "user_type": "Guest",
-        "visitor_name": null,
-        "visitor_email": null,
-        "started_on": "2026-06-07 10:23:00"
-    },
-    "messages": [
-        {
-            "name": "NLM-00001",
-            "sender_type": "Visitor",
-            "sender_agent": null,
-            "message": "Hello",
-            "confidence": null,
-            "message_time": "2026-06-07 10:23:01"
-        },
-        {
-            "name": "NLM-00002",
-            "sender_type": "AI Agent",
-            "sender_agent": "PUBLIC-AI-ASSISTANT",
-            "message": "Hi! How can I help you today?",
-            "confidence": 0.91,
-            "message_time": "2026-06-07 10:23:04"
-        }
-    ]
-}
-```
-
 ---
 
 ## Start Chat Flow (Detailed)
@@ -323,7 +309,7 @@ start_chat(payload)
 ├── 1. Validate: message required
 │
 ├── 2. apply_session_user_context(payload)
-│       Sets user_type: "Guest" | "Website User" | "System User"
+│       Sets user_type: "Guest" | "Website User" | "Desk User"
 │       Sets user: { id, roles, email } if authenticated
 │
 ├── 3. Identity Verification (external visitors only, if chat_category set)
@@ -450,6 +436,14 @@ _process_ai_response(conversation_id, payload_json)
 │   │                 escalation_enabled, escalation_policy, memory_mode,
 │   │                 category_code, identity_type
 │   │
+│   ├── resolve_intents_for_profile(profile_name)
+│   │       Loads global Nexus Intent Handler records (enabled, ordered by priority)
+│   │       Applies profile-level overrides from Nexus Profile Intent Override child table
+│   │       Returns resolved list with: name, intent_name, trigger_description,
+│   │                                   action_type, response_template, active,
+│   │                                   decline_response
+│   │       → Stored as "resolved_intents" in core payload
+│   │
 │   └── resolve_allowed_policies(...)
 │           Computes the set of Nexus Access Policies the conversation can retrieve from:
 │           - ai_profile access categories → their policies
@@ -457,27 +451,62 @@ _process_ai_response(conversation_id, payload_json)
 │           - force_public_only=True when no named profile or identity is "Public"/Guest
 │
 ├── 7. answer_query(core_payload)  ← digitz_ai_nexus core
-│       Response sentence limit: 6 (CHAT_RESPONSE_SENTENCE_LIMIT)
-│       Returns: { answer, confidence, sources, retrieval_debug }
+│   │
+│   ├── Length Guard (chat mode only)
+│   │       If message > 500 chars → LLM generates a friendly nudge, return immediately
+│   │
+│   ├── Intent Router (chat mode only)
+│   │       LLM call: user message + conversation context + resolved_intents
+│   │       │
+│   │       ├── ACTION:ESCALATE
+│   │       │       → access_status: "intent_handled"
+│   │       │       → user_requested_human: True (→ live_chat_service escalates)
+│   │       │       → answer: from intent handler's response_template
+│   │       │
+│   │       ├── ACTION:PREDEFINED:<name>
+│   │       │       → access_status: "intent_handled"
+│   │       │       → answer: from handler's response_template (or profile override)
+│   │       │
+│   │       ├── ACTION:DECLINED:<name>
+│   │       │       → access_status: "intent_handled"
+│   │       │       → answer: from profile's decline_response
+│   │       │
+│   │       ├── Conversational response
+│   │       │       → access_status: "conversational"
+│   │       │       → answer: LLM-generated 1-2 sentence social response
+│   │       │
+│   │       └── ROUTE_TO_KNOWLEDGE → fall through to RAG pipeline
+│   │
+│   └── RAG Pipeline (if knowledge_seeking)
+│           (see retrieval-and-answer.md)
+│           If fallback (chat mode): LLM Host generates graceful response
+│               - No facts, no guesses
+│               - May ask a clarifying question
+│               - Does NOT offer to connect with a team member
 │
-├── 8. Fallback resolution
-│       If answer is empty → use behavior.fallback_message or DEFAULT_FALLBACK_ANSWER
-│       If answer is the generic default but profile has a custom fallback → use custom
+├── 8. Fallback safety net
+│       Empty answer → use behavior.fallback_message or DEFAULT_FALLBACK_ANSWER
 │
-├── 9. add_message(conversation, sender_type="AI Agent", message=answer, confidence, sources)
+├── 9. add_message(conversation, sender_type="AI Agent", message=answer,
+│                  confidence, sources, retrieval_debug)
 │
 ├── 10. set_agent_status(agent, "Waiting")
 │
 ├── 11. Escalation check
-│       should_escalate() returns True when ANY of:
-│           - user_requested_human = True
-│           - no_knowledge (answer is fallback message)
-│           - confidence < confidence_threshold (default: 0.65)
-│       AND escalation_enabled = True on the behavior
+│       Escalation fires ONLY when:
+│           user_requested_human = True   (set by ACTION:ESCALATE in router)
+│       AND escalation_enabled = True on the behavior profile
 │
-│       If escalation triggered:
-│           create_escalation(conversation, reason, from_agent, confidence)
-│               reason: "Low Confidence" | "No Approved Knowledge"
+│       User explicitly asks for a human → router returns ACTION:ESCALATE
+│           → answer_query returns user_requested_human: True
+│           → live_chat_service creates escalation
+│
+│       Low confidence and RAG fallback do NOT trigger escalation.
+│       Escalation is a deliberate user action, not an automatic system response.
+│
+│       If triggered:
+│           create_escalation(conversation, reason="User Requested Human Agent",
+│                             from_agent, confidence)
 │               → creates Nexus Live Escalation
 │               → sets conversation.status = "Escalated"
 │               → sets conversation.escalation_status = "Pending"
@@ -485,6 +514,42 @@ _process_ai_response(conversation_id, payload_json)
 └── 12. publish_chat_response(conversation_id, result)
         → fires nexus_chat_response event with full result payload
 ```
+
+---
+
+## Intent Handlers
+
+Intent Handlers are the customisation layer that sits between the conversational router and the RAG pipeline.
+
+### How they work
+
+1. Global handlers are configured in `Nexus Intent Handler` (admin-managed, system-wide).
+2. Each handler has a natural-language `trigger_description` — the LLM uses this to decide if the user's message matches.
+3. The handler defines what action to take when matched: `escalate` (connect to human) or `predefined_answer` (return a preset response).
+4. `Nexus AI Agent Profile` can override global handlers per-profile using the `intent_overrides` child table (`Nexus Profile Intent Override`).
+5. `resolve_intents_for_profile()` merges global handlers with profile overrides before each conversation turn.
+6. The merged list is passed into the router prompt as `SPECIAL CASES`. The LLM checks them first, before routing rules.
+
+### Action tokens returned by the LLM
+
+| Token | Meaning |
+|---|---|
+| `ACTION:ESCALATE` | User matched the escalation intent; connect to human |
+| `ACTION:PREDEFINED:<name>` | Matched a predefined answer; return the configured response |
+| `ACTION:DECLINED:<name>` | Intent exists but is disabled for this profile; decline gracefully |
+| `ROUTE_TO_KNOWLEDGE` | Needs a knowledge lookup; proceed to RAG |
+| _(text)_ | Conversational response; return directly to user |
+
+### Profile-level customisation
+
+| Override field | Effect |
+|---|---|
+| `disabled = True` | The LLM is told this intent is unavailable; responds with `decline_response` |
+| `override_action_type` | Changes the action for this profile only |
+| `override_response` | Replaces the global `response_template` for this profile |
+| `decline_response` | What to say when the intent is disabled |
+
+See [intent-handlers.md](intent-handlers.md) for the full reference.
 
 ---
 
@@ -570,7 +635,7 @@ Status            Meaning
 ───────────────────────────────────────────────────────
 Open              Conversation created, waiting for first AI response
 Responding        AI agent is processing (agent status also set to "Responding")
-Escalated         Escalation triggered; conversation routed to human queue
+Escalated         User requested human agent; conversation routed to human queue
 Closed            Conversation ended
 
 escalation_status (independent field):
@@ -583,12 +648,12 @@ Rejected          Escalation was rejected
 Status transitions:
 
 ```
-create_conversation()           → Open
+create_conversation()            → Open
 update_conversation_assignment() → Responding
-_process_ai_response() starts  → agent status: Responding
-_process_ai_response() ends    → agent status: Waiting
-should_escalate() = True       → Escalated / escalation_status: Pending
-close_conversation()            → Closed
+_process_ai_response() starts   → agent status: Responding
+_process_ai_response() ends     → agent status: Waiting
+user_requested_human = True     → Escalated / escalation_status: Pending
+close_conversation()             → Closed
 ```
 
 ---
@@ -607,32 +672,32 @@ close_conversation()            → Closed
 
 ---
 
-## Escalation Rules
+## Escalation
 
-Escalation is triggered by `should_escalate()`:
+Escalation is triggered **only** when the user explicitly requests a human agent and `escalation_enabled = True` on the profile.
 
-```python
-def should_escalate(confidence, no_knowledge, user_requested_human,
-                    escalation_enabled, threshold):
-    if not escalation_enabled:
-        return False
-    if user_requested_human:
-        return True       # Always escalate on explicit request
-    if no_knowledge:
-        return True       # Answer is the fallback message
-    if confidence < threshold:
-        return True       # Below confidence threshold
-    return False
+The request is detected by the LLM router, which matches the user message against the "Human Agent Request" intent handler (or any custom escalation intent configured in `Nexus Intent Handler`). When matched, the router returns `ACTION:ESCALATE` and `answer_query` sets `user_requested_human: True` in the response.
+
+```
+User says: "Can I speak to a human?" or "Connect me to support"
+    │
+    ▼
+Router LLM matches "Human Agent Request" intent
+    │
+    ▼
+answer_query returns:
+    { user_requested_human: True, answer: "<template response>" }
+    │
+    ▼
+live_chat_service: user_requested_human = True AND escalation_enabled = True
+    │
+    ▼
+create_escalation(reason="User Requested Human Agent")
 ```
 
-Default confidence threshold: `0.65` (overridden by `behavior.confidence_threshold`).
+**Low confidence and RAG fallback do not trigger escalation.** If the AI cannot find an answer, it responds warmly via the LLM Host and invites a narrower follow-up. The user chooses whether to escalate.
 
-Escalation lookup (`create_escalation`):
-1. Find `Nexus Escalation Rule` where `agent_role` matches the assigned agent's role and `enabled = 1`
-2. Find target from rule: `target_agent` or `target_queue`
-3. If target is a queue: find an available human agent via `Nexus Queue Assignment`
-4. Create `Nexus Live Escalation` record
-5. Mark conversation `Escalated` / `escalation_status = Pending`
+See [escalation.md](escalation.md) for the full escalation flow reference.
 
 ---
 
@@ -655,7 +720,8 @@ If the worker is not running, jobs queue in Redis and process when a worker star
 |---|---|---|
 | `MAX_HISTORY_MESSAGES` | 20 | Max prior messages sent to LLM for context |
 | `CHAT_RESPONSE_SENTENCE_LIMIT` | 6 | Instructs LLM to cap response length |
-| `DEFAULT_FALLBACK_ANSWER` | `"I do not have enough approved knowledge to answer this."` | Used when no answer or empty answer is returned |
+| `MAX_QUERY_CHARS` | 500 | Maximum user message length; longer messages trigger a friendly nudge |
+| `DEFAULT_FALLBACK_ANSWER` | `"I do not have enough approved knowledge to answer this."` | Used when no answer is returned (Q&A mode) |
 
 ---
 
@@ -666,12 +732,14 @@ If the worker is not running, jobs queue in Redis and process when a worker star
 | `Nexus Live Conversation` | One record per conversation session |
 | `Nexus Live Message` | One record per message turn (visitor + AI) |
 | `Nexus Live Agent` | Agent record; status toggled Idle → Responding → Waiting |
-| `Nexus AI Agent Profile` | Behavior, access categories, thresholds |
+| `Nexus AI Agent Profile` | Behavior, access categories, thresholds, intent overrides |
+| `Nexus Profile Intent Override` | Profile-level overrides for global intent handlers (child table on profile) |
+| `Nexus Intent Handler` | Global intent handler definitions (escalation, predefined answers) |
 | `Nexus Chat Category` | Visitor-selectable category; drives routing |
 | `Nexus Category Identity Route` | Maps channel + category + identity_type → AI Agent Profile |
 | `Nexus Identity Registry` | Registered visitor record; holds safe guard access categories |
 | `Nexus Identity Verification Challenge` | OTP/verification record per visitor+category session |
-| `Nexus Live Escalation` | Escalation record created when AI cannot resolve |
+| `Nexus Live Escalation` | Escalation record created when user requests human agent |
 | `Nexus Escalation Rule` | Defines escalation target by agent role |
 | `Nexus Agent Queue` | Human agent queue for escalations |
 | `Nexus Live Channel` | Channel configuration (e.g., WEBSITE-CHAT) |
@@ -684,6 +752,7 @@ If the worker is not running, jobs queue in Redis and process when a worker star
 |---|---|
 | `api/live.py` | HTTP endpoints; payload parsing; delegates to services |
 | `services/live_chat_service.py` | Start/continue chat; enqueue background job; build AI payload |
+| `services/intent_handler_service.py` | Load and merge global intent handlers with profile overrides |
 | `services/chat_realtime.py` | `publish_realtime` wrappers for response, typing, error events |
 | `services/conversation_service.py` | Conversation and message CRUD |
 | `services/agent_router.py` | Agent selection logic |
@@ -693,7 +762,7 @@ If the worker is not running, jobs queue in Redis and process when a worker star
 | `services/identity_verification.py` | OTP/challenge enforcement for categories that require it |
 | `services/escalation_service.py` | Escalation rule lookup and escalation creation |
 | `services/conversation_context_service.py` | Chat history and follow-up query continuity |
-| `digitz_ai_nexus.services.answer_service` | Core retrieval and LLM answer generation (external) |
+| `digitz_ai_nexus.services.answer_service` | Core routing, retrieval, and LLM answer generation (external) |
 
 ---
 
@@ -707,3 +776,4 @@ The desk-facing conversation monitor at `/nexus-live-console`.
 - Sends messages as a desk user via `send_chat_message`
 - Auto-refreshes the conversation list every 15 seconds and after every realtime event
 - Desk user messages are stored as `sender_type = "User"` (not Visitor)
+- Message input is capped at 500 characters with a live character counter

@@ -99,6 +99,7 @@ class NexusLiveConsole {
 								class="nlc-input"
 								placeholder="Type a message…"
 								rows="1"
+								maxlength="500"
 							></textarea>
 							<button class="nlc-send-btn">
 								<svg viewBox="0 0 24 24" fill="currentColor">
@@ -106,6 +107,7 @@ class NexusLiveConsole {
 								</svg>
 							</button>
 						</div>
+						<div class="nlc-char-counter">0 / 500</div>
 					</div>
 				</div>
 			</div>
@@ -136,6 +138,9 @@ class NexusLiveConsole {
 		});
 
 		this.body.on('input', '.nlc-input', function() {
+			const len = $(this).val().length;
+			const counter = $(this).closest('.nlc-chat-panel').find('.nlc-char-counter');
+			counter.text(`${len} / 500`).toggleClass('nlc-char-over', len >= 490);
 			this.style.height = 'auto';
 			this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 		});
@@ -822,6 +827,18 @@ class NexusLiveConsole {
 			width: 18px;
 			height: 18px;
 			fill: #fff;
+		}
+
+		.nlc-char-counter {
+			font-size: 11px;
+			color: #aaa;
+			text-align: right;
+			padding: 2px 8px 0;
+		}
+
+		.nlc-char-counter.nlc-char-over {
+			color: #e53e3e;
+			font-weight: 600;
 		}
 
 		</style>`);

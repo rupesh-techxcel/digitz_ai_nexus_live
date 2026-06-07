@@ -50,9 +50,43 @@ Primary runtime configuration for an AI agent. Owns both behaviour and access go
 | escalation_enabled | Check | Whether this profile may trigger escalation |
 | escalation_policy | Link → Nexus Escalation Rule | |
 | memory_mode | Select | None / Session / Conversation Summary / Long Term |
+| intent_overrides | Table → Nexus Profile Intent Override | Profile-level overrides for global intent handlers |
 | system_notes | Small Text | Internal admin notes |
 
-Autoname: `hash`. Access categories are configured via `Nexus AI Agent Profile Access Category`.
+Autoname: `hash`. Access categories are configured via `Nexus AI Agent Profile Access Category`. Intent handler overrides are configured via the `Intent Handlers` section on the profile form.
+
+---
+
+### Nexus Intent Handler
+
+Global definitions of special-case intents. The LLM router checks user messages against these handlers before routing to knowledge retrieval. Applies to all agent profiles unless overridden.
+
+| Field | Type | Notes |
+|---|---|---|
+| intent_name | Data (unique) | Human-readable name; also the document key |
+| trigger_description | Small Text | Natural-language description of when this intent should fire. The LLM uses this to match user messages. |
+| action_type | Select | `escalate` — connect user to human agent; `predefined_answer` — return a fixed response |
+| response_template | Text | The response delivered when this intent is matched. Required for `predefined_answer`. |
+| priority | Int | Lower number = evaluated first (default 10) |
+| enabled | Check | Whether this handler is active |
+
+Autoname: `field:intent_name`. See [intent-handlers.md](intent-handlers.md) for full reference.
+
+---
+
+### Nexus Profile Intent Override
+
+Child table on `Nexus AI Agent Profile`. Allows profiles to disable, replace, or change the action of any global `Nexus Intent Handler` without affecting other profiles.
+
+| Field | Type | Notes |
+|---|---|---|
+| intent_handler | Link → Nexus Intent Handler | Which global handler to override |
+| disabled | Check | Disable this handler for this profile |
+| override_action_type | Select | Change the action type for this profile only |
+| override_response | Text | Replace the global `response_template` for this profile |
+| decline_response | Text | Message shown when the intent is disabled (`disabled = True`) |
+
+`istable = 1`. Not directly accessible from the DocType list — managed through the `Nexus AI Agent Profile` form.
 
 ---
 
