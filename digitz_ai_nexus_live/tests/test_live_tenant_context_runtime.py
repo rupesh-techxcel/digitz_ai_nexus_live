@@ -334,14 +334,11 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
                 },
             })
 
-        self.assertEqual(result.get("status"), "success")
-        self.assertEqual(result.get("tenant"), TEST_TENANT)
-        self.assertEqual(result.get("business_unit"), TEST_BU)
-        self.assertEqual(result.get("context"), PUBLIC_CONTEXT)
-        self.assertEqual(result.get("channel"), CHAT_CHANNEL)
+        # Fast-return: only conversation_id and status are returned directly
+        self.assertEqual(result.get("status"), "processing")
         self.assertEqual(result.get("agent_code"), PUBLIC_AGENT)
-        self.assertEqual(result.get("tenant_context_applied"), 1)
 
+        # Tenant/context correctness is verified via the payload captured in the background job
         self.assertTrue(captured_payloads)
 
         core_payload = captured_payloads[0]
@@ -377,11 +374,7 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
         ):
             result = start_live_chat(explicit_payload)
 
-        self.assertEqual(result.get("status"), "success")
-        self.assertEqual(result.get("tenant"), TEST_TENANT)
-        self.assertEqual(result.get("business_unit"), TEST_BU)
-        self.assertEqual(result.get("channel"), CHAT_CHANNEL)
-        self.assertEqual(result.get("context"), PUBLIC_CONTEXT)
+        self.assertEqual(result.get("status"), "processing")
 
         core_payload = captured_payloads[0]
 
@@ -410,9 +403,7 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
                 },
             })
 
-        self.assertEqual(result.get("status"), "success")
-        self.assertEqual(result.get("channel"), CHAT_CHANNEL)
-        self.assertEqual(result.get("agent_code"), PUBLIC_AGENT)
+        self.assertEqual(result.get("status"), "processing")
 
         core_payload = captured_payloads[0]
 

@@ -24,12 +24,18 @@ def get_session_user_type(user=None):
     user = user or get_authenticated_session_user()
     if not user:
         return "Guest"
-    return frappe.db.get_value("User", user, "user_type") or "System User"
+    frappe_type = frappe.db.get_value("User", user, "user_type") or "System User"
+    # Map Frappe's internal user_type to the allowed values on Nexus Live Conversation
+    if frappe_type == "System User":
+        return "Desk User"
+    if frappe_type == "Website User":
+        return "Website User"
+    return "Guest"
 
 
 def is_internal_session_user(user=None):
     user = user or get_authenticated_session_user()
-    return bool(user and get_session_user_type(user) == "System User")
+    return bool(user and get_session_user_type(user) == "Desk User")
 
 
 def is_system_manager_session_user(user=None):
@@ -137,7 +143,7 @@ def resolve_behavior_for_internal_user(user):
     if not user or user == "Guest":
         return None
 
-    if get_session_user_type(user) != "System User":
+    if get_session_user_type(user) != "Desk User":
         return None
 
     assignment_name = frappe.db.get_value(

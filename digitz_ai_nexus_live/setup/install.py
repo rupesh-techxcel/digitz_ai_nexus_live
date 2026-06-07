@@ -49,6 +49,13 @@ DEFAULT_LIVE_CHANNEL = {
     "description": "Default public website chat channel.",
 }
 
+DEFAULT_QA_CHANNEL = {
+    "channel_code": "WEBSITE-QA",
+    "channel_name": "Website Q&A",
+    "channel_type": "Website Q&A",
+    "description": "Default public website Q&A channel.",
+}
+
 DEFAULT_CHAT_CATEGORY = {
     "category_code": "GENERAL-SUPPORT",
     "category_label": "General Support",
@@ -83,13 +90,14 @@ def seed_defaults():
 
     tenant = ensure_default_tenant()
     channel = ensure_default_chat_channel()
+    qa_channel = ensure_default_qa_channel()
     category = ensure_default_chat_category(channel)
-    agent = ensure_default_agent(channel)
+    agent = ensure_default_agent(channel, qa_channel)
     profile = ensure_default_ai_agent_profile(agent)
 
     ensure_profile_access_category(profile, "Public Access")
     ensure_default_category_route(channel, category, "Public", profile)
-    ensure_default_ecosystem(tenant, channel)
+    ensure_tenant_configuration(tenant, channel, qa_channel)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live defaults seeded.")
@@ -100,6 +108,7 @@ def seed_defaults():
         "core_seed": core_seed,
         "tenant": tenant,
         "live_channel": channel,
+        "qa_channel": qa_channel,
         "chat_category": category,
         "agent": agent,
         "ai_agent_profile": profile,
@@ -161,6 +170,25 @@ def ensure_default_chat_channel():
     return doc.name
 
 
+def ensure_default_qa_channel():
+    name = DEFAULT_QA_CHANNEL["channel_code"]
+    if frappe.db.exists("Nexus Live Channel", name):
+        doc = frappe.get_doc("Nexus Live Channel", name)
+    else:
+        doc = frappe.new_doc("Nexus Live Channel")
+        doc.channel_code = name
+
+    doc.channel_name = DEFAULT_QA_CHANNEL["channel_name"]
+    doc.channel_type = DEFAULT_QA_CHANNEL["channel_type"]
+    doc.enabled = 1
+    doc.public_access = 1
+    doc.requires_visitor_email = 0
+    doc.agent_based = 0
+    doc.description = DEFAULT_QA_CHANNEL["description"]
+    doc.save(ignore_permissions=True)
+    return doc.name
+
+
 def ensure_default_chat_category(channel):
     name = DEFAULT_CHAT_CATEGORY["category_code"]
     if frappe.db.exists("Nexus Chat Category", name):
@@ -181,7 +209,7 @@ def ensure_default_chat_category(channel):
     return doc.name
 
 
-def ensure_default_agent(channel):
+def ensure_default_agent(channel, qa_channel=None):
     name = DEFAULT_AGENT["agent_code"]
     if frappe.db.exists("Nexus Live Agent", name):
         doc = frappe.get_doc("Nexus Live Agent", name)
@@ -201,7 +229,15 @@ def ensure_default_agent(channel):
     doc.max_active_sessions = 10
     doc.description = DEFAULT_AGENT["description"]
     doc.save(ignore_permissions=True)
-    return doc.name
+
+    # Link agent as the default for the Q&A channel
+    if qa_channel and frappe.db.exists("Nexus Live Channel", qa_channel):
+        qa_doc = frappe.get_doc("Nexus Live Channel", qa_channel)
+        if frappe.get_meta("Nexus Live Channel").has_field("default_agent"):
+            qa_doc.default_agent = name
+            qa_doc.save(ignore_permissions=True)
+
+    return name
 
 
 def ensure_default_ai_agent_profile(agent):
@@ -281,22 +317,22 @@ def ensure_default_category_route(channel, category, identity_type, profile):
     return doc.name
 
 
-def ensure_default_ecosystem(tenant, channel):
+def ensure_tenant_configuration(tenant, channel, qa_channel=None):
     ensure_nexus_master("Nexus Business Unit", "Default", "business_unit_name", tenant)
     ensure_nexus_master("Nexus Public Context", "Website Chat", "public_context_name", tenant)
 
     existing = frappe.get_all(
-        "Nexus Ecosystem",
-        filters={"tenant": tenant, "ecosystem_name": "Default Live"},
+        "Nexus Tenant Configuration",
+        filters={"tenant": tenant, "configuration_name": "Default Live"},
         pluck="name",
         limit_page_length=1,
     )
     if existing:
-        doc = frappe.get_doc("Nexus Ecosystem", existing[0])
+        doc = frappe.get_doc("Nexus Tenant Configuration", existing[0])
     else:
-        doc = frappe.new_doc("Nexus Ecosystem")
+        doc = frappe.new_doc("Nexus Tenant Configuration")
         doc.tenant = tenant
-        doc.ecosystem_name = "Default Live"
+        doc.configuration_name = "Default Live"
 
     doc.ecosystem_type = "Sandbox"
     doc.enabled = 1
@@ -308,7 +344,7 @@ def ensure_default_ecosystem(tenant, channel):
     doc.strict_tenant_mode = 1
     doc.default_top_k = 5
     doc.qa_enabled = 1
-    doc.default_qa_channel = channel
+    doc.default_qa_channel = qa_channel or channel
     doc.live_chat_enabled = 1
     doc.default_chat_channel = channel
     doc.website_widget_enabled = 0

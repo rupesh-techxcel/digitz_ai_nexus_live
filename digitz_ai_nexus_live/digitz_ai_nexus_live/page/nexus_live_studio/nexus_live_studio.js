@@ -49,6 +49,14 @@ class NexusLiveStudio {
 						<button class="btn btn-default nls-action-btn" id="nls-open-profiles">
 							Agent Profiles
 						</button>
+
+						<button class="btn btn-default nls-action-btn" id="nls-open-user-profiles">
+							User Profile Manager
+						</button>
+
+						<button class="btn btn-default nls-action-btn" id="nls-open-identity-registry">
+							Identity Registry
+						</button>
 					</div>
 				</div>
 
@@ -114,6 +122,14 @@ class NexusLiveStudio {
 
 		this.body.on('click', '#nls-open-profiles', function() {
 			frappe.set_route('List', 'Nexus AI Agent Profile');
+		});
+
+		this.body.on('click', '#nls-open-user-profiles', function() {
+			frappe.set_route('nexus-user-profile-manager');
+		});
+
+		this.body.on('click', '#nls-open-identity-registry', function() {
+			frappe.set_route('nexus-identity-registry-manager');
 		});
 	}
 

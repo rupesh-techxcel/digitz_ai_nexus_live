@@ -7,6 +7,10 @@ from digitz_ai_nexus_live.services.live_chat_service import (
     start_live_chat,
     continue_live_chat,
 )
+from digitz_ai_nexus_live.services.conversation_service import (
+    get_conversation,
+    get_conversation_messages,
+)
 
 
 class TestLiveChat(FrappeTestCase):
@@ -169,6 +173,31 @@ class TestLiveChat(FrappeTestCase):
         frappe.db.set_value("Nexus Live Agent", self.agent_name, "current_active_sessions", 0)
         frappe.db.commit()
 
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _get_last_ai_message(self, conversation_id):
+        """Return the last AI Agent message stored for the conversation.
+
+        Because frappe.enqueue uses now=frappe.flags.in_test, the background
+        job runs synchronously in tests so the message is already in DB by the
+        time the service call returns.
+        """
+        conversation = get_conversation(conversation_id)
+        messages = get_conversation_messages(conversation, limit=100)
+        for m in reversed(messages):
+            if m.sender_type == "AI Agent":
+                return m
+        return None
+
+    def _conversation_has_escalation(self, conversation_id):
+        conversation = get_conversation(conversation_id)
+        return bool(frappe.db.exists(
+            "Nexus Live Escalation",
+            {"conversation": conversation.name},
+        ))
+
+    # ── Tests ─────────────────────────────────────────────────────────────────
+
     @patch("digitz_ai_nexus_live.services.live_chat_service.answer_query")
     def test_start_live_chat_success(self, mock_answer_query):
         mock_answer_query.return_value = {
@@ -187,11 +216,16 @@ class TestLiveChat(FrappeTestCase):
             "roles": ["Guest"],
         })
 
-        self.assertEqual(result["status"], "success")
+        # Fast-return — conversation created, AI job enqueued (runs inline in tests)
+        self.assertEqual(result["status"], "processing")
         self.assertEqual(result["agent"], self.agent_name)
-        self.assertEqual(result["confidence"], 0.9)
-        self.assertFalse(result["escalated"])
         self.assertTrue(result["conversation_id"])
+
+        # Background job ran inline — verify AI response is in DB
+        ai_msg = self._get_last_ai_message(result["conversation_id"])
+        self.assertIsNotNone(ai_msg)
+        self.assertAlmostEqual(ai_msg.confidence, 0.9)
+        self.assertFalse(self._conversation_has_escalation(result["conversation_id"]))
 
     @patch("digitz_ai_nexus_live.services.live_chat_service.answer_query")
     def test_continue_live_chat_success(self, mock_answer_query):
@@ -211,6 +245,8 @@ class TestLiveChat(FrappeTestCase):
             "roles": ["Guest"],
         })
 
+        self.assertEqual(start_result["status"], "processing")
+
         mock_answer_query.return_value = {
             "answer": "Follow-up response.",
             "confidence": 0.88,
@@ -228,9 +264,12 @@ class TestLiveChat(FrappeTestCase):
             },
         )
 
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["confidence"], 0.88)
-        self.assertIn("Follow-up", result["message"])
+        self.assertEqual(result["status"], "processing")
+
+        ai_msg = self._get_last_ai_message(result["conversation_id"])
+        self.assertIsNotNone(ai_msg)
+        self.assertAlmostEqual(ai_msg.confidence, 0.88)
+        self.assertIn("Follow-up", ai_msg.message)
 
     @patch("digitz_ai_nexus_live.services.live_chat_service.answer_query")
     def test_live_chat_fallback_escalates(self, mock_answer_query):
@@ -252,9 +291,8 @@ class TestLiveChat(FrappeTestCase):
             "roles": ["Guest"],
         })
 
-        self.assertEqual(result["status"], "success")
-        self.assertTrue(result["escalated"])
-        self.assertIsNotNone(result["escalation"])
+        self.assertEqual(result["status"], "processing")
+        self.assertTrue(self._conversation_has_escalation(result["conversation_id"]))
 
     @patch("digitz_ai_nexus_live.services.live_chat_service.answer_query")
     def test_user_requested_human_escalates(self, mock_answer_query):
@@ -277,6 +315,5 @@ class TestLiveChat(FrappeTestCase):
             "user_requested_human": True,
         })
 
-        self.assertEqual(result["status"], "success")
-        self.assertTrue(result["escalated"])
-        self.assertIsNotNone(result["escalation"])
+        self.assertEqual(result["status"], "processing")
+        self.assertTrue(self._conversation_has_escalation(result["conversation_id"]))

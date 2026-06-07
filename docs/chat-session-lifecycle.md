@@ -1,0 +1,337 @@
+# Chat Initialisation Reference
+
+User stories, DocType references, and function calls for the chat startup and messaging flow.
+
+---
+
+## User Story 1 — Visitor Opens Chat and Sees Categories
+
+**Story:** A visitor lands on the website, opens the chat widget, and sees a list of available chat categories (e.g. "General Support", "Product Enquiry").
+
+**Function call:**
+
+```
+GET api/method/digitz_ai_nexus_live.api.live.get_channel_categories
+    Args: channel, visitor_email (optional)
+```
+
+**What it does:**
+- Looks up active `Nexus Chat Category` records for the given channel
+- Filters out categories with `requires_authentication = 1` for guest visitors
+- Filters out categories that have no enabled `Nexus Category Identity Route` for the visitor's identity type
+
+**DocTypes read:**
+
+| DocType | Why |
+|---|---|
+| `Nexus Chat Category` | Source of categories shown to the visitor |
+| `Nexus Category Identity Route` | Confirms an active route exists before showing the category |
+
+**Response:**
+```json
+{
+    "channel": "WEBSITE-CHAT",
+    "is_authenticated": false,
+    "identity_type": "Public",
+    "categories": [
+        {
+            "name": "GENERAL-SUPPORT",
+            "category_code": "GENERAL-SUPPORT",
+            "category_label": "General Support",
+            "display_order": 1
+        }
+    ]
+}
+```
+
+---
+
+## User Story 2 — Visitor Sends First Message (Chat Initialises)
+
+**Story:** Visitor types a message and clicks Send. The chat initialises, a unique conversation ID is generated, and the AI starts processing.
+
+**Function call:**
+
+```
+POST api/method/digitz_ai_nexus_live.api.live.start_chat
+    Body: { message, channel, chat_category, visitor_name, visitor_email, ... }
+```
+
+**Step-by-step inside `start_chat`:**
+
+```
+start_chat(payload)
+│
+├── 1. apply_session_user_context(payload)
+│       Sets user_type: "Guest" | "Website User" | "System User"
+│
+├── 2. enforce_category_verification(payload)
+│       Checks if the category needs OTP — looks up Nexus Identity Verification Challenge
+│       If verified → sets payload.identity_registry
+│
+├── 3. apply_tenant_context_to_payload(payload)
+│       Fills: tenant, business_unit, project, context, channel
+│       Priority: explicit payload → active Nexus User Context → Nexus Tenant Configuration defaults
+│
+├── 4. resolve_identity_type(payload)
+│       Priority:
+│         1. Explicit identity_type in payload (server-side only)
+│         2. Verified OTP challenge / Nexus Identity Registry match
+│         3. Authenticated session role
+│         4. Fallback → "Public"
+│
+├── 5. resolve_behavior_from_chat_category(category, identity_type, is_authenticated)
+│       Looks up: Nexus Category Identity Route (channel + category + identity_type → profile)
+│       Loads: Nexus AI Agent Profile
+│       Throws if no active route found
+│
+├── 6. resolve_identity_safeguard_access_categories(payload)
+│       Reads: Nexus Identity Registry → Safe Guard access categories
+│       Stored in conversation for all follow-up turns
+│
+├── 7. assign_agent(payload)
+│       Finds first approved Idle AI agent matching channel/role/visibility
+│       Reads: Nexus Live Agent
+│
+├── 8. create_conversation(payload, agent, ai_profile)
+│       Creates: Nexus Live Conversation
+│         - status = "Open"
+│         - conversation_id = unique hex ID (e.g. "ABC123DEF456")
+│         - Snapshots ai_profile_snapshot_json for consistent behavior
+│
+├── 9. update_conversation_assignment(conversation, agent)
+│       Updates: Nexus Live Conversation → status = "Responding"
+│
+├── 10. add_message(conversation, sender_type="Visitor", message)
+│        Creates: Nexus Live Message
+│
+├── 11. frappe.enqueue(_process_ai_response, queue="short", timeout=120s)
+│        Background job — visitor does not wait
+│
+└── 12. Return immediately:
+        { status: "processing", conversation_id, agent_code, agent_name }
+```
+
+**DocTypes written/read:**
+
+| DocType | Action | Why |
+|---|---|---|
+| `Nexus Live Conversation` | Created | One record per chat session; holds conversation_id |
+| `Nexus Live Message` | Created | Stores the visitor's first message |
+| `Nexus Live Agent` | Read + status set | Agent assigned to this conversation |
+| `Nexus Chat Category` | Read | Validates category and loads routing config |
+| `Nexus Category Identity Route` | Read | Maps category + identity_type → AI Agent Profile |
+| `Nexus AI Agent Profile` | Read | Determines behavior, access categories, thresholds |
+| `Nexus Identity Registry` | Read | Loads safe guard access categories for registered visitors |
+| `Nexus Identity Verification Challenge` | Read | Checks if visitor passed OTP for this category |
+| `Nexus Tenant Configuration` | Read | Fills default tenant, channel, business_unit |
+
+**conversation_id:** Generated as a random hex string at conversation creation time. It is not a Frappe autoname — it is a separate field stored on `Nexus Live Conversation` alongside the document name (`NLC-00001`). The client receives it in the response and must include it in all follow-up calls.
+
+**Response:**
+```json
+{
+    "status": "processing",
+    "conversation": "NLC-00001",
+    "conversation_id": "ABC123DEF456",
+    "agent": "PUBLIC-AI-ASSISTANT",
+    "agent_code": "PUBLIC-AI-ASSISTANT",
+    "agent_name": "Public AI Assistant"
+}
+```
+
+---
+
+## User Story 3 — AI Answer Arrives in the Browser
+
+**Story:** The visitor sees a typing indicator, then the AI answer appears — without the page reloading or the browser polling.
+
+**This happens in the background worker:**
+
+```
+_process_ai_response(conversation_id, payload_json)
+│
+├── 1. Load Nexus Live Conversation
+├── 2. Load Nexus Live Agent
+│
+├── 3. _resolve_behavior(payload, conversation, agent)
+│       Priority:
+│         a) ai_profile_snapshot_json on conversation (follow-up consistency)
+│         b) Internal user's Nexus User Profile Assignment
+│         c) chat_category → Nexus Category Identity Route → Nexus AI Agent Profile
+│         d) Agent's own profile (legacy path)
+│
+├── 4. set_agent_status(agent, "Responding")
+│       Updates: Nexus Live Agent
+│
+├── 5. publish_chat_typing(conversation_id)
+│       Fires Socket.io event: nexus_chat_typing
+│       → Browser shows typing indicator
+│
+├── 6. build_core_chat_payload(payload, conversation, agent, behavior)
+│   ├── build_chat_continuity_payload()  — detects follow-up, builds conversation_context
+│   ├── build_chat_history()             — loads last 20 Nexus Live Message records
+│   ├── _build_ai_profile_dict(behavior) — packages tone, fallback, rules, thresholds
+│   └── resolve_allowed_policies(...)    — computes final allowed access policies
+│           = Profile access categories ∩ Identity safe guard categories
+│           = ["Public"] when force_public_only = True
+│
+├── 7. answer_query(core_payload)        ← digitz_ai_nexus core
+│       (see retrieval-and-answer.md for the full pipeline)
+│       Returns: { answer, confidence, sources, access_status }
+│
+├── 8. Fallback resolution
+│       Empty answer → use behavior.fallback_message or default fallback
+│
+├── 9. add_message(conversation, sender_type="AI Agent", message, confidence, sources)
+│       Creates: Nexus Live Message
+│
+├── 10. set_agent_status(agent, "Waiting")
+│
+├── 11. Escalation check (should_escalate)
+│       Escalates when ANY of:
+│         - user_requested_human = True
+│         - answer is the fallback message (no knowledge)
+│         - confidence < confidence_threshold (default 0.65)
+│       AND escalation_enabled = True on the profile
+│       Creates: Nexus Live Escalation, updates conversation status = "Escalated"
+│
+└── 12. publish_chat_response(conversation_id, result)
+        Fires Socket.io event: nexus_chat_response
+        → Browser renders AI message
+```
+
+**DocTypes written/read:**
+
+| DocType | Action | Why |
+|---|---|---|
+| `Nexus Live Conversation` | Read + updated | Load context; update status |
+| `Nexus Live Agent` | Updated | Status toggled Responding → Waiting |
+| `Nexus Live Message` | Created | AI answer stored |
+| `Nexus AI Agent Profile` | Read | Behavior, thresholds, access categories |
+| `Nexus Access Category` | Read | Resolves allowed policies from profile |
+| `Nexus Access Policy` | Read | Final retrieval filter applied to chunks |
+| `Nexus Knowledge Chunk` | Read | Filtered by access_policy, scored, returned as sources |
+| `Nexus Query Log` | Created | Audit record of every query |
+| `Nexus Live Escalation` | Created (if triggered) | Escalation record |
+
+**Realtime events:**
+
+| Event | When | Payload key |
+|---|---|---|
+| `nexus_chat_typing` | Before AI pipeline starts | `conversation_id` |
+| `nexus_chat_response` | After AI answer is ready | `conversation_id`, `message`, `confidence`, `sources`, `escalated` |
+
+**Client-side listener:**
+```javascript
+frappe.realtime.on("nexus_chat_response", function(data) {
+    if (data.conversation_id !== my_conversation_id) return;
+    hide_typing_indicator();
+    if (data.status === "error") {
+        show_error(data.error);
+    } else {
+        render_message(data.message, data.confidence);
+    }
+});
+```
+
+---
+
+## User Story 4 — Visitor Sends a Follow-up Message
+
+**Story:** Visitor reads the AI answer and asks a follow-up question. The chat uses the same conversation and remembers context.
+
+**Function call:**
+
+```
+POST api/method/digitz_ai_nexus_live.api.live.send_chat_message
+    Args: conversation_id
+    Body: { message }
+```
+
+**Step-by-step inside `send_chat_message`:**
+
+```
+send_chat_message(conversation_id, payload)
+│
+├── 1. apply_session_user_context(payload)
+│
+├── 2. get_conversation(conversation_id)
+│       Reads: Nexus Live Conversation — throws if not found or no agent assigned
+│
+├── 3. enrich_payload_from_conversation(payload, conversation)
+│       Restores: tenant, channel, chat_category, identity_type,
+│                 identity_registry, context, sub_context, entity_type
+│       Restores: identity_safeguard_access_categories from conversation JSON
+│
+├── 4. add_message(conversation, sender_type="Visitor"|"User", message)
+│       Creates: Nexus Live Message
+│
+├── 5. frappe.enqueue(_process_ai_response, queue="short", timeout=120s)
+│
+└── 6. Return immediately:
+        { status: "processing", conversation_id }
+```
+
+**Key difference from start_chat:**
+- No agent assignment (already assigned)
+- No identity/profile resolution (restored from conversation snapshot)
+- `build_chat_continuity_payload()` detects `is_follow_up = True` and injects prior message pairs as `conversation_context`
+
+**DocTypes read/written:**
+
+| DocType | Action | Why |
+|---|---|---|
+| `Nexus Live Conversation` | Read | Load stored identity, profile, tenant, channel |
+| `Nexus Live Message` | Created (visitor) + Created (AI) | New turn stored |
+
+---
+
+## Conversation ID vs Document Name
+
+| Identifier | Example | Where used |
+|---|---|---|
+| Document name | `NLC-00001` | Frappe internal reference; used in desk links |
+| `conversation_id` | `ABC123DEF456` | Client-facing token; sent in all API calls and realtime events |
+
+`get_conversation()` accepts either. The client always uses `conversation_id`.
+
+---
+
+## Conversation Status Lifecycle
+
+```
+create_conversation()             → Open
+update_conversation_assignment()  → Responding
+_process_ai_response() ends       → (implicit Waiting — agent status changes)
+should_escalate() = True          → Escalated  (escalation_status = Pending)
+close_conversation()              → Closed
+```
+
+---
+
+## Access Policy Resolution (summary)
+
+```
+resolve_allowed_policies(ai_profile, identity_safeguard_access_categories, force_public_only)
+│
+├── force_public_only = True  →  ["Public"] only (guest with no named profile)
+│
+└── force_public_only = False →  Profile access categories → their Nexus Access Policies
+                                 ∩ Identity Registry safe guard policies (if registered visitor)
+```
+
+An empty result fails closed — retrieval is denied, not opened.
+
+---
+
+## Quick Troubleshooting Reference
+
+| Symptom | What to check |
+|---|---|
+| `start_chat` returns error "no active route found" | `Nexus Category Identity Route` — verify channel + category + identity_type combination exists and is enabled |
+| `start_chat` returns error "no agent available" | `Nexus Live Agent` — check an approved, Idle agent exists for the channel |
+| AI answer never arrives (typing indicator stays) | Background worker — run `bench worker --queue short`; check Redis |
+| Answer is the fallback "I do not have enough approved knowledge" | `Nexus Knowledge Chunk` — verify chunks exist, are Published, and `access_policy` matches the resolved allowed policies |
+| Escalation triggers unexpectedly | `Nexus AI Agent Profile.confidence_threshold` — default is 0.65; lower it if knowledge is sparse |
+| `conversation_id` not found on follow-up | Client is sending document name (`NLC-00001`) instead of `conversation_id` hex string |

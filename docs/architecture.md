@@ -189,8 +189,8 @@ This app calls into `digitz_ai_nexus` for all AI work:
 | Nexus Core Service | Called By | Purpose |
 |---|---|---|
 | `services.answer_service.answer_query` | `live_qa_service`, `live_chat_service` | Answer a query using retrieval + LLM |
-| `services.tenant_context.apply_tenant_context_to_payload` | Both services | Enrich payload with tenant defaults; Chat and Q&A use their purpose-specific ecosystem channel defaults |
-| `services.tenant_context.resolve_tenant_context` | Both services | Resolve tenant, user context, and tenant ecosystem defaults |
+| `services.tenant_context.apply_tenant_context_to_payload` | Both services | Enrich payload with tenant defaults; Chat and Q&A use their purpose-specific channel defaults from tenant configuration |
+| `services.tenant_context.resolve_tenant_context` | Both services | Resolve tenant, user context, and tenant configuration defaults |
 | `engine.access_resolver.resolve_allowed_policies` | Both services | Compute allowed access policies |
 
 This app never calls OpenAI directly. All LLM and embedding calls go through Nexus Core.

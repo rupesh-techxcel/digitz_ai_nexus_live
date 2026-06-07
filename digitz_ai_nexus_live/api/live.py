@@ -6,6 +6,10 @@ from digitz_ai_nexus_live.services.live_chat_service import (
     start_live_chat,
     continue_live_chat,
 )
+from digitz_ai_nexus_live.services.conversation_service import (
+    get_conversation,
+    get_conversation_messages,
+)
 from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 
 
@@ -104,11 +108,8 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
 
 @frappe.whitelist(allow_guest=True)
 def ask_question(payload=None):
-    """
-    Public / internal Q And A API endpoint.
-    """
+    """Public / internal Q And A API endpoint."""
     payload = parse_payload(payload)
-
     return ask_live_question(payload)
 
 
@@ -116,16 +117,19 @@ def ask_question(payload=None):
 def start_chat(payload=None):
     """
     Start a new live chat conversation.
+    Returns immediately with conversation_id and status=processing.
+    The AI response is pushed via frappe.realtime event "nexus_chat_response".
     """
     payload = parse_payload(payload)
-
     return start_live_chat(payload)
 
 
 @frappe.whitelist(allow_guest=True)
 def send_chat_message(conversation_id=None, payload=None):
     """
-    Continue an existing live chat conversation.
+    Send a message in an existing live chat conversation.
+    Returns immediately with status=processing.
+    The AI response is pushed via frappe.realtime event "nexus_chat_response".
     """
     if not conversation_id:
         frappe.throw("Conversation ID is required.")
@@ -136,3 +140,83 @@ def send_chat_message(conversation_id=None, payload=None):
         conversation_id=conversation_id,
         payload=payload,
     )
+
+
+@frappe.whitelist()
+def get_active_conversations(limit=50):
+    """
+    Return active conversations for the Live Console.
+    Desk users only.
+    """
+    conversations = frappe.get_all(
+        "Nexus Live Conversation",
+        filters={"status": ["in", ["Open", "Responding", "Escalated"]]},
+        fields=[
+            "name",
+            "conversation_id",
+            "conversation_type",
+            "status",
+            "escalation_status",
+            "assigned_agent",
+            "assigned_agent_type",
+            "channel",
+            "chat_category",
+            "resolved_identity_type",
+            "user_type",
+            "visitor_name",
+            "visitor_email",
+            "last_message",
+            "last_response",
+            "confidence",
+            "started_on",
+        ],
+        order_by="started_on desc",
+        limit_page_length=int(limit),
+    )
+
+    return {"conversations": conversations}
+
+
+@frappe.whitelist()
+def get_conversation_detail(conversation_id=None):
+    """
+    Return full conversation metadata + messages for the Live Console.
+    Desk users only.
+    """
+    if not conversation_id:
+        frappe.throw("Conversation ID is required.")
+
+    conversation = get_conversation(conversation_id)
+
+    if not conversation:
+        frappe.throw("Conversation not found.")
+
+    messages = get_conversation_messages(conversation=conversation, limit=100)
+
+    return {
+        "conversation": {
+            "name": conversation.name,
+            "conversation_id": conversation.conversation_id,
+            "status": conversation.status,
+            "escalation_status": conversation.escalation_status,
+            "assigned_agent": conversation.assigned_agent,
+            "channel": conversation.channel,
+            "chat_category": conversation.chat_category,
+            "resolved_identity_type": conversation.resolved_identity_type,
+            "user_type": conversation.user_type,
+            "visitor_name": conversation.visitor_name,
+            "visitor_email": conversation.visitor_email,
+            "started_on": str(conversation.started_on) if conversation.started_on else None,
+        },
+        "messages": [
+            {
+                "name": m.name,
+                "sender_type": m.sender_type,
+                "sender_agent": m.sender_agent,
+                "message": m.message,
+                "confidence": m.confidence,
+                "message_time": str(m.message_time) if m.message_time else None,
+            }
+            for m in messages
+        ],
+    }

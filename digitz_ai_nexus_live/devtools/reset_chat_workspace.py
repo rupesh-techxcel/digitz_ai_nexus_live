@@ -70,7 +70,7 @@ RESET_GROUPS = [
             "Nexus Access Category",
             "Nexus Access Policy",
             "Nexus User Context",
-            "Nexus Ecosystem",
+            "Nexus Tenant Configuration",
             "Nexus Tenant",
         ],
     ),

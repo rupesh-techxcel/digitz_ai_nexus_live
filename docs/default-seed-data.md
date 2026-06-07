@@ -38,7 +38,7 @@ These records are owned by `digitz_ai_nexus` and provide the access and tenant f
 |---|---|---|
 | Nexus Tenant | `DIGITZ-NEXUS` | Default tenant for setup and validation |
 
-### Ecosystem Defaults
+### Tenant Configuration Defaults
 
 The Live install seed also creates the tenant runtime defaults used by context resolution:
 
@@ -46,7 +46,7 @@ The Live install seed also creates the tenant runtime defaults used by context r
 |---|---|---|
 | Nexus Business Unit | `Default` | Default business-unit scope |
 | Nexus Public Context | `Website Chat` | Default public context for website chat |
-| Nexus Ecosystem | `Default Live` | Default ecosystem for `DIGITZ-NEXUS`; sets Q&A and chat channel defaults to `WEBSITE-CHAT` |
+| Nexus Tenant Configuration | `Default Live` | Default tenant configuration for `DIGITZ-NEXUS`; sets Q&A and chat channel defaults to `WEBSITE-CHAT` |
 
 `Default Live` is marked enabled and tenant-default. It is intended as a starting point for validation, not a required production naming convention.
 

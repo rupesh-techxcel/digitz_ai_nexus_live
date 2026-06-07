@@ -31,6 +31,11 @@ from digitz_ai_nexus_live.services.escalation_service import (
 from digitz_ai_nexus_live.services.conversation_context_service import (
     build_chat_continuity_payload,
 )
+from digitz_ai_nexus_live.services.chat_realtime import (
+    publish_chat_response,
+    publish_chat_typing,
+    publish_chat_error,
+)
 
 from digitz_ai_nexus.services.answer_service import answer_query
 from digitz_ai_nexus.services.tenant_context import apply_tenant_context_to_payload
@@ -120,7 +125,6 @@ def enrich_payload_from_conversation(payload, conversation):
 
 
 def _build_ai_profile_dict(behavior):
-    """Build the ai_profile dict for query_contract from resolved behaviour."""
     if not behavior:
         return {}
 
@@ -289,8 +293,6 @@ def start_live_chat(payload):
         require_tenant=True,
     )
 
-    # Resolve profile before agent assignment so category-routed chat uses the
-    # agent owned by the resolved AI Agent Profile.
     ai_profile_override = None
     chat_category = payload.get("chat_category")
     session_user = get_authenticated_session_user()
@@ -346,15 +348,28 @@ def start_live_chat(payload):
         ai_profile_override=ai_profile_override,
     )
 
-    conversation = update_conversation_assignment(
-        conversation,
-        agent,
+    conversation = update_conversation_assignment(conversation, agent)
+
+    # Store the visitor's first message immediately
+    sender_type = "Visitor" if payload.get("user_type", "Guest") == "Guest" else "User"
+    add_message(
+        conversation=conversation,
+        sender_type=sender_type,
+        message=message,
+        response_mode="chat",
     )
 
-    return continue_live_chat(
-        conversation_id=conversation.conversation_id,
-        payload=payload,
-    )
+    # Enqueue AI processing — returns immediately to the client
+    _enqueue_ai_response(conversation.conversation_id, payload)
+
+    return {
+        "status": "processing",
+        "conversation": conversation.name,
+        "conversation_id": conversation.conversation_id,
+        "agent": agent.name,
+        "agent_code": agent.agent_code,
+        "agent_name": agent.display_name or agent.agent_name,
+    }
 
 
 def continue_live_chat(conversation_id, payload):
@@ -381,148 +396,173 @@ def continue_live_chat(conversation_id, payload):
         conversation=conversation,
     )
 
-    agent = frappe.get_doc(
-        "Nexus Live Agent",
-        conversation.assigned_agent,
-    )
-
-    behavior = _resolve_behavior(payload=payload, conversation=conversation, agent=agent)
-
-    set_agent_status(
-        agent,
-        "Responding",
-        conversation=conversation.name,
-        remarks="AI agent responding in live chat.",
-    )
-
+    # Store the visitor's message immediately
+    sender_type = "Visitor" if payload.get("user_type", "Guest") == "Guest" else "User"
     add_message(
         conversation=conversation,
-        sender_type="Visitor" if payload.get("user_type", "Guest") == "Guest" else "User",
+        sender_type=sender_type,
         message=message,
         response_mode="chat",
     )
 
-    core_payload = build_core_chat_payload(
-        payload=payload,
-        conversation=conversation,
-        agent=agent,
-        behavior=behavior,
+    # Enqueue AI processing — returns immediately to the client
+    _enqueue_ai_response(conversation.conversation_id, payload)
+
+    return {
+        "status": "processing",
+        "conversation": conversation.name,
+        "conversation_id": conversation.conversation_id,
+    }
+
+
+def _enqueue_ai_response(conversation_id, payload):
+    frappe.enqueue(
+        "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
+        conversation_id=conversation_id,
+        payload_json=json.dumps(payload, default=str),
+        queue="short",
+        timeout=120,
+        now=frappe.flags.in_test,
     )
 
+
+def _process_ai_response(conversation_id, payload_json):
+    """Background job: run the AI pipeline and push the answer via realtime."""
     try:
-        core_response = answer_query(core_payload)
-    except Exception:
-        frappe.log_error(
-            frappe.get_traceback(),
-            "Nexus Live Chat Core Answer Failed",
+        payload = json.loads(payload_json)
+        conversation = get_conversation(conversation_id)
+
+        if not conversation:
+            return
+
+        agent = frappe.get_doc("Nexus Live Agent", conversation.assigned_agent)
+        behavior = _resolve_behavior(payload=payload, conversation=conversation, agent=agent)
+
+        set_agent_status(
+            agent,
+            "Responding",
+            conversation=conversation.name,
+            remarks="AI agent responding in live chat.",
+        )
+
+        publish_chat_typing(conversation_id)
+
+        core_payload = build_core_chat_payload(
+            payload=payload,
+            conversation=conversation,
+            agent=agent,
+            behavior=behavior,
+        )
+
+        try:
+            core_response = answer_query(core_payload)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Nexus Live Chat Core Answer Failed")
+
+            set_agent_status(
+                agent,
+                "Waiting",
+                conversation=conversation.name,
+                remarks="AI agent response failed. Waiting for next visitor message.",
+            )
+
+            publish_chat_error(conversation_id, "AI response failed. Please try again.")
+            return
+
+        answer = core_response.get("answer") if isinstance(core_response, dict) else None
+        confidence = core_response.get("confidence") if isinstance(core_response, dict) else None
+        sources = core_response.get("sources") if isinstance(core_response, dict) else []
+        retrieval_debug = core_response.get("retrieval_debug") if isinstance(core_response, dict) else {}
+
+        fallback_message = (
+            behavior.fallback_message
+            if behavior and behavior.fallback_message
+            else DEFAULT_FALLBACK_ANSWER
+        )
+
+        if not answer:
+            answer = fallback_message
+
+        if answer.strip() == DEFAULT_FALLBACK_ANSWER and fallback_message != DEFAULT_FALLBACK_ANSWER:
+            answer = fallback_message
+
+        add_message(
+            conversation=conversation,
+            sender_type="AI Agent",
+            sender_agent=agent.name,
+            message=answer,
+            response_mode="chat",
+            confidence=confidence,
+            sources=sources,
+            retrieval_debug=retrieval_debug,
         )
 
         set_agent_status(
             agent,
             "Waiting",
             conversation=conversation.name,
-            remarks="AI agent response failed. Waiting for next visitor message.",
+            remarks="Waiting for next visitor message.",
         )
 
-        raise
+        no_knowledge = (
+            answer.strip() == DEFAULT_FALLBACK_ANSWER
+            or answer.strip() == fallback_message
+        )
 
-    answer = core_response.get("answer") if isinstance(core_response, dict) else None
-    confidence = core_response.get("confidence") if isinstance(core_response, dict) else None
-    sources = core_response.get("sources") if isinstance(core_response, dict) else []
-    retrieval_debug = core_response.get("retrieval_debug") if isinstance(core_response, dict) else {}
+        threshold = (
+            behavior.confidence_threshold
+            if behavior and behavior.confidence_threshold is not None
+            else 0.65
+        )
 
-    fallback_message = (
-        behavior.fallback_message
-        if behavior and behavior.fallback_message
-        else DEFAULT_FALLBACK_ANSWER
-    )
+        escalation_enabled = (
+            bool(behavior.escalation_enabled)
+            if behavior and behavior.escalation_enabled is not None
+            else True
+        )
 
-    if not answer:
-        answer = fallback_message
+        escalation_created = None
 
-    if answer.strip() == DEFAULT_FALLBACK_ANSWER and fallback_message != DEFAULT_FALLBACK_ANSWER:
-        answer = fallback_message
-
-    add_message(
-        conversation=conversation,
-        sender_type="AI Agent",
-        sender_agent=agent.name,
-        message=answer,
-        response_mode="chat",
-        confidence=confidence,
-        sources=sources,
-        retrieval_debug=retrieval_debug,
-    )
-
-    set_agent_status(
-        agent,
-        "Waiting",
-        conversation=conversation.name,
-        remarks="Waiting for next visitor message.",
-    )
-
-    no_knowledge = (
-        answer.strip() == DEFAULT_FALLBACK_ANSWER
-        or answer.strip() == fallback_message
-    )
-
-    threshold = (
-        behavior.confidence_threshold
-        if behavior and behavior.confidence_threshold is not None
-        else 0.65
-    )
-
-    escalation_enabled = (
-        bool(behavior.escalation_enabled)
-        if behavior and behavior.escalation_enabled is not None
-        else True
-    )
-
-    escalation_created = None
-
-    if should_escalate(
-        confidence=confidence,
-        no_knowledge=no_knowledge,
-        user_requested_human=payload.get("user_requested_human") or False,
-        escalation_enabled=escalation_enabled,
-        threshold=threshold,
-    ):
-        escalation_created = create_escalation(
-            conversation=conversation,
-            reason="Low Confidence" if not no_knowledge else "No Approved Knowledge",
-            from_agent=agent,
+        if should_escalate(
             confidence=confidence,
-            remarks="Auto escalation triggered from Live Chat.",
-        )
+            no_knowledge=no_knowledge,
+            user_requested_human=payload.get("user_requested_human") or False,
+            escalation_enabled=escalation_enabled,
+            threshold=threshold,
+        ):
+            escalation_created = create_escalation(
+                conversation=conversation,
+                reason="Low Confidence" if not no_knowledge else "No Approved Knowledge",
+                from_agent=agent,
+                confidence=confidence,
+                remarks="Auto escalation triggered from Live Chat.",
+            )
 
-    resolved_context = payload.get("_resolved_tenant_context") or {}
+        resolved_context = payload.get("_resolved_tenant_context") or {}
 
-    return {
-        "status": "success",
-        "conversation": conversation.name,
-        "conversation_id": conversation.conversation_id,
-        "agent": agent.name,
-        "agent_code": agent.agent_code,
-        "agent_name": agent.display_name or agent.agent_name,
+        publish_chat_response(conversation_id, {
+            "status": "success",
+            "conversation": conversation.name,
+            "agent": agent.name,
+            "agent_code": agent.agent_code,
+            "agent_name": agent.display_name or agent.agent_name,
 
-        "message": answer,
-        "answer": answer,
-        "confidence": confidence,
-        "sources": sources,
-        "retrieval_debug": retrieval_debug,
+            "message": answer,
+            "answer": answer,
+            "confidence": confidence,
+            "sources": sources,
 
-        "escalated": bool(escalation_created),
-        "escalation": escalation_created.name if escalation_created else None,
+            "escalated": bool(escalation_created),
+            "escalation": escalation_created.name if escalation_created else None,
 
-        "confidence_threshold": threshold,
-        "confidence_threshold_source": behavior.confidence_threshold_source if behavior else None,
-        "fallback_used": 1 if no_knowledge else 0,
+            "confidence_threshold": threshold,
+            "fallback_used": 1 if no_knowledge else 0,
 
-        "tenant": payload.get("tenant"),
-        "business_unit": payload.get("business_unit"),
-        "project": payload.get("project"),
-        "channel": payload.get("channel"),
-        "context": payload.get("context"),
-        "resolved_tenant_context": resolved_context,
-        "tenant_context_applied": 1 if resolved_context else 0,
-    }
+            "tenant": payload.get("tenant"),
+            "channel": payload.get("channel"),
+            "resolved_tenant_context": resolved_context,
+        })
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Nexus Live Chat Background Processing Failed")
+        publish_chat_error(conversation_id, "An error occurred processing your message.")

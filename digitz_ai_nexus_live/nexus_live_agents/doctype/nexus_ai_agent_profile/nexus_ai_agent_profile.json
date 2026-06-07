@@ -1,172 +1,175 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "autoname": "hash",
-  "creation": "2026-05-10 00:00:00.000000",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "agent",
-    "behavior_prompt",
-    "tone",
-    "response_style",
-    "welcome_message",
-    "fallback_message",
-    "do_not_answer_rules",
-    "default_response_mode",
-    "section_knowledge_scope",
-    "knowledge_scope",
-    "allowed_business_units_json",
-    "allowed_projects_json",
-    "allowed_contexts_json",
-    "confidence_threshold",
-    "escalation_enabled",
-    "escalation_policy",
-    "memory_mode",
-    "system_notes"
-  ],
-  "fields": [
-    {
-      "fieldname": "agent",
-      "fieldtype": "Link",
-      "label": "Agent",
-      "options": "Nexus Live Agent",
-      "reqd": 1,
-      "unique": 1
-    },
-    {
-      "fieldname": "behavior_prompt",
-      "fieldtype": "Long Text",
-      "label": "Behavior Prompt",
-      "reqd": 1
-    },
-    {
-      "default": "Professional",
-      "description": "Free text. e.g. Professional, Friendly, Executive, Consultative, Technical, Supportive",
-      "fieldname": "tone",
-      "fieldtype": "Data",
-      "label": "Tone"
-    },
-    {
-      "default": "Balanced",
-      "description": "Free text. e.g. Concise, Balanced, Detailed, Step-by-step",
-      "fieldname": "response_style",
-      "fieldtype": "Data",
-      "label": "Response Style"
-    },
-    {
-      "fieldname": "welcome_message",
-      "fieldtype": "Small Text",
-      "label": "Welcome Message"
-    },
-    {
-      "default": "I do not have enough approved knowledge to answer this.",
-      "fieldname": "fallback_message",
-      "fieldtype": "Small Text",
-      "label": "Fallback Message"
-    },
-    {
-      "fieldname": "do_not_answer_rules",
-      "fieldtype": "Long Text",
-      "label": "Do Not Answer Rules"
-    },
-    {
-      "default": "chat",
-      "fieldname": "default_response_mode",
-      "fieldtype": "Select",
-      "label": "Default Response Mode",
-      "options": "qa\nchat"
-    },
-    {
-      "fieldname": "section_knowledge_scope",
-      "fieldtype": "Section Break",
-      "label": "Knowledge Scope (Legacy)"
-    },
-    {
-      "default": "Governed",
-      "description": "Legacy field. Access scope is now governed through Nexus AI Agent Profile Access Category. This field is retained for reference only and does not drive enforcement.",
-      "fieldname": "knowledge_scope",
-      "fieldtype": "Select",
-      "label": "Knowledge Scope (Legacy)",
-      "options": "Public Only\nGoverned\nInternal Restricted"
-    },
-    {
-      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-      "fieldname": "allowed_business_units_json",
-      "fieldtype": "Code",
-      "label": "Allowed Business Units JSON (Legacy)",
-      "options": "JSON"
-    },
-    {
-      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-      "fieldname": "allowed_projects_json",
-      "fieldtype": "Code",
-      "label": "Allowed Projects JSON (Legacy)",
-      "options": "JSON"
-    },
-    {
-      "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-      "fieldname": "allowed_contexts_json",
-      "fieldtype": "Code",
-      "label": "Allowed Contexts JSON (Legacy)",
-      "options": "JSON"
-    },
-    {
-      "default": 0.65,
-      "fieldname": "confidence_threshold",
-      "fieldtype": "Float",
-      "label": "Confidence Threshold"
-    },
-    {
-      "default": 1,
-      "fieldname": "escalation_enabled",
-      "fieldtype": "Check",
-      "label": "Escalation Enabled"
-    },
-    {
-      "fieldname": "escalation_policy",
-      "fieldtype": "Link",
-      "label": "Escalation Policy",
-      "options": "Nexus Escalation Rule"
-    },
-    {
-      "default": "Session",
-      "fieldname": "memory_mode",
-      "fieldtype": "Select",
-      "label": "Memory Mode",
-      "options": "None\nSession\nConversation Summary\nLong Term"
-    },
-    {
-      "fieldname": "system_notes",
-      "fieldtype": "Small Text",
-      "label": "System Notes"
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "istable": 0,
-  "links": [],
-  "modified": "2026-06-02 00:00:00.000000",
-  "modified_by": "Administrator",
-  "module": "Nexus Live Agents",
-  "name": "Nexus AI Agent Profile",
-  "naming_rule": "Expression",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-05-10 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "agent",
+  "behavior_prompt",
+  "tone",
+  "response_style",
+  "welcome_message",
+  "fallback_message",
+  "do_not_answer_rules",
+  "default_response_mode",
+  "section_knowledge_scope",
+  "knowledge_scope",
+  "allowed_business_units_json",
+  "allowed_projects_json",
+  "allowed_contexts_json",
+  "confidence_threshold",
+  "escalation_enabled",
+  "escalation_policy",
+  "memory_mode",
+  "system_notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "agent",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Agent",
+   "options": "Nexus Live Agent",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "behavior_prompt",
+   "fieldtype": "Long Text",
+   "in_list_view": 1,
+   "label": "Behavior Prompt",
+   "reqd": 1
+  },
+  {
+   "default": "Professional",
+   "description": "Free text. e.g. Professional, Friendly, Executive, Consultative, Technical, Supportive",
+   "fieldname": "tone",
+   "fieldtype": "Data",
+   "label": "Tone"
+  },
+  {
+   "default": "Balanced",
+   "description": "Free text. e.g. Concise, Balanced, Detailed, Step-by-step",
+   "fieldname": "response_style",
+   "fieldtype": "Data",
+   "label": "Response Style"
+  },
+  {
+   "fieldname": "welcome_message",
+   "fieldtype": "Small Text",
+   "label": "Welcome Message"
+  },
+  {
+   "default": "I do not have enough approved knowledge to answer this.",
+   "fieldname": "fallback_message",
+   "fieldtype": "Small Text",
+   "label": "Fallback Message"
+  },
+  {
+   "fieldname": "do_not_answer_rules",
+   "fieldtype": "Long Text",
+   "label": "Do Not Answer Rules"
+  },
+  {
+   "default": "chat",
+   "fieldname": "default_response_mode",
+   "fieldtype": "Select",
+   "label": "Default Response Mode",
+   "options": "qa\nchat"
+  },
+  {
+   "fieldname": "section_knowledge_scope",
+   "fieldtype": "Section Break",
+   "label": "Knowledge Scope (Legacy)"
+  },
+  {
+   "default": "Governed",
+   "description": "Legacy field. Access scope is now governed through Nexus AI Agent Profile Access Category. This field is retained for reference only and does not drive enforcement.",
+   "fieldname": "knowledge_scope",
+   "fieldtype": "Select",
+   "label": "Knowledge Scope (Legacy)",
+   "options": "Public Only\nGoverned\nInternal Restricted"
+  },
+  {
+   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
+   "fieldname": "allowed_business_units_json",
+   "fieldtype": "Code",
+   "label": "Allowed Business Units JSON (Legacy)",
+   "options": "JSON"
+  },
+  {
+   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
+   "fieldname": "allowed_projects_json",
+   "fieldtype": "Code",
+   "label": "Allowed Projects JSON (Legacy)",
+   "options": "JSON"
+  },
+  {
+   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
+   "fieldname": "allowed_contexts_json",
+   "fieldtype": "Code",
+   "label": "Allowed Contexts JSON (Legacy)",
+   "options": "JSON"
+  },
+  {
+   "default": "0.65",
+   "fieldname": "confidence_threshold",
+   "fieldtype": "Float",
+   "label": "Confidence Threshold"
+  },
+  {
+   "default": "1",
+   "fieldname": "escalation_enabled",
+   "fieldtype": "Check",
+   "label": "Escalation Enabled"
+  },
+  {
+   "fieldname": "escalation_policy",
+   "fieldtype": "Link",
+   "label": "Escalation Policy",
+   "options": "Nexus Escalation Rule"
+  },
+  {
+   "default": "Session",
+   "fieldname": "memory_mode",
+   "fieldtype": "Select",
+   "label": "Memory Mode",
+   "options": "None\nSession\nConversation Summary\nLong Term"
+  },
+  {
+   "fieldname": "system_notes",
+   "fieldtype": "Small Text",
+   "label": "System Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-06 19:26:24.857279",
+ "modified_by": "Administrator",
+ "module": "Nexus Live Agents",
+ "name": "Nexus AI Agent Profile",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "agent",
+ "track_changes": 1
 }
