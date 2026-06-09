@@ -3,140 +3,49 @@ from frappe.utils import now_datetime
 
 
 def get_agent(agent_code_or_name):
-    """
-    Load Nexus Live Agent by agent_code or document name.
-    """
+    """Load Nexus AI Agent Profile by agent_code (name) or document name."""
     if not agent_code_or_name:
         return None
 
-    if frappe.db.exists("Nexus Live Agent", agent_code_or_name):
-        return frappe.get_doc("Nexus Live Agent", agent_code_or_name)
-
-    agent_name = frappe.db.get_value(
-        "Nexus Live Agent",
-        {"agent_code": agent_code_or_name},
-        "name",
-    )
-
-    if agent_name:
-        return frappe.get_doc("Nexus Live Agent", agent_name)
+    if frappe.db.exists("Nexus AI Agent Profile", agent_code_or_name):
+        return frappe.get_doc("Nexus AI Agent Profile", agent_code_or_name)
 
     return None
 
 
-def get_ai_profile(agent):
-    """
-    Load AI profile for a Nexus Live Agent.
-    """
-    if not agent:
-        return None
-
-    agent_name = agent.name if hasattr(agent, "name") else agent
-
-    profile_name = frappe.db.get_value(
-        "Nexus AI Agent Profile",
-        {"agent": agent_name},
-        "name",
-    )
-
-    if not profile_name:
-        return None
-
-    return frappe.get_doc("Nexus AI Agent Profile", profile_name)
-
 def get_agent_behavior(agent):
     """
-    Runtime behaviour resolver for AI agents.
-
-    Nexus AI Agent Profile is the only runtime behaviour source.
+    Build the runtime behavior dict from a Nexus AI Agent Profile.
+    The profile IS the agent — no secondary lookup needed.
     """
     if not agent:
         return None
 
-    agent_doc = agent if hasattr(agent, "doctype") else frappe.get_doc("Nexus Live Agent", agent)
+    agent_doc = agent if hasattr(agent, "doctype") else get_agent(agent)
 
-    if agent_doc.agent_type != "AI":
-        return None
-
-    profile = get_ai_profile(agent_doc)
-
-    if not profile:
+    if not agent_doc:
         return None
 
     return frappe._dict({
         "source": "Nexus AI Agent Profile",
-        "profile_name": profile.name,
-        "behavior_prompt": profile.behavior_prompt,
-        "tone": profile.tone,
-        "response_style": profile.response_style,
-        "welcome_message": profile.welcome_message,
-        "fallback_message": profile.fallback_message,
-        "memory_mode": profile.memory_mode,
-        "confidence_threshold": profile.confidence_threshold,
-        "escalation_enabled": profile.escalation_enabled,
-        "escalation_policy": profile.escalation_policy,
-        "do_not_answer_rules": profile.do_not_answer_rules,
+        "profile_name": agent_doc.name,
+        "behavior_prompt": agent_doc.behavior_prompt,
+        "tone": agent_doc.tone,
+        "response_style": agent_doc.response_style,
+        "welcome_message": agent_doc.welcome_message,
+        "fallback_message": agent_doc.fallback_message,
+        "memory_mode": agent_doc.memory_mode,
+        "confidence_threshold": agent_doc.confidence_threshold,
+        "escalation_enabled": agent_doc.escalation_enabled,
+        "escalation_policy": agent_doc.escalation_policy,
+        "do_not_answer_rules": agent_doc.do_not_answer_rules,
+        "knowledge_profile_name": agent_doc.knowledge_profile or "",
         "confidence_threshold_source": "Nexus AI Agent Profile",
     })
 
-def get_human_profile(agent):
-    """
-    Load Human profile for a Nexus Live Agent.
-    """
-    if not agent:
-        return None
-
-    agent_name = agent.name if hasattr(agent, "name") else agent
-
-    profile_name = frappe.db.get_value(
-        "Nexus Human Agent Profile",
-        {"agent": agent_name},
-        "name",
-    )
-
-    if not profile_name:
-        return None
-
-    return frappe.get_doc("Nexus Human Agent Profile", profile_name)
-
-
-def get_onboarding(agent):
-    """
-    Load onboarding record for a Nexus Live Agent.
-    """
-    if not agent:
-        return None
-
-    agent_name = agent.name if hasattr(agent, "name") else agent
-
-    onboarding_name = frappe.db.get_value(
-        "Nexus Agent Onboarding",
-        {"agent": agent_name},
-        "name",
-    )
-
-    if not onboarding_name:
-        return None
-
-    return frappe.get_doc("Nexus Agent Onboarding", onboarding_name)
-
-
-def is_onboarding_approved(agent):
-    """
-    An agent can respond only after onboarding is approved.
-    """
-    onboarding = get_onboarding(agent)
-
-    if not onboarding:
-        return False
-
-    return onboarding.onboarding_status == "Approved"
-
 
 def is_agent_available(agent):
-    """
-    Check if the agent can receive a new conversation.
-    """
+    """Check if the agent can receive a new conversation."""
     if not agent:
         return False
 
@@ -146,9 +55,6 @@ def is_agent_available(agent):
     if agent.status not in ("Idle", "Waiting"):
         return False
 
-    if not is_onboarding_approved(agent):
-        return False
-
     max_sessions = int(agent.max_active_sessions or 1)
     current_sessions = int(agent.current_active_sessions or 0)
 
@@ -156,13 +62,13 @@ def is_agent_available(agent):
 
 
 def set_agent_status(agent, status, conversation=None, remarks=None):
-    """
-    Update agent status and write activity log.
-    """
+    """Update agent status and write activity log."""
     if not agent:
         return
 
-    agent_doc = agent if hasattr(agent, "doctype") else frappe.get_doc("Nexus Live Agent", agent)
+    agent_doc = agent if hasattr(agent, "doctype") else get_agent(agent)
+    if not agent_doc:
+        return
 
     previous_status = agent_doc.status
     agent_doc.status = status
@@ -182,10 +88,10 @@ def set_agent_status(agent, status, conversation=None, remarks=None):
 
 
 def increment_active_sessions(agent, conversation=None):
-    """
-    Increase active session count when assigning a conversation.
-    """
-    agent_doc = agent if hasattr(agent, "doctype") else frappe.get_doc("Nexus Live Agent", agent)
+    """Increase active session count when assigning a conversation."""
+    agent_doc = agent if hasattr(agent, "doctype") else get_agent(agent)
+    if not agent_doc:
+        return
 
     current = int(agent_doc.current_active_sessions or 0)
     agent_doc.current_active_sessions = current + 1
@@ -209,10 +115,10 @@ def increment_active_sessions(agent, conversation=None):
 
 
 def decrement_active_sessions(agent, conversation=None):
-    """
-    Reduce active session count when conversation closes or handover completes.
-    """
-    agent_doc = agent if hasattr(agent, "doctype") else frappe.get_doc("Nexus Live Agent", agent)
+    """Reduce active session count when conversation closes."""
+    agent_doc = agent if hasattr(agent, "doctype") else get_agent(agent)
+    if not agent_doc:
+        return
 
     current = int(agent_doc.current_active_sessions or 0)
     agent_doc.current_active_sessions = max(current - 1, 0)
@@ -243,9 +149,7 @@ def log_agent_activity(
     conversation=None,
     remarks=None,
 ):
-    """
-    Create Nexus Agent Activity Log.
-    """
+    """Create Nexus Agent Activity Log."""
     try:
         log = frappe.new_doc("Nexus Agent Activity Log")
         log.agent = agent
@@ -261,6 +165,6 @@ def log_agent_activity(
     except Exception:
         frappe.log_error(
             frappe.get_traceback(),
-            "Nexus Live Agent Activity Log Failed",
+            "Nexus AI Agent Profile Activity Log Failed",
         )
         return None

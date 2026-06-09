@@ -51,7 +51,7 @@
    "fieldname": "default_agent",
    "fieldtype": "Link",
    "label": "Default Agent",
-   "options": "Nexus Live Agent"
+   "options": "Nexus AI Agent Profile"
   },
   {
    "default": "1",

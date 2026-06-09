@@ -17,7 +17,9 @@
     "allow_public_fallback",
     "section_display",
     "display_order",
-    "description"
+    "description",
+    "section_escalation",
+    "enable_escalation"
   ],
   "fields": [
     {
@@ -99,6 +101,18 @@
       "fieldname": "description",
       "fieldtype": "Small Text",
       "label": "Description"
+    },
+    {
+      "fieldname": "section_escalation",
+      "fieldtype": "Section Break",
+      "label": "Human Escalation"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, the AI agent can escalate conversations in this category to a human Nexus Live Agent.",
+      "fieldname": "enable_escalation",
+      "fieldtype": "Check",
+      "label": "Enable Human Escalation"
     }
   ],
   "index_web_pages_for_search": 1,
@@ -121,6 +135,10 @@
       "role": "System Manager",
       "share": 1,
       "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Nexus Live Agent"
     }
   ],
   "sort_field": "display_order",

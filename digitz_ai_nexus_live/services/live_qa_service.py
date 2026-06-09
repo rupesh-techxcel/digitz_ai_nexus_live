@@ -1,7 +1,6 @@
 import frappe
 
 from digitz_ai_nexus_live.services.agent_router import assign_agent
-from digitz_ai_nexus_live.services.agent_service import get_ai_profile
 from digitz_ai_nexus_live.services.profile_resolver import (
     get_authenticated_session_user,
     get_session_user_type,
@@ -209,7 +208,7 @@ def ask_live_question(payload):
         if not agent:
             frappe.throw("No approved idle AI agent available for Q And A.")
 
-        profile = get_ai_profile(agent)
+        profile = agent  # The profile IS the agent
 
     conversation = create_conversation(
         payload,

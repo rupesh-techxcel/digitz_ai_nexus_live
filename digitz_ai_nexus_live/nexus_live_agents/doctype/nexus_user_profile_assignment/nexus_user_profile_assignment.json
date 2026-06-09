@@ -7,11 +7,15 @@
   "engine": "InnoDB",
   "field_order": [
     "user",
-    "ai_agent_profile",
+    "knowledge_profile",
     "active",
     "column_break_1",
     "assigned_by",
     "assigned_on",
+    "section_escalation",
+    "can_handle_escalations",
+    "max_escalation_sessions",
+    "escalation_categories",
     "section_notes",
     "notes"
   ],
@@ -25,12 +29,12 @@
       "reqd": 1
     },
     {
-      "description": "The AI Agent Profile governing this user's knowledge access and AI behaviour.",
-      "fieldname": "ai_agent_profile",
+      "description": "The Knowledge Profile governing this user's knowledge access scope.",
+      "fieldname": "knowledge_profile",
       "fieldtype": "Link",
       "in_list_view": 1,
-      "label": "AI Agent Profile",
-      "options": "Nexus AI Agent Profile",
+      "label": "Knowledge Profile",
+      "options": "Knowledge Profile",
       "reqd": 1
     },
     {
@@ -56,6 +60,35 @@
       "fieldtype": "Datetime",
       "label": "Assigned On",
       "read_only": 1
+    },
+    {
+      "fieldname": "section_escalation",
+      "fieldtype": "Section Break",
+      "label": "Escalation Handling"
+    },
+    {
+      "default": "0",
+      "description": "Allow this user to claim and respond to escalated chat conversations.",
+      "fieldname": "can_handle_escalations",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Can Handle Escalations"
+    },
+    {
+      "default": "1",
+      "description": "Maximum number of escalated conversations this user can handle simultaneously.",
+      "fieldname": "max_escalation_sessions",
+      "fieldtype": "Int",
+      "label": "Max Escalation Sessions",
+      "depends_on": "can_handle_escalations"
+    },
+    {
+      "description": "Chat categories this user will receive escalation alerts for and can claim.",
+      "fieldname": "escalation_categories",
+      "fieldtype": "Table",
+      "label": "Escalation Categories",
+      "options": "Nexus Chat Category Link",
+      "depends_on": "can_handle_escalations"
     },
     {
       "fieldname": "section_notes",

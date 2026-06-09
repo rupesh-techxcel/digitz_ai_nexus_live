@@ -5,6 +5,7 @@ from digitz_ai_nexus_live.services.agent_service import (
     increment_active_sessions,
 )
 
+
 def normalize_role(role):
     if not role:
         return None
@@ -87,21 +88,10 @@ def get_agent_by_code_or_name(agent_code_or_name):
     if not agent_code_or_name:
         return None
 
-    if frappe.db.exists("Nexus Live Agent", agent_code_or_name):
-        return frappe.get_doc("Nexus Live Agent", agent_code_or_name)
+    if frappe.db.exists("Nexus AI Agent Profile", agent_code_or_name):
+        return frappe.get_doc("Nexus AI Agent Profile", agent_code_or_name)
 
-    agent_name = frappe.db.get_value(
-        "Nexus Live Agent",
-        {
-            "agent_code": agent_code_or_name
-        },
-        "name",
-    )
-
-    if not agent_name:
-        return None
-
-    return frappe.get_doc("Nexus Live Agent", agent_name)
+    return None
 
 
 def agent_matches_channel(agent_doc, channel_name=None):
@@ -146,20 +136,13 @@ def get_available_specific_agent(
     required_role=None,
     enforce_role=False,
 ):
-    """
-    Returns a specific agent only if it is usable for the current request.
-
-    Used for explicit payload/profile-owned agent and channel default agent.
-    """
+    """Return a specific agent only if it is usable for the current request."""
     agent = get_agent_by_code_or_name(agent_code_or_name)
 
     if not agent:
         return None
 
-    if getattr(agent, "enabled", 0) != 1:
-        return None
-
-    if getattr(agent, "agent_type", None) != "AI":
+    if not getattr(agent, "enabled", 0):
         return None
 
     if enforce_role and not agent_matches_role(agent, required_role):
@@ -177,37 +160,12 @@ def get_available_specific_agent(
     return agent
 
 
-def get_default_agent_for_channel(channel_code_or_name):
-    channel_name = get_channel_name(channel_code_or_name)
-
-    if not channel_name:
-        return None
-
-    default_agent = frappe.db.get_value(
-        "Nexus Live Channel",
-        channel_name,
-        "default_agent",
-    )
-
-    if not default_agent:
-        return None
-
-    return get_available_specific_agent(
-        agent_code_or_name=default_agent,
-        channel_name=channel_name,
-        visibility="Public",
-        required_role=None,
-        enforce_role=False,
-    )
-
-
 def find_available_agent(payload):
     """
-    Find the best available approved idle agent for the incoming request.
+    Find the best available AI agent profile for the incoming request.
 
     Priority:
-    1. Explicit agent from payload
-       - if requested but unavailable, return None
+    1. Explicit agent from payload — if requested but unavailable, return None
     2. Channel default_agent
     3. Role/intent-based routing fallback
     """
@@ -218,9 +176,7 @@ def find_available_agent(payload):
     channel_name = get_channel_name(payload.get("channel"))
     visibility = payload.get("visibility") or "Public"
 
-    # ---------------------------------------------------------------------
     # 1. Explicit requested agent
-    # ---------------------------------------------------------------------
     if requested_agent:
         return get_available_specific_agent(
             agent_code_or_name=requested_agent,
@@ -230,9 +186,7 @@ def find_available_agent(payload):
             enforce_role=False,
         )
 
-    # ---------------------------------------------------------------------
     # 2. Channel default agent
-    # ---------------------------------------------------------------------
     if channel_name:
         channel_default_agent = frappe.db.get_value(
             "Nexus Live Channel",
@@ -252,23 +206,17 @@ def find_available_agent(payload):
             if agent:
                 return agent
 
-    # ---------------------------------------------------------------------
     # 3. Role/intent-based routing fallback
-    # ---------------------------------------------------------------------
-    filters = {
-        "enabled": 1,
-        "agent_type": "AI",
-        "agent_role": required_role,
-    }
-
     agents = frappe.get_all(
-        "Nexus Live Agent",
-        filters=filters,
+        "Nexus AI Agent Profile",
+        filters={
+            "enabled": 1,
+            "agent_role": required_role,
+        },
         fields=[
             "name",
             "agent_code",
             "agent_name",
-            "agent_type",
             "agent_role",
             "status",
             "enabled",
@@ -289,17 +237,16 @@ def find_available_agent(payload):
         if channel_name and row.default_channel and row.default_channel != channel_name:
             continue
 
-        agent_doc = frappe.get_doc("Nexus Live Agent", row.name)
+        agent_doc = frappe.get_doc("Nexus AI Agent Profile", row.name)
 
         if is_agent_available(agent_doc):
             return agent_doc
 
     return None
 
+
 def assign_agent(payload, conversation=None):
-    """
-    Select and assign an available agent to a conversation.
-    """
+    """Select and assign an available agent to a conversation."""
     agent = find_available_agent(payload)
 
     if not agent:

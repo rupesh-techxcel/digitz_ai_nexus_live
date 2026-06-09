@@ -26,11 +26,11 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/digitz_ai_nexus_live/css/digitz_ai_nexus_live.css"
-# app_include_js = "/assets/digitz_ai_nexus_live/js/digitz_ai_nexus_live.js"
+app_include_js = "nexus_chat_widget.bundle.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/digitz_ai_nexus_live/css/digitz_ai_nexus_live.css"
-# web_include_js = "/assets/digitz_ai_nexus_live/js/digitz_ai_nexus_live.js"
+web_include_js = "nexus_chat_widget.bundle.js"
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "digitz_ai_nexus_live/public/scss/website"
@@ -147,6 +147,12 @@ after_install = "digitz_ai_nexus_live.setup.install.after_install"
 
 # Scheduled Tasks
 # ---------------
+
+scheduler_events = {
+    "all": [
+        "digitz_ai_nexus_live.services.live_chat_service.close_idle_conversations"
+    ],
+}
 
 # scheduler_events = {
 # 	"all": [

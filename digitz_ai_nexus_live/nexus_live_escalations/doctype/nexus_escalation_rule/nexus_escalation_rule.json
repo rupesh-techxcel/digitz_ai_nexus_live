@@ -63,7 +63,7 @@
       "fieldname": "target_agent",
       "fieldtype": "Link",
       "label": "Target Agent",
-      "options": "Nexus Live Agent"
+      "options": "Nexus AI Agent Profile"
     },
     {
       "fieldname": "rule_conditions_json",

@@ -92,12 +92,17 @@ def seed_defaults():
     channel = ensure_default_chat_channel()
     qa_channel = ensure_default_qa_channel()
     category = ensure_default_chat_category(channel)
-    agent = ensure_default_agent(channel, qa_channel)
-    profile = ensure_default_ai_agent_profile(agent)
+    profile = ensure_default_ai_agent_profile(channel, qa_channel)
 
     ensure_profile_access_category(profile, "Public Access")
     ensure_default_category_route(channel, category, "Public", profile)
     ensure_tenant_configuration(tenant, channel, qa_channel)
+
+    frappe.db.commit()
+    frappe.logger().info("Nexus Live defaults seeded.")
+
+    ensure_profile_access_category(profile, "Public Access")
+    ensure_default_category_route(channel, category, "Public", profile)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live defaults seeded.")
@@ -110,7 +115,6 @@ def seed_defaults():
         "live_channel": channel,
         "qa_channel": qa_channel,
         "chat_category": category,
-        "agent": agent,
         "ai_agent_profile": profile,
         "identity_route": {
             "channel": channel,
@@ -209,50 +213,26 @@ def ensure_default_chat_category(channel):
     return doc.name
 
 
-def ensure_default_agent(channel, qa_channel=None):
+def ensure_default_ai_agent_profile(channel, qa_channel=None):
+    """Create or update the default public AI agent profile (merged agent + behavior)."""
     name = DEFAULT_AGENT["agent_code"]
-    if frappe.db.exists("Nexus Live Agent", name):
-        doc = frappe.get_doc("Nexus Live Agent", name)
+
+    if frappe.db.exists("Nexus AI Agent Profile", name):
+        doc = frappe.get_doc("Nexus AI Agent Profile", name)
     else:
-        doc = frappe.new_doc("Nexus Live Agent")
+        doc = frappe.new_doc("Nexus AI Agent Profile")
         doc.agent_code = name
 
     doc.agent_name = DEFAULT_AGENT["agent_name"]
     doc.display_name = DEFAULT_AGENT["display_name"]
-    doc.agent_type = "AI"
     doc.agent_role = "Public Responder"
-    doc.status = "Idle"
-    doc.enabled = 1
     doc.visibility = "Public"
-    doc.default_channel = channel
+    doc.enabled = 1
+    doc.status = "Idle"
     doc.priority = 10
     doc.max_active_sessions = 10
+    doc.default_channel = channel
     doc.description = DEFAULT_AGENT["description"]
-    doc.save(ignore_permissions=True)
-
-    # Link agent as the default for the Q&A channel
-    if qa_channel and frappe.db.exists("Nexus Live Channel", qa_channel):
-        qa_doc = frappe.get_doc("Nexus Live Channel", qa_channel)
-        if frappe.get_meta("Nexus Live Channel").has_field("default_agent"):
-            qa_doc.default_agent = name
-            qa_doc.save(ignore_permissions=True)
-
-    return name
-
-
-def ensure_default_ai_agent_profile(agent):
-    existing = frappe.get_all(
-        "Nexus AI Agent Profile",
-        filters={"agent": agent},
-        pluck="name",
-        limit_page_length=1,
-    )
-    if existing:
-        doc = frappe.get_doc("Nexus AI Agent Profile", existing[0])
-    else:
-        doc = frappe.new_doc("Nexus AI Agent Profile")
-        doc.agent = agent
-
     doc.behavior_prompt = DEFAULT_PROFILE["behavior_prompt"]
     doc.tone = "Professional"
     doc.response_style = "Balanced"
@@ -266,7 +246,14 @@ def ensure_default_ai_agent_profile(agent):
     doc.memory_mode = "Session"
     doc.system_notes = "Seeded default profile for public website chat."
     doc.save(ignore_permissions=True)
-    return doc.name
+
+    if qa_channel and frappe.db.exists("Nexus Live Channel", qa_channel):
+        qa_doc = frappe.get_doc("Nexus Live Channel", qa_channel)
+        if frappe.get_meta("Nexus Live Channel").has_field("default_agent"):
+            qa_doc.default_agent = name
+            qa_doc.save(ignore_permissions=True)
+
+    return name
 
 
 def ensure_profile_access_category(profile, access_category):
@@ -319,7 +306,6 @@ def ensure_default_category_route(channel, category, identity_type, profile):
 
 def ensure_tenant_configuration(tenant, channel, qa_channel=None):
     ensure_nexus_master("Nexus Business Unit", "Default", "business_unit_name", tenant)
-    ensure_nexus_master("Nexus Public Context", "Website Chat", "public_context_name", tenant)
 
     existing = frappe.get_all(
         "Nexus Tenant Configuration",
@@ -339,7 +325,6 @@ def ensure_tenant_configuration(tenant, channel, qa_channel=None):
     doc.is_default = 1
     doc.activation_status = "Configured"
     doc.default_business_unit = "Default"
-    doc.default_public_context = "Website Chat"
     doc.require_approved_knowledge = 1
     doc.strict_tenant_mode = 1
     doc.default_top_k = 5

@@ -233,13 +233,6 @@ class NexusLiveStudio {
 				icon: 'shield',
 				color: '#f59e0b',
 				bg: '#fff4e5'
-			},
-			{
-				label: 'Approved Workforce',
-				value: overview.approved_agents || 0,
-				icon: 'award',
-				color: '#7c3aed',
-				bg: '#f3edff'
 			}
 		];
 

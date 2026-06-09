@@ -1,7 +1,6 @@
 import json
 import frappe
 from frappe.utils import now_datetime
-from digitz_ai_nexus_live.services.agent_service import get_ai_profile
 
 
 def generate_conversation_id():
@@ -52,33 +51,33 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
 
     if assigned_agent:
         conversation.assigned_agent = assigned_agent.name
-        conversation.assigned_agent_type = assigned_agent.agent_type
+        conversation.assigned_agent_type = "AI"
 
-        if getattr(assigned_agent, "agent_type", None) == "AI":
-            profile = ai_profile_override or get_ai_profile(assigned_agent)
-            if profile:
-                conversation.assigned_ai_agent_profile = profile.name
-                conversation.ai_profile_snapshot_json = json.dumps({
-                    "name": profile.name,
-                    "agent": profile.agent,
-                    "chat_category": payload.get("chat_category"),
-                    "identity_type": payload.get("identity_type"),
-                    "identity_registry": payload.get("identity_registry"),
-                    "identity_safeguard_access_categories": payload.get(
-                        "identity_safeguard_access_categories"
-                    ),
-                    "behavior_prompt": profile.behavior_prompt,
-                    "tone": profile.tone,
-                    "response_style": profile.response_style,
-                    "welcome_message": profile.welcome_message,
-                    "fallback_message": profile.fallback_message,
-                    "do_not_answer_rules": profile.do_not_answer_rules,
-                    "confidence_threshold": profile.confidence_threshold,
-                    "escalation_enabled": profile.escalation_enabled,
-                    "escalation_policy": profile.escalation_policy,
-                    "memory_mode": profile.memory_mode,
-                    "default_response_mode": profile.default_response_mode,
-                })
+        # The profile IS the agent — snapshot behavior fields for immutability
+        profile = ai_profile_override or assigned_agent
+        if profile:
+            conversation.assigned_ai_agent_profile = profile.name
+            conversation.ai_profile_snapshot_json = json.dumps({
+                "name": profile.name,
+                "chat_category": payload.get("chat_category"),
+                "identity_type": payload.get("identity_type"),
+                "identity_registry": payload.get("identity_registry"),
+                "identity_safeguard_access_categories": payload.get(
+                    "identity_safeguard_access_categories"
+                ),
+                "behavior_prompt": profile.behavior_prompt,
+                "tone": profile.tone,
+                "response_style": profile.response_style,
+                "welcome_message": profile.welcome_message,
+                "fallback_message": profile.fallback_message,
+                "do_not_answer_rules": profile.do_not_answer_rules,
+                "confidence_threshold": profile.confidence_threshold,
+                "escalation_enabled": profile.escalation_enabled,
+                "escalation_policy": profile.escalation_policy,
+                "memory_mode": profile.memory_mode,
+                "default_response_mode": profile.default_response_mode,
+                "collect_visitor_name": getattr(profile, "collect_visitor_name", 0),
+            })
 
     conversation.insert(ignore_permissions=True)
     return conversation
@@ -91,7 +90,7 @@ def update_conversation_assignment(conversation, agent):
         return None
 
     conversation_doc.assigned_agent = agent.name
-    conversation_doc.assigned_agent_type = agent.agent_type
+    conversation_doc.assigned_agent_type = "AI"
     conversation_doc.status = "Responding"
     conversation_doc.save(ignore_permissions=True)
 
@@ -167,6 +166,8 @@ def set_conversation_status(conversation, status):
 
 
 def mark_escalated(conversation):
+    from frappe.utils import now_datetime
+
     conversation_doc = conversation if hasattr(conversation, "doctype") else get_conversation(conversation)
 
     if not conversation_doc:
@@ -174,6 +175,7 @@ def mark_escalated(conversation):
 
     conversation_doc.status = "Escalated"
     conversation_doc.escalation_status = "Pending"
+    conversation_doc.escalated_at = now_datetime()
     conversation_doc.save(ignore_permissions=True)
 
     return conversation_doc

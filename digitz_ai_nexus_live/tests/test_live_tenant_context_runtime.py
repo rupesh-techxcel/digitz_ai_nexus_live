@@ -71,7 +71,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
             "activation_status": "Configured",
 
             "default_business_unit": TEST_BU,
-            "default_public_context": PUBLIC_CONTEXT,
 
             "require_approved_knowledge": 1,
             "strict_tenant_mode": 1,
@@ -281,7 +280,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
         self.assertEqual(result.get("status"), "success")
         self.assertEqual(result.get("tenant"), TEST_TENANT)
         self.assertEqual(result.get("business_unit"), TEST_BU)
-        self.assertEqual(result.get("context"), PUBLIC_CONTEXT)
         self.assertEqual(result.get("channel"), QA_CHANNEL)
         self.assertEqual(result.get("tenant_context_applied"), 1)
 
@@ -291,7 +289,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
 
         self.assertEqual(core_payload.get("tenant"), TEST_TENANT)
         self.assertEqual(core_payload.get("business_unit"), TEST_BU)
-        self.assertEqual(core_payload.get("context"), PUBLIC_CONTEXT)
         self.assertEqual(core_payload.get("channel"), QA_CHANNEL)
         self.assertEqual(core_payload.get("response_mode"), "qa")
 
@@ -313,11 +310,9 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
             })
 
         self.assertEqual(result.get("status"), "success")
-        self.assertEqual(result.get("context"), PUBLIC_CONTEXT)
 
         core_payload = captured_payloads[0]
 
-        self.assertEqual(core_payload.get("context"), PUBLIC_CONTEXT)
         self.assertEqual(int(core_payload.get("top_k") or 0), 5)
 
     def test_live_chat_uses_user_context_and_ecosystem_default_agent(self):
@@ -345,7 +340,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
 
         self.assertEqual(core_payload.get("tenant"), TEST_TENANT)
         self.assertEqual(core_payload.get("business_unit"), TEST_BU)
-        self.assertEqual(core_payload.get("context"), PUBLIC_CONTEXT)
         self.assertEqual(core_payload.get("channel"), CHAT_CHANNEL)
         self.assertEqual(core_payload.get("agent_code"), PUBLIC_AGENT)
         self.assertEqual(core_payload.get("response_mode"), "chat")

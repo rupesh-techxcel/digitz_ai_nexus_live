@@ -1,12 +1,29 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "hash",
+ "autoname": "field:agent_code",
  "creation": "2026-05-10 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "agent",
+  "agent_code",
+  "agent_name",
+  "display_name",
+  "agent_role",
+  "visibility",
+  "enabled",
+  "status",
+  "column_break_identity",
+  "max_active_sessions",
+  "current_active_sessions",
+  "last_active_on",
+  "priority",
+  "default_channel",
+  "business_unit",
+  "avatar",
+  "description",
+  "section_behavior",
+  "knowledge_profile",
   "behavior_prompt",
   "tone",
   "response_style",
@@ -14,33 +31,139 @@
   "fallback_message",
   "do_not_answer_rules",
   "default_response_mode",
-  "section_knowledge_scope",
-  "knowledge_scope",
-  "allowed_business_units_json",
-  "allowed_projects_json",
-  "allowed_contexts_json",
   "confidence_threshold",
   "escalation_enabled",
   "escalation_policy",
   "memory_mode",
   "section_intent_handlers",
   "intent_overrides",
+  "section_category_access",
+  "chat_categories",
+  "section_legacy",
+  "knowledge_scope",
+  "allowed_business_units_json",
+  "allowed_projects_json",
+  "allowed_contexts_json",
   "system_notes"
  ],
  "fields": [
   {
-   "fieldname": "agent",
-   "fieldtype": "Link",
+   "fieldname": "agent_code",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Agent",
-   "options": "Nexus Live Agent",
+   "label": "Agent Code",
    "reqd": 1,
    "unique": 1
   },
   {
+   "fieldname": "agent_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Agent Name",
+   "reqd": 1
+  },
+  {
+   "description": "Nickname shown to visitors in the chat window.",
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "label": "Display Name"
+  },
+  {
+   "fieldname": "agent_role",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Agent Role",
+   "options": "Public Responder\nSales\nSupport\nConsultant\nInternal Assistant\nAdmin Reviewer",
+   "reqd": 1
+  },
+  {
+   "default": "Public",
+   "fieldname": "visibility",
+   "fieldtype": "Select",
+   "label": "Visibility",
+   "options": "Public\nInternal\nBoth"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "Idle",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Idle\nAssigned\nResponding\nWaiting\nUnavailable\nDisabled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "10",
+   "fieldname": "max_active_sessions",
+   "fieldtype": "Int",
+   "label": "Max Active Sessions"
+  },
+  {
+   "default": "0",
+   "fieldname": "current_active_sessions",
+   "fieldtype": "Int",
+   "label": "Current Active Sessions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_active_on",
+   "fieldtype": "Datetime",
+   "label": "Last Active On",
+   "read_only": 1
+  },
+  {
+   "default": "10",
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority"
+  },
+  {
+   "fieldname": "default_channel",
+   "fieldtype": "Link",
+   "label": "Default Channel",
+   "options": "Nexus Live Channel"
+  },
+  {
+   "fieldname": "business_unit",
+   "fieldtype": "Link",
+   "label": "Business Unit",
+   "options": "Nexus Business Unit"
+  },
+  {
+   "fieldname": "avatar",
+   "fieldtype": "Attach Image",
+   "label": "Avatar"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_behavior",
+   "fieldtype": "Section Break",
+   "label": "Behavior"
+  },
+  {
+   "description": "Knowledge Profile that governs what knowledge this agent can access.",
+   "fieldname": "knowledge_profile",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Knowledge Profile",
+   "options": "Knowledge Profile"
+  },
+  {
    "fieldname": "behavior_prompt",
    "fieldtype": "Long Text",
-   "in_list_view": 1,
    "label": "Behavior Prompt",
    "reqd": 1
   },
@@ -82,40 +205,6 @@
    "options": "qa\nchat"
   },
   {
-   "fieldname": "section_knowledge_scope",
-   "fieldtype": "Section Break",
-   "label": "Knowledge Scope (Legacy)"
-  },
-  {
-   "default": "Governed",
-   "description": "Legacy field. Access scope is now governed through Nexus AI Agent Profile Access Category. This field is retained for reference only and does not drive enforcement.",
-   "fieldname": "knowledge_scope",
-   "fieldtype": "Select",
-   "label": "Knowledge Scope (Legacy)",
-   "options": "Public Only\nGoverned\nInternal Restricted"
-  },
-  {
-   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-   "fieldname": "allowed_business_units_json",
-   "fieldtype": "Code",
-   "label": "Allowed Business Units JSON (Legacy)",
-   "options": "JSON"
-  },
-  {
-   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-   "fieldname": "allowed_projects_json",
-   "fieldtype": "Code",
-   "label": "Allowed Projects JSON (Legacy)",
-   "options": "JSON"
-  },
-  {
-   "description": "Legacy JSON field. Use Nexus AI Agent Profile Access Category for governed access scope.",
-   "fieldname": "allowed_contexts_json",
-   "fieldtype": "Code",
-   "label": "Allowed Contexts JSON (Legacy)",
-   "options": "JSON"
-  },
-  {
    "default": "0.65",
    "fieldname": "confidence_threshold",
    "fieldtype": "Float",
@@ -146,11 +235,58 @@
    "label": "Intent Handlers"
   },
   {
-   "description": "Profile-level overrides for global Nexus Intent Handlers. Use this to disable, customise, or change the action of any global intent for this specific agent profile.",
+   "description": "Profile-level overrides for global Nexus Intent Handlers.",
    "fieldname": "intent_overrides",
    "fieldtype": "Table",
    "label": "Intent Overrides",
    "options": "Nexus Profile Intent Override"
+  },
+  {
+   "fieldname": "section_category_access",
+   "fieldtype": "Section Break",
+   "label": "Chat Category Access",
+   "description": "Chat categories this agent can receive and respond to."
+  },
+  {
+   "fieldname": "chat_categories",
+   "fieldtype": "Table",
+   "label": "Assigned Chat Categories",
+   "options": "Nexus Chat Category Link"
+  },
+  {
+   "fieldname": "section_legacy",
+   "fieldtype": "Section Break",
+   "label": "Legacy Fields",
+   "collapsible": 1
+  },
+  {
+   "default": "Governed",
+   "description": "Legacy field retained for reference only.",
+   "fieldname": "knowledge_scope",
+   "fieldtype": "Select",
+   "label": "Knowledge Scope (Legacy)",
+   "options": "Public Only\nGoverned\nInternal Restricted"
+  },
+  {
+   "description": "Legacy JSON field.",
+   "fieldname": "allowed_business_units_json",
+   "fieldtype": "Code",
+   "label": "Allowed Business Units JSON (Legacy)",
+   "options": "JSON"
+  },
+  {
+   "description": "Legacy JSON field.",
+   "fieldname": "allowed_projects_json",
+   "fieldtype": "Code",
+   "label": "Allowed Projects JSON (Legacy)",
+   "options": "JSON"
+  },
+  {
+   "description": "Legacy JSON field.",
+   "fieldname": "allowed_contexts_json",
+   "fieldtype": "Code",
+   "label": "Allowed Contexts JSON (Legacy)",
+   "options": "JSON"
   },
   {
    "fieldname": "system_notes",
@@ -160,11 +296,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-06 19:26:24.857279",
+ "modified": "2026-06-09 00:00:00",
  "modified_by": "Administrator",
  "module": "Nexus Live Agents",
  "name": "Nexus AI Agent Profile",
- "naming_rule": "Expression",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -184,6 +320,6 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "agent",
+ "title_field": "agent_name",
  "track_changes": 1
 }

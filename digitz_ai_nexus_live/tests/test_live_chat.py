@@ -17,7 +17,6 @@ class TestLiveChat(FrappeTestCase):
     def setUp(self):
         self.agent_name = None
         self.profile_name = None
-        self.onboarding_name = None
         self.chat_channel_name = None
         self.qa_channel_name = None
         self.escalation_rule_name = None
@@ -27,7 +26,6 @@ class TestLiveChat(FrappeTestCase):
         self.create_test_agent()
         self.create_test_channels()
         self.create_test_profile()
-        self.create_test_onboarding()
         self.create_test_escalation_rule()
 
     def tearDown(self):
@@ -47,7 +45,6 @@ class TestLiveChat(FrappeTestCase):
             "Nexus Queue Assignment",
             "Nexus Escalation Rule",
             "Nexus Agent Activity Log",
-            "Nexus Agent Onboarding",
             "Nexus AI Agent Profile",
         ]:
             for name in frappe.get_all(doctype, pluck="name"):
@@ -131,20 +128,6 @@ class TestLiveChat(FrappeTestCase):
         profile.insert(ignore_permissions=True)
 
         self.profile_name = profile.name
-
-    def create_test_onboarding(self):
-        onboarding = frappe.new_doc("Nexus Agent Onboarding")
-        onboarding.agent = self.agent_name
-        onboarding.onboarding_status = "Approved"
-        onboarding.identity_completed = 1
-        onboarding.behavior_completed = 1
-        onboarding.knowledge_completed = 1
-        onboarding.channel_completed = 1
-        onboarding.escalation_completed = 1
-        onboarding.testing_completed = 1
-        onboarding.insert(ignore_permissions=True)
-
-        self.onboarding_name = onboarding.name
 
     def create_test_escalation_rule(self):
         queue = frappe.new_doc("Nexus Agent Queue")

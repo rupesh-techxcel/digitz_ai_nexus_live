@@ -23,6 +23,21 @@ def parse_payload(payload=None):
     return payload or {}
 
 
+@frappe.whitelist()
+def get_available_categories_for_tenant(tenant=None):
+    """
+    Return all enabled chat categories for internal console use.
+    Desk agents see every enabled category regardless of channel or identity type.
+    """
+    categories = frappe.get_all(
+        "Nexus Chat Category",
+        filters={"enabled": 1},
+        fields=["name", "category_code", "category_label", "description", "display_order"],
+        order_by="display_order asc",
+    )
+    return {"categories": categories}
+
+
 @frappe.whitelist(allow_guest=True)
 def get_channel_categories(channel=None, visitor_email=None, email=None):
     """
@@ -142,39 +157,88 @@ def send_chat_message(conversation_id=None, payload=None):
     )
 
 
+def _get_human_assignment(user):
+    """Return active assignment if user can handle escalations but is not System Manager."""
+    if not user or user == "Guest":
+        return None
+
+    name = frappe.db.get_value(
+        "Nexus User Profile Assignment",
+        {"user": user, "active": 1, "can_handle_escalations": 1},
+        "name",
+    )
+    if not name:
+        return None
+
+    return frappe.get_doc("Nexus User Profile Assignment", name)
+
+
+def _is_human_agent_only():
+    """True when caller has an escalation-enabled assignment but is NOT System Manager."""
+    user = frappe.session.user
+    if user in ("Guest", None):
+        return False
+
+    if "System Manager" in frappe.get_roles(user):
+        return False
+
+    return bool(_get_human_assignment(user))
+
+
 @frappe.whitelist()
 def get_active_conversations(limit=50):
     """
-    Return active conversations for the Live Console.
-    Desk users only.
+    Return conversations for the Live Console.
+    - System Manager: all active (Open, Responding, Escalated, Waiting)
+    - Human agent (can_handle_escalations): Escalated conversations in their assigned categories
     """
+    base_fields = [
+        "name", "conversation_id", "conversation_type",
+        "status", "escalation_status", "escalated_at", "human_agent",
+        "assigned_agent", "assigned_agent_type",
+        "channel", "chat_category", "resolved_identity_type",
+        "user_type", "visitor_name", "visitor_email",
+        "last_message", "last_response", "confidence", "started_on",
+    ]
+
+    if _is_human_agent_only():
+        user = frappe.session.user
+        assignment = _get_human_assignment(user)
+        assigned_cats = []
+        if assignment:
+            assigned_cats = [row.chat_category for row in (assignment.escalation_categories or [])]
+
+        filters = {"status": "Escalated", "user_type": ["!=", "Desk User"]}
+        if assigned_cats:
+            filters["chat_category"] = ["in", assigned_cats]
+
+        conversations = frappe.get_all(
+            "Nexus Live Conversation",
+            filters=filters,
+            fields=base_fields,
+            order_by="escalated_at desc",
+            limit_page_length=int(limit),
+        )
+        nickname = frappe.db.get_value("User", user, "full_name") or user
+        return {
+            "conversations": conversations,
+            "mode": "agent",
+            "agent": user,
+            "agent_nickname": nickname,
+            "assigned_categories": assigned_cats,
+        }
+
     conversations = frappe.get_all(
         "Nexus Live Conversation",
-        filters={"status": ["in", ["Open", "Responding", "Escalated"]]},
-        fields=[
-            "name",
-            "conversation_id",
-            "conversation_type",
-            "status",
-            "escalation_status",
-            "assigned_agent",
-            "assigned_agent_type",
-            "channel",
-            "chat_category",
-            "resolved_identity_type",
-            "user_type",
-            "visitor_name",
-            "visitor_email",
-            "last_message",
-            "last_response",
-            "confidence",
-            "started_on",
-        ],
+        filters={
+            "status": ["in", ["Open", "Responding", "Escalated", "Waiting"]],
+            "user_type": ["!=", "Desk User"],
+        },
+        fields=base_fields,
         order_by="started_on desc",
         limit_page_length=int(limit),
     )
-
-    return {"conversations": conversations}
+    return {"conversations": conversations, "mode": "admin"}
 
 
 @frappe.whitelist()
@@ -193,12 +257,22 @@ def get_conversation_detail(conversation_id=None):
 
     messages = get_conversation_messages(conversation=conversation, limit=100)
 
+    # Resolve human agent nickname if set
+    human_agent_nickname = None
+    if conversation.human_agent:
+        human_agent_nickname = frappe.db.get_value(
+            "User", conversation.human_agent, "full_name"
+        ) or conversation.human_agent
+
     return {
         "conversation": {
             "name": conversation.name,
             "conversation_id": conversation.conversation_id,
             "status": conversation.status,
             "escalation_status": conversation.escalation_status,
+            "escalated_at": str(conversation.escalated_at) if conversation.escalated_at else None,
+            "human_agent": conversation.human_agent,
+            "human_agent_nickname": human_agent_nickname,
             "assigned_agent": conversation.assigned_agent,
             "channel": conversation.channel,
             "chat_category": conversation.chat_category,

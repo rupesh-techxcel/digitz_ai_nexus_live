@@ -111,6 +111,12 @@
    "label": "Escalation Enabled"
   },
   {
+   "default": "0",
+   "fieldname": "collect_visitor_name",
+   "fieldtype": "Check",
+   "label": "Collect Visitor Name"
+  },
+  {
    "fieldname": "welcome_message",
    "fieldtype": "Small Text",
    "label": "Welcome Message"

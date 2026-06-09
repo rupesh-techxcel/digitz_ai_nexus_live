@@ -84,6 +84,11 @@
   "permissions": [
     {
       "create": 1,
+      "read": 1,
+      "role": "Nexus Live Agent"
+    },
+    {
+      "create": 1,
       "delete": 1,
       "email": 1,
       "export": 1,

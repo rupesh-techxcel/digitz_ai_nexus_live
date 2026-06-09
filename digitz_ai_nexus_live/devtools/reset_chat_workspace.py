@@ -47,8 +47,6 @@ RESET_GROUPS = [
             "Nexus AI Agent Profile",
             "Nexus AI Behaviour",
             "Nexus Live Agent",
-            "Nexus Human Agent Profile",
-            "Nexus Agent Onboarding",
         ],
     ),
     (

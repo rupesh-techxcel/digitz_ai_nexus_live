@@ -21,9 +21,7 @@ def should_escalate(
     escalation_enabled=True,
     threshold=None,
 ):
-    """
-    Determine whether escalation is required.
-    """
+    """Determine whether escalation is required."""
     if not escalation_enabled:
         return False
 
@@ -45,18 +43,13 @@ def should_escalate(
 
 
 def get_escalation_rule(agent_role):
-    """
-    Load escalation rule by agent role.
-    """
+    """Load escalation rule by agent role."""
     if not agent_role:
         return None
 
     rule_name = frappe.db.get_value(
         "Nexus Escalation Rule",
-        {
-            "enabled": 1,
-            "agent_role": agent_role,
-        },
+        {"enabled": 1, "agent_role": agent_role},
         "name",
     )
 
@@ -67,35 +60,26 @@ def get_escalation_rule(agent_role):
 
 
 def get_queue_agents(queue_name):
-    """
-    Return enabled agents assigned to a queue.
-    """
+    """Return enabled AI agent profiles assigned to a queue."""
     if not queue_name:
         return []
 
     assignments = frappe.get_all(
         "Nexus Queue Assignment",
-        filters={
-            "queue": queue_name,
-            "enabled": 1,
-        },
-        fields=[
-            "agent",
-            "priority",
-        ],
+        filters={"queue": queue_name, "enabled": 1},
+        fields=["agent", "priority"],
         order_by="priority asc",
     )
 
     agents = []
-
     for row in assignments:
         if not row.agent:
             continue
 
-        if not frappe.db.exists("Nexus Live Agent", row.agent):
+        if not frappe.db.exists("Nexus AI Agent Profile", row.agent):
             continue
 
-        agent = frappe.get_doc("Nexus Live Agent", row.agent)
+        agent = frappe.get_doc("Nexus AI Agent Profile", row.agent)
 
         if not agent.enabled:
             continue
@@ -106,39 +90,26 @@ def get_queue_agents(queue_name):
 
 
 def find_escalation_target(rule):
-    """
-    Find escalation target from rule.
-    """
+    """Find escalation target from rule."""
     if not rule:
-        return {
-            "agent": None,
-            "queue": None,
-        }
+        return {"agent": None, "queue": None}
 
     if rule.target_agent:
-        return {
-            "agent": frappe.get_doc("Nexus Live Agent", rule.target_agent),
-            "queue": None,
-        }
+        if frappe.db.exists("Nexus AI Agent Profile", rule.target_agent):
+            return {
+                "agent": frappe.get_doc("Nexus AI Agent Profile", rule.target_agent),
+                "queue": None,
+            }
 
     if rule.target_queue:
         agents = get_queue_agents(rule.target_queue)
 
         if agents:
-            return {
-                "agent": agents[0],
-                "queue": rule.target_queue,
-            }
+            return {"agent": agents[0], "queue": rule.target_queue}
 
-        return {
-            "agent": None,
-            "queue": rule.target_queue,
-        }
+        return {"agent": None, "queue": rule.target_queue}
 
-    return {
-        "agent": None,
-        "queue": None,
-    }
+    return {"agent": None, "queue": None}
 
 
 def create_escalation(
@@ -148,9 +119,7 @@ def create_escalation(
     confidence=None,
     remarks=None,
 ):
-    """
-    Create Nexus Live Escalation record.
-    """
+    """Create Nexus Live Escalation record."""
     conversation_doc = (
         conversation
         if hasattr(conversation, "doctype")
@@ -163,12 +132,11 @@ def create_escalation(
         from_agent_doc = (
             from_agent
             if hasattr(from_agent, "doctype")
-            else frappe.get_doc("Nexus Live Agent", from_agent)
+            else frappe.get_doc("Nexus AI Agent Profile", from_agent)
         )
 
     agent_role = from_agent_doc.agent_role if from_agent_doc else None
     rule = get_escalation_rule(agent_role)
-
     target = find_escalation_target(rule)
 
     escalation = frappe.new_doc("Nexus Live Escalation")
@@ -194,13 +162,18 @@ def create_escalation(
             remarks="Conversation escalated.",
         )
 
+    try:
+        from digitz_ai_nexus_live.services.chat_realtime import publish_escalation_alert
+        fresh_conv = frappe.get_doc("Nexus Live Conversation", conversation_doc.name)
+        publish_escalation_alert(fresh_conv)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Nexus Escalation Alert Failed")
+
     return escalation
 
 
 def resolve_escalation(escalation, remarks=None):
-    """
-    Resolve escalation workflow.
-    """
+    """Resolve escalation workflow."""
     escalation_doc = (
         escalation
         if hasattr(escalation, "doctype")
@@ -216,9 +189,7 @@ def resolve_escalation(escalation, remarks=None):
 
 
 def reject_escalation(escalation, remarks=None):
-    """
-    Reject escalation workflow.
-    """
+    """Reject escalation workflow."""
     escalation_doc = (
         escalation
         if hasattr(escalation, "doctype")

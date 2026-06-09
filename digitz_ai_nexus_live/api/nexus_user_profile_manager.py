@@ -11,14 +11,15 @@ def get_page_data():
     )
 
     profiles = frappe.get_all(
-        "Nexus AI Agent Profile",
-        fields=["name", "agent", "tone", "memory_mode"],
+        "Knowledge Profile",
+        filters={"enabled": 1},
+        fields=["name", "title", "description"],
         order_by="name asc",
     )
 
     assignments = frappe.get_all(
         "Nexus User Profile Assignment",
-        fields=["name", "user", "ai_agent_profile", "active", "assigned_on", "notes"],
+        fields=["name", "user", "knowledge_profile", "active", "assigned_on", "notes"],
     )
 
     assignment_map = {}
@@ -38,17 +39,21 @@ def get_user_data(user):
     assignments = frappe.get_all(
         "Nexus User Profile Assignment",
         filters={"user": user},
-        fields=["name", "user", "ai_agent_profile", "active", "assigned_by", "assigned_on", "notes"],
+        fields=["name", "user", "knowledge_profile", "active", "assigned_by", "assigned_on", "notes"],
         order_by="assigned_on desc",
     )
 
     effective_policies = []
     active = next((a for a in assignments if a.active), None)
 
-    if active and active.ai_agent_profile:
+    if active and active.knowledge_profile:
         category_names = frappe.get_all(
-            "Nexus AI Agent Profile Access Category",
-            filters={"ai_agent_profile": active.ai_agent_profile, "enabled": 1},
+            "Knowledge Profile Access Category",
+            filters={
+                "parent": active.knowledge_profile,
+                "parentfield": "access_categories",
+                "enabled": 1,
+            },
             pluck="access_category",
         )
         if category_names:
@@ -68,12 +73,12 @@ def get_user_data(user):
     return {
         "assignments": assignments,
         "effective_policies": effective_policies,
-        "active_profile": active.ai_agent_profile if active else None,
+        "active_profile": active.knowledge_profile if active else None,
     }
 
 
 @frappe.whitelist()
-def assign_profile(user, ai_agent_profile, notes=None):
+def assign_profile(user, knowledge_profile, notes=None):
     existing = frappe.db.get_value(
         "Nexus User Profile Assignment",
         {"user": user, "active": 1},
@@ -84,7 +89,7 @@ def assign_profile(user, ai_agent_profile, notes=None):
 
     doc = frappe.new_doc("Nexus User Profile Assignment")
     doc.user = user
-    doc.ai_agent_profile = ai_agent_profile
+    doc.knowledge_profile = knowledge_profile
     doc.active = 1
     doc.notes = notes or ""
     doc.insert(ignore_permissions=True)

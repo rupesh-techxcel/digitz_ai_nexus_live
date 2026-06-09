@@ -30,17 +30,17 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             <div class="nexus-admin-badge">DIGITZ AI Nexus</div>
             <h2>User Profile Manager</h2>
             <p>
-                Assign an <b>AI Agent Profile</b> directly to each internal desk user.
-                The profile determines what knowledge the user can access and how the AI responds.
+                Assign a <b>Knowledge Profile</b> to each internal desk user.
+                The profile governs which Access Categories (and their policies) the user can reach.
                 One active profile per user at any time.
             </p>
             <div class="nexus-admin-flow-pill">
-                User &nbsp;→&nbsp; AI Agent Profile &nbsp;→&nbsp; Access Category &nbsp;→&nbsp; Knowledge
+                User &nbsp;→&nbsp; Knowledge Profile &nbsp;→&nbsp; Access Category &nbsp;→&nbsp; Knowledge
             </div>
         </div>
         <div class="nexus-admin-hero-actions">
             <button class="btn btn-default" data-route-list="Nexus User Profile Assignment">All Assignments</button>
-            <button class="btn btn-default" data-route-list="Nexus AI Agent Profile">Profiles</button>
+            <button class="btn btn-default" data-route-list="Knowledge Profile">Knowledge Profiles</button>
         </div>
     </div>
 
@@ -81,8 +81,8 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                 <div class="nexus-admin-card" style="margin-bottom:18px;">
                     <div class="nexus-admin-section-head">
                         <div>
-                            <div class="nexus-admin-card-title">Profile Assignment</div>
-                            <p>Select a profile and click Assign. Any existing active assignment is deactivated first.</p>
+                            <div class="nexus-admin-card-title">Knowledge Profile Assignment</div>
+                            <p>Select a Knowledge Profile and click Assign. Any existing active assignment is deactivated first.</p>
                         </div>
                     </div>
                     <div class="nupm-assign-row">
@@ -99,7 +99,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                     <div class="nexus-admin-section-head">
                         <div>
                             <div class="nexus-admin-card-title">Effective Access Policies</div>
-                            <p>Knowledge policies granted to this user through their active profile.</p>
+                            <p>Knowledge policies granted to this user through their active Knowledge Profile.</p>
                         </div>
                     </div>
                     <div id="nupm_policies_area"></div>
@@ -241,14 +241,15 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         const $sel = $('#nupm_profile_select');
         $sel.find('option:not(:first)').remove();
         state.profiles.forEach(p => {
-            $sel.append(`<option value="${esc(p.name)}">${esc(p.name)}${p.agent ? ` (${esc(p.agent)})` : ''}</option>`);
+            const label = p.title ? `${esc(p.name)} — ${esc(p.title)}` : esc(p.name);
+            $sel.append(`<option value="${esc(p.name)}">${label}</option>`);
         });
     }
 
     function assignProfile() {
         const profile = $('#nupm_profile_select').val();
         if (!profile) {
-            frappe.show_alert({ message: 'Please select a profile.', indicator: 'orange' });
+            frappe.show_alert({ message: 'Please select a Knowledge Profile.', indicator: 'orange' });
             return;
         }
 
@@ -256,13 +257,13 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             method: 'digitz_ai_nexus_live.api.nexus_user_profile_manager.assign_profile',
             args: {
                 user: state.selectedUser,
-                ai_agent_profile: profile,
+                knowledge_profile: profile,
                 notes: $('#nupm_notes').val().trim(),
             },
             callback(r) {
                 if (r.message && r.message.status === 'success') {
-                    frappe.show_alert({ message: 'Profile assigned.', indicator: 'green' });
-                    state.assignmentMap[state.selectedUser] = { ai_agent_profile: profile, active: 1 };
+                    frappe.show_alert({ message: 'Knowledge Profile assigned.', indicator: 'green' });
+                    state.assignmentMap[state.selectedUser] = { knowledge_profile: profile, active: 1 };
                     $('#nupm_notes').val('');
                     renderUserList();
                     loadUserData(state.selectedUser);
@@ -299,7 +300,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
 
         const rows = assignments.map(a => `
             <tr>
-                <td><b style="color:#173b8c;">${esc(a.ai_agent_profile)}</b></td>
+                <td><b style="color:#173b8c;">${esc(a.knowledge_profile)}</b></td>
                 <td style="text-align:center;">
                     <span class="nexus-status-pill ${a.active ? 'enabled' : 'disabled'}">${a.active ? 'Active' : 'Inactive'}</span>
                 </td>
@@ -316,7 +317,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         $('#nupm_history_area').html(`
             <table class="table table-bordered nexus-admin-table" style="margin-bottom:0;">
                 <thead><tr>
-                    <th>Profile</th>
+                    <th>Knowledge Profile</th>
                     <th style="width:80px; text-align:center;">Status</th>
                     <th>Assigned By</th>
                     <th>Assigned On</th>

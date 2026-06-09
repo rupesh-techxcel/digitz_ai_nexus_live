@@ -137,8 +137,11 @@ def resolve_behavior_from_conversation(conversation):
 
 def resolve_behavior_for_internal_user(user):
     """
-    Resolve AI behavior for an authenticated internal desk user via direct
-    profile assignment (Nexus User Profile Assignment).
+    Resolve knowledge access for an authenticated internal desk user via
+    Nexus User Profile Assignment → Knowledge Profile.
+
+    Returns a minimal behavior dict carrying knowledge_profile_name for access
+    resolution. AI behavior (prompts, tone) comes from the assigned agent itself.
     """
     if not user or user == "Guest":
         return None
@@ -146,22 +149,33 @@ def resolve_behavior_for_internal_user(user):
     if get_session_user_type(user) != "Desk User":
         return None
 
-    assignment_name = frappe.db.get_value(
+    row = frappe.db.get_value(
         "Nexus User Profile Assignment",
         {"user": user, "active": 1},
-        "name",
+        ["name", "knowledge_profile"],
+        as_dict=True,
     )
 
-    if not assignment_name:
+    if not row or not row.knowledge_profile:
         return None
 
-    assignment = frappe.get_doc("Nexus User Profile Assignment", assignment_name)
-    profile = frappe.get_doc("Nexus AI Agent Profile", assignment.ai_agent_profile)
-
-    return _build_behavior_dict(
-        profile=profile,
-        source="Nexus User Profile Assignment",
-    )
+    return frappe._dict({
+        "source": "Nexus User Profile Assignment",
+        "profile_name": None,
+        "knowledge_profile_name": row.knowledge_profile,
+        "category_code": None,
+        "identity_type": None,
+        "behavior_prompt": None,
+        "tone": None,
+        "response_style": None,
+        "welcome_message": None,
+        "fallback_message": None,
+        "memory_mode": None,
+        "confidence_threshold": None,
+        "escalation_enabled": False,
+        "escalation_policy": None,
+        "do_not_answer_rules": None,
+    })
 
 
 def _build_behavior_dict(

@@ -11,11 +11,9 @@ from digitz_ai_nexus_live.services.agent_router import (
 class TestLiveAgentRouting(FrappeTestCase):
     def setUp(self):
         self.agent_name = None
-        self.onboarding_name = None
 
         self.cleanup_test_records()
         self.create_test_agent()
-        self.create_test_onboarding()
 
     def tearDown(self):
         self.cleanup_test_records()
@@ -25,7 +23,6 @@ class TestLiveAgentRouting(FrappeTestCase):
 
         for doctype in [
             "Nexus Agent Activity Log",
-            "Nexus Agent Onboarding",
             "Nexus AI Agent Profile",
         ]:
             for name in frappe.get_all(doctype, pluck="name"):
@@ -55,20 +52,6 @@ class TestLiveAgentRouting(FrappeTestCase):
         agent.insert(ignore_permissions=True)
 
         self.agent_name = agent.name
-
-    def create_test_onboarding(self):
-        onboarding = frappe.new_doc("Nexus Agent Onboarding")
-        onboarding.agent = self.agent_name
-        onboarding.onboarding_status = "Approved"
-        onboarding.identity_completed = 1
-        onboarding.behavior_completed = 1
-        onboarding.knowledge_completed = 1
-        onboarding.channel_completed = 1
-        onboarding.escalation_completed = 1
-        onboarding.testing_completed = 1
-        onboarding.insert(ignore_permissions=True)
-
-        self.onboarding_name = onboarding.name
 
     def find_test_agent(self):
         return find_available_agent({
@@ -111,19 +94,6 @@ class TestLiveAgentRouting(FrappeTestCase):
 
     def test_non_idle_agent_is_not_selected(self):
         frappe.db.set_value("Nexus Live Agent", self.agent_name, "status", "Responding")
-        frappe.db.commit()
-
-        agent = self.find_test_agent()
-
-        self.assertIsNone(agent)
-
-    def test_rejected_onboarding_blocks_agent(self):
-        frappe.db.set_value(
-            "Nexus Agent Onboarding",
-            self.onboarding_name,
-            "onboarding_status",
-            "Rejected",
-        )
         frappe.db.commit()
 
         agent = self.find_test_agent()
