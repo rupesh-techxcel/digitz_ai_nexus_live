@@ -18,9 +18,18 @@ Receives conversations escalated from AI agents or directly assigned through que
 
 ## Agent Roles
 
-Roles are used by the agent router to match query intent to the right agent:
+`agent_role` on `Nexus AI Agent Profile` serves three distinct purposes:
 
-| Role | Use Case |
+**1. Keyword-based routing fallback** — when no explicit agent is requested and the channel
+default is not set, the router infers a role from query keywords and selects a matching profile.
+
+**2. Escalation rule matching** — `Nexus Escalation Rule.agent_role` links a rule to profiles
+with the same role. Only rules whose `agent_role` matches the active profile's role fire.
+
+**3. AI core context forwarding** — `agent_role` is included in the `core_payload` sent to
+`digitz_ai_nexus` so the answer pipeline can tailor retrieval and generation behaviour per role.
+
+| Role | Primary Use Case |
 |---|---|
 | Public Responder | General public Q&A, default for anonymous visitors |
 | Sales | Pricing, product discovery, commercial queries |
@@ -29,25 +38,38 @@ Roles are used by the agent router to match query intent to the right agent:
 | Internal Assistant | Internal staff queries (desk, portal) |
 | Admin Reviewer | Administrative and governance queries |
 
-Role detection during routing uses keyword inference from the query text (e.g. "price" → Sales, "error" → Support). An explicit `requested_agent` in the payload bypasses role inference.
+Role detection during routing uses keyword inference from the query text (e.g. "price" → Sales,
+"error" → Support). An explicit `requested_agent` in the payload bypasses role inference.
 
 ---
 
 ## Behavior Profiles
 
-Behavior and access are both owned by `Nexus AI Agent Profile`. This is the primary runtime object — it is resolved at query time and passed as `ai_profile` in the query payload to Nexus Core.
+`Nexus AI Agent Profile` is a **reusable template** that controls **how** the AI responds —
+persona, tone, style, fallback messages, escalation settings, and confidence thresholds.
+It does **not** control knowledge access.
 
-`Nexus Live Agent` does not own behaviour. It is the operational worker record: code, name, type, role, status, visibility, channel, and session limits.
+Knowledge access is owned by `Nexus Identity Profile` via the person's `Nexus Identity Registry`
+entry. See [knowledge-access-architecture.md](knowledge-access-architecture.md) for the full chain.
 
-Resolution priority in `agent_service.get_agent_behavior()`:
-1. `Nexus AI Agent Profile` linked to the agent — **only runtime source in the non-category agent path**
-2. Category-routed chats use the profile resolved by `Nexus Category Identity Route`
+At conversation start, a `Nexus AI Agent Profile Instance` is created from the template.
+The instance holds a randomly-assigned nickname (visible in the chat widget header) and is
+linked to the conversation for the duration of the session.
+
+Resolution priority for category-based routing:
+1. `Nexus Category Identity Route` → `ai_agent_profile` — profile resolved by channel + category
+2. `agent_role` fallback — keyword-based routing selects a profile matching the inferred role
+3. Channel `default_agent` — fallback when no role match is found
 
 ### Nexus AI Agent Profile Fields
 
 | Field | Purpose |
 |---|---|
-| `agent` | Link to Nexus Live Agent (unique — one profile per agent) |
+| `agent_code` | Unique identifier; used in routing, logs, and autoname |
+| `agent_name` | Internal display name |
+| `display_name` | Visitor-facing name used when no nickname pool is set |
+| `nickname_pool` | One name per line. A random name is picked each session. Priority: pool → display_name → built-in 25-name default pool |
+| `agent_role` | Role used for (1) keyword-based routing fallback, (2) escalation rule matching, (3) AI core context forwarding |
 | `behavior_prompt` | Main behavioural instruction for this profile |
 | `tone` | Free text style hint, e.g. Professional, Friendly, Technical |
 | `response_style` | Free text response structure hint, e.g. Concise, Balanced, Detailed |
@@ -60,6 +82,35 @@ Resolution priority in `agent_service.get_agent_behavior()`:
 | `escalation_policy` | Link to Nexus Escalation Rule |
 | `memory_mode` | None / Session / Conversation Summary / Long Term |
 | `system_notes` | Internal admin notes |
+
+### Nexus AI Agent Profile Instance
+
+Each conversation creates one `Nexus AI Agent Profile Instance` from the template. The instance
+carries the session nickname and is closed when the conversation ends.
+
+| Field | Purpose |
+|---|---|
+| `profile_template` | Link to the source `Nexus AI Agent Profile` |
+| `nickname` | Randomly chosen at conversation start; shown in the chat widget header |
+| `conversation` | Link to `Nexus Live Conversation` |
+| `status` | Active (in-flight) / Closed (when conversation ends) |
+| `created_on` | Datetime |
+
+The nickname is chosen once during `create_conversation()`, stored in both the instance and the
+`ai_profile_snapshot_json` on the conversation. Follow-up messages restore from the snapshot
+so the same nickname persists throughout the session regardless of pool changes.
+
+### Nickname Selection
+
+```
+_pick_nickname(profile)
+    1. profile.nickname_pool (one name per line) → random.choice(names)
+    2. profile.display_name (non-empty fallback)
+    3. Built-in 25-name default pool:
+       Aria, Nova, Zara, Lyra, Sage, Echo, Finn, Milo, Luca, Orion,
+       Iris, Jade, Remi, Skye, Taya, Ezra, Cleo, Demi, Halo, Juno,
+       Kira, Lena, Noel, Pax, Vera
+```
 
 ---
 
@@ -88,40 +139,64 @@ Draft → Onboarding → Idle → Assigned → Responding → Waiting → Unavai
 
 ## Profile Resolution
 
-Profile resolution is the step that determines which `Nexus AI Agent Profile` governs a conversation. It happens before agent assignment and before any query is sent to Nexus Core.
+Profile resolution is the step that determines which `Nexus AI Agent Profile` governs a
+conversation. It happens before any query is sent to Nexus Core.
 
 ### External users (chat window)
 
-The user selects a `Nexus Chat Category` from the chat window (e.g. "Customer Support", "Product Enquiry", "Connect to Sales"). Runtime derives an `identity_type` and resolves `Nexus Category Identity Route`:
+The user selects a `Nexus Chat Category`. Runtime resolves a `Nexus Category Identity Route`:
 
 ```
-channel + chat_category + identity_type → Nexus AI Agent Profile
+channel + chat_category → Nexus AI Agent Profile (behavior)
+                        → permitted Identity Profiles (knowledge access)
 ```
 
-The selected profile then controls behavior and access. The category itself does not directly grant access.
+Public visitors: route with `is_public_route = 1` → `force_public_only = True` →
+`allowed_access_policies = ["Public"]`. This bypass applies even when a named profile is
+configured on the route — the identity type cap always wins for Public.
+
+Registered visitors: visitor's Identity Registry profiles intersected with route's permitted
+profiles → collect Knowledge Profiles for matching identity_type → union policies.
 
 ### Internal / desk users
 
-The admin directly assigns a profile via `Nexus User Profile Assignment`. At runtime, the system loads the active assignment for the authenticated user. If no assignment exists, a normal internal user is rejected.
+Knowledge access for desk users is resolved via `Nexus Identity Registry`:
 
-`System Manager` sessions are allowed to continue without a profile assignment for admin/test use. When a System Manager does have an assignment, the assigned profile still provides behavior. Access policy narrowing is bypassed in Core for authenticated System Managers unless the request is explicitly public-only.
+```
+frappe.session.user → Nexus Identity Registry (registry.user)
+    → assigned Identity Profiles
+    → identity_mappings where identity_type = "Internal" | "Admin"
+    → knowledge_profile_names
+```
+
+If no registry entry exists, the user is denied unless they are a `System Manager`
+(who receives all enabled policies unconditionally).
+
+`Nexus User Profile Assignment` is **only for escalation configuration** (whether the user
+can handle escalated conversations and for which categories). It is not used for knowledge access.
 
 ### API / non-chat channels
 
-Non-chat or direct integrations should pass an explicit agent/profile context or use the channel's configured agent path. There is no separate channel-level profile route DocType in the active runtime model.
+Direct integrations should pass explicit knowledge_profile_names in the payload or rely on the
+channel's configured agent path.
 
-### Access handoff
+### Knowledge access handoff
 
-Before calling Nexus Core, Live must pass the resolved profile as `query_contract.ai_profile.name`. Nexus Core then resolves:
+Before calling Nexus Core, Live builds the `ai_profile` dict including `knowledge_profile_names`:
 
 ```
-Nexus AI Agent Profile
-  → Nexus AI Agent Profile Access Category
-  → Nexus Access Category Policy
-  → allowed_access_policies
+ai_profile = {
+    "name": "PUBLIC-AI-ASSISTANT",         # profile template name
+    "knowledge_profile_names": ["...", "..."],  # knowledge access
+    ...
+}
+→ resolve_allowed_policies({ai_profile: ai_profile})
+→ allowed_access_policies
+→ call retrieval / answer service
 ```
 
-Calling access resolution before the profile is present produces an empty policy list and retrieval is denied.
+If `knowledge_profile_names` is empty and no System Manager session, `allowed_access_policies = []`
+and retrieval fails closed (except for Public identity type, which always returns `["Public"]`).
 
 ## Agent Routing
 

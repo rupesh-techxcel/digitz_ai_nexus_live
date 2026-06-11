@@ -111,13 +111,12 @@ def simulate_workflow(
         }
         result["registered_identities"] = [
             {
-                "identity_type": row.identity_type,
-                "enabled": row.enabled,
+                "identity_profile": row.identity_profile,
                 "is_primary": row.is_primary,
                 "valid_from": row.valid_from,
                 "valid_until": row.valid_until,
             }
-            for row in registry.identities
+            for row in registry.identity_profiles
         ]
     elif result["input"]["visitor_email"]:
         result["warnings"].append("No enabled identity registry found for this email.")
@@ -138,7 +137,7 @@ def simulate_workflow(
         return result
 
     result["resolved_identity_type"] = identity_type
-    result["route_chain"] = get_route_chain(channel, chat_category, identity_type)
+    result["route_chain"] = get_route_chain(channel, chat_category, identity_type=identity_type)
 
     if result["route_chain"].get("warnings"):
         result["warnings"].extend(result["route_chain"]["warnings"])

@@ -8,13 +8,11 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     const state = {
         channels: [],
         profiles: [],
-        identityTypes: [],
+        identityProfiles: [],
         categories: [],
         routes: [],
-        availableIdentityTypes: [],
         selectedChannel: null,
         selectedCategory: null,
-        expandedIdentity: null,
     };
 
     inject_ncpr_css();
@@ -34,13 +32,12 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             <div class="nexus-admin-badge">DIGITZ AI Nexus</div>
             <h2>Category Profile Routes</h2>
             <p>
-                For each chat category, define which <b>AI Agent Profile</b> is used for each
-                <b>Identity Type</b>. The same category can serve different visitors with
-                different profiles. Access safeguards are configured on the verified
-                identity registry, then intersected with profile access at runtime.
+                For each chat category, define which <b>AI Agent Profile</b> handles the conversation
+                and which <b>Identity Profiles</b> are permitted. A route is either public (open to all)
+                or restricted to visitors whose registry includes a permitted Identity Profile.
             </p>
             <div class="nexus-admin-flow-pill">
-                Chat Category &nbsp;+&nbsp; Identity Type &nbsp;→&nbsp; AI Agent Profile
+                Chat Category &nbsp;→&nbsp; Route &nbsp;→&nbsp; Identity Profiles &nbsp;→&nbsp; Knowledge Profiles &nbsp;→&nbsp; Policies
             </div>
         </div>
         <div class="nexus-admin-hero-actions">
@@ -84,7 +81,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                 <div class="nexus-admin-card" style="margin-bottom:18px;">
                     <div class="nexus-admin-section-head" style="margin-bottom:0;">
                         <div>
-                            <div class="nexus-admin-card-title">Identity → Profile Routes</div>
+                            <div class="nexus-admin-card-title">Routes</div>
                             <div id="ncpr_routes_subtitle" class="nexus-admin-muted" style="margin-top:6px;"></div>
                         </div>
                         <button id="ncpr_add_route_btn" class="btn btn-primary btn-sm">+ Add Route</button>
@@ -96,15 +93,8 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                     <div id="ncpr_routes_loading" class="nexus-empty-state" style="display:none;">Loading routes…</div>
                     <div id="ncpr_routes_table"></div>
                     <div id="ncpr_no_routes" class="nexus-empty-state" style="display:none;">
-                        No routes configured. Every identity type that could access this category
-                        needs a route. Click <b>+ Add Route</b> to begin.
+                        No routes configured for this category. Click <b>+ Add Route</b> to create one.
                     </div>
-                </div>
-
-                <!-- Coverage summary -->
-                <div id="ncpr_coverage_card" class="nexus-admin-card" style="margin-bottom:18px; display:none;">
-                    <div class="nexus-admin-card-title">Coverage</div>
-                    <div id="ncpr_coverage_body"></div>
                 </div>
 
                 <!-- Chain detail -->
@@ -123,44 +113,6 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         </div>
     </div>
 
-    <!-- Add route modal -->
-    <div id="ncpr_modal_overlay" class="ncpr-modal-overlay" style="display:none;">
-        <div class="ncpr-modal">
-            <div class="ncpr-modal-header">
-                <span id="ncpr_modal_title" style="font-size:17px; font-weight:900; color:#102b67;">Add Route</span>
-                <button id="ncpr_modal_close" class="btn btn-xs btn-default">✕</button>
-            </div>
-            <div class="ncpr-modal-body">
-                <div class="ncpr-field-group">
-                    <label>Identity Type <span style="color:#b42318;">*</span></label>
-                    <select id="ncpr_f_identity" class="form-control">
-                        <option value="">— Select identity type —</option>
-                    </select>
-                </div>
-                <div class="ncpr-field-group">
-                    <label>AI Agent Profile <span style="color:#b42318;">*</span></label>
-                    <select id="ncpr_f_profile" class="form-control">
-                        <option value="">— Select profile —</option>
-                    </select>
-                </div>
-                <div class="ncpr-field-group">
-                    <label>Priority</label>
-                    <input id="ncpr_f_priority" type="number" class="form-control" value="10" min="1">
-                    <div class="nexus-admin-muted">Lower = higher priority when multiple routes match.</div>
-                </div>
-                <div class="ncpr-field-group">
-                    <label>Description</label>
-                    <input id="ncpr_f_description" type="text" class="form-control" placeholder="Optional notes">
-                </div>
-                <div id="ncpr_modal_error" class="nexus-empty-state" style="display:none; background:#fff0f0; border-color:#ffd1d1; color:#b42318;"></div>
-            </div>
-            <div class="ncpr-modal-footer">
-                <button id="ncpr_modal_cancel" class="btn btn-default">Cancel</button>
-                <button id="ncpr_modal_save" class="btn btn-primary">Save Route</button>
-            </div>
-        </div>
-    </div>
-
 </div>`;
     }
 
@@ -174,12 +126,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         $(page.body).on('click', '[data-route-page]', function () {
             frappe.set_route($(this).data('route-page'));
         });
-        $(page.body).on('click', '#ncpr_add_route_btn', () => openModal());
-        $(page.body).on('click', '#ncpr_modal_close, #ncpr_modal_cancel', closeModal);
-        $(page.body).on('click', '#ncpr_modal_overlay', e => {
-            if ($(e.target).is('#ncpr_modal_overlay')) closeModal();
-        });
-        $(page.body).on('click', '#ncpr_modal_save', saveRoute);
+        $(page.body).on('click', '#ncpr_add_route_btn', addRoute);
         $(page.body).on('click', '#ncpr_chain_close', () => $('#ncpr_chain_card').hide());
     }
 
@@ -194,9 +141,8 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                 if (!r.message) return;
                 state.channels = r.message.channels || [];
                 state.profiles = r.message.profiles || [];
-                state.identityTypes = r.message.identity_types || [];
+                state.identityProfiles = r.message.identity_profiles || [];
                 renderChannelList();
-                populateProfileSelect();
             },
         });
     }
@@ -227,9 +173,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                 $('#ncpr_routes_loading').hide();
                 if (!r.message) return;
                 state.routes = r.message.routes || [];
-                state.availableIdentityTypes = r.message.available_identity_types || [];
                 renderRoutes();
-                renderCoverage();
             },
         });
     }
@@ -322,43 +266,59 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         }
         $('#ncpr_no_routes').hide();
 
-        const rows = state.routes.map(r => `
-            <tr>
-                <td>
-                    <span class="ncpr-identity-pill ncpr-id-${esc((r.identity_type||'').toLowerCase())}">${esc(r.identity_type)}</span>
-                </td>
-                <td>
-                    <b style="color:#173b8c; font-size:12px;">${esc(r.ai_agent_profile)}</b>
-                    ${r.description ? `<div class="nexus-admin-muted">${esc(r.description)}</div>` : ''}
-                </td>
-                <td style="text-align:center; color:#6b7c9b; font-size:12px;">${r.priority}</td>
-                <td style="text-align:center;">
-                    <span class="nexus-status-pill ${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? 'Active' : 'Disabled'}</span>
-                </td>
-                <td style="text-align:right;">
-                    <button class="btn btn-xs btn-info ncpr-chain-btn" data-identity="${esc(r.identity_type)}" style="margin-right:3px;">Chain</button>
-                    <button class="btn btn-xs ${r.enabled ? 'btn-warning' : 'btn-success'} ncpr-toggle-btn"
-                        data-name="${esc(r.name)}" data-enabled="${r.enabled ? 0 : 1}">
-                        ${r.enabled ? 'Disable' : 'Enable'}
-                    </button>
-                    <button class="btn btn-xs btn-danger ncpr-delete-btn" data-name="${esc(r.name)}" style="margin-left:3px;">✕</button>
-                </td>
-            </tr>`).join('');
+        const rows = state.routes.map(r => {
+            const routeTypeBadge = r.is_public_route
+                ? `<span class="ncpr-route-pill ncpr-public">Public</span>`
+                : `<span class="ncpr-route-pill ncpr-registered">Registered</span>`;
+
+            const profilesHtml = r.is_public_route
+                ? '<span class="nexus-admin-muted">Open to all visitors</span>'
+                : (r.identity_profiles && r.identity_profiles.length
+                    ? r.identity_profiles.map(p => `<span class="ncpr-ip-chip">${esc(p)}</span>`).join('')
+                    : '<span class="nexus-admin-muted" style="color:#b42318;">No Identity Profiles</span>');
+
+            return `
+                <tr>
+                    <td>${routeTypeBadge}</td>
+                    <td>
+                        <b style="color:#173b8c; font-size:12px;">${esc(r.ai_agent_profile)}</b>
+                        ${r.description ? `<div class="nexus-admin-muted">${esc(r.description)}</div>` : ''}
+                    </td>
+                    <td><div style="display:flex; flex-wrap:wrap; gap:4px;">${profilesHtml}</div></td>
+                    <td style="text-align:center; color:#6b7c9b; font-size:12px;">${r.priority}</td>
+                    <td style="text-align:center;">
+                        <span class="nexus-status-pill ${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? 'Active' : 'Disabled'}</span>
+                    </td>
+                    <td style="text-align:right;">
+                        <button class="btn btn-xs btn-info ncpr-chain-btn" data-name="${esc(r.name)}" style="margin-right:3px;">Chain</button>
+                        <button class="btn btn-xs ${r.enabled ? 'btn-warning' : 'btn-success'} ncpr-toggle-btn"
+                            data-name="${esc(r.name)}" data-enabled="${r.enabled ? 0 : 1}">
+                            ${r.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-xs btn-default ncpr-edit-btn" data-name="${esc(r.name)}" style="margin-left:3px;">Edit</button>
+                        <button class="btn btn-xs btn-danger ncpr-delete-btn" data-name="${esc(r.name)}" style="margin-left:3px;">✕</button>
+                    </td>
+                </tr>`;
+        }).join('');
 
         $table.html(`
             <table class="table table-bordered nexus-admin-table" style="margin-bottom:0;">
                 <thead><tr>
-                    <th style="width:130px;">Identity Type</th>
-                    <th>AI Agent Profile</th>
+                    <th style="width:100px;">Type</th>
+                    <th style="width:180px;">AI Agent Profile</th>
+                    <th>Identity Profiles</th>
                     <th style="width:70px; text-align:center;">Priority</th>
                     <th style="width:90px; text-align:center;">Status</th>
-                    <th style="width:210px; text-align:right;">Actions</th>
+                    <th style="width:240px; text-align:right;">Actions</th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
             </table>`);
 
         $table.off('click', '.ncpr-chain-btn').on('click', '.ncpr-chain-btn', function () {
-            loadChain($(this).data('identity'));
+            loadChain($(this).data('name'));
+        });
+        $table.off('click', '.ncpr-edit-btn').on('click', '.ncpr-edit-btn', function () {
+            frappe.set_route('Form', 'Nexus Category Identity Route', $(this).data('name'));
         });
         $table.off('click', '.ncpr-toggle-btn').on('click', '.ncpr-toggle-btn', function () {
             toggleRoute($(this).data('name'), $(this).data('enabled'));
@@ -369,109 +329,12 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     }
 
     // -------------------------------------------------------------------------
-    // Coverage summary
+    // Add route — opens standard Frappe form with channel + category pre-filled
     // -------------------------------------------------------------------------
-    function renderCoverage() {
-        const $card = $('#ncpr_coverage_card');
-        const $body = $('#ncpr_coverage_body');
-
-        const configured = new Set(state.routes.filter(r => r.enabled).map(r => r.identity_type));
-        const missing = state.identityTypes.filter(t => !configured.has(t));
-
-        const configuredChips = [...configured].map(t =>
-            `<span class="ncpr-identity-pill ncpr-id-${t.toLowerCase()} ncpr-coverage-ok">${t} ✓</span>`
-        ).join('');
-
-        const missingChips = missing.map(t =>
-            `<span class="ncpr-identity-pill ncpr-coverage-missing">${t} —</span>`
-        ).join('');
-
-        $body.html(`
-            <div style="margin-bottom:10px;">
-                <div class="nexus-admin-muted" style="margin-bottom:6px; font-weight:900; color:#173b8c;">Configured (${configured.size})</div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                    ${configuredChips || '<span class="nexus-admin-muted">None</span>'}
-                </div>
-            </div>
-            <div>
-                <div class="nexus-admin-muted" style="margin-bottom:6px; font-weight:900; color:#b42318;">Not Configured (${missing.length})</div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                    ${missingChips || '<span style="color:#16794c; font-size:12px; font-weight:850;">All identity types covered ✓</span>'}
-                </div>
-                ${missing.length ? `<div class="nexus-admin-muted" style="margin-top:8px;">Visitors with these identity types selecting this category will receive an error.</div>` : ''}
-            </div>`);
-
-        $card.show();
-    }
-
-    // -------------------------------------------------------------------------
-    // Modal
-    // -------------------------------------------------------------------------
-    function populateProfileSelect() {
-        const $sel = $('#ncpr_f_profile');
-        $sel.find('option:not(:first)').remove();
-        state.profiles.forEach(p => {
-            $sel.append(`<option value="${esc(p.name)}">${esc(p.name)}${p.agent ? ` (${esc(p.agent)})` : ''}</option>`);
-        });
-    }
-
-    function openModal() {
-        const $sel = $('#ncpr_f_identity');
-        $sel.find('option:not(:first)').remove();
-        state.availableIdentityTypes.forEach(t => {
-            $sel.append(`<option value="${t}">${t}</option>`);
-        });
-        if (!state.availableIdentityTypes.length) {
-            frappe.show_alert({ message: 'All identity types are already configured for this category.', indicator: 'blue' });
-            return;
-        }
-
-        $('#ncpr_f_priority').val(10);
-        $('#ncpr_f_description').val('');
-        $('#ncpr_f_profile').val('');
-        $('#ncpr_modal_error').hide();
-        $('#ncpr_modal_title').text('Add Route');
-        $('#ncpr_modal_overlay').show();
-        $('#ncpr_f_identity').focus();
-    }
-
-    function closeModal() {
-        $('#ncpr_modal_overlay').hide();
-    }
-
-    function saveRoute() {
-        const identity = $('#ncpr_f_identity').val();
-        const profile = $('#ncpr_f_profile').val();
-
-        if (!identity || !profile) {
-            $('#ncpr_modal_error').show().text('Identity Type and AI Agent Profile are required.');
-            return;
-        }
-
-        $('#ncpr_modal_error').hide();
-        $('#ncpr_modal_save').prop('disabled', true).text('Saving…');
-
-        frappe.call({
-            method: 'digitz_ai_nexus_live.api.nexus_category_profile_router.save_route',
-            args: {
-                channel: state.selectedChannel,
-                category_code: state.selectedCategory,
-                identity_type: identity,
-                ai_agent_profile: profile,
-                priority: $('#ncpr_f_priority').val() || 10,
-                description: $('#ncpr_f_description').val().trim(),
-            },
-            callback(r) {
-                $('#ncpr_modal_save').prop('disabled', false).text('Save Route');
-                if (r.message && r.message.status === 'success') {
-                    closeModal();
-                    frappe.show_alert({ message: 'Route saved.', indicator: 'green' });
-                    loadRoutes(state.selectedChannel, state.selectedCategory);
-                }
-            },
-            error() {
-                $('#ncpr_modal_save').prop('disabled', false).text('Save Route');
-            },
+    function addRoute() {
+        frappe.new_doc('Nexus Category Identity Route', {
+            channel: state.selectedChannel,
+            chat_category: state.selectedCategory,
         });
     }
 
@@ -506,9 +369,9 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     // -------------------------------------------------------------------------
     // Chain detail
     // -------------------------------------------------------------------------
-    function loadChain(identityType) {
+    function loadChain(routeName) {
         $('#ncpr_chain_card').show();
-        $('#ncpr_chain_subtitle').text(`Identity: ${identityType}`);
+        $('#ncpr_chain_subtitle').text(`Route: ${routeName}`);
         $('#ncpr_chain_body').html('<div class="nexus-empty-state">Resolving chain…</div>');
         $('html,body').animate({ scrollTop: $('#ncpr_chain_card').offset().top - 80 }, 250);
 
@@ -517,7 +380,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             args: {
                 channel: state.selectedChannel,
                 category_code: state.selectedCategory,
-                identity_type: identityType,
+                route_name: routeName,
             },
             callback(r) {
                 if (!r.message) return;
@@ -537,19 +400,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
 
         html += `<div class="ncpr-chain-flow">`;
 
-        // Identity node
-        html += `
-            <div class="ncpr-chain-node">
-                <div class="ncpr-chain-node-label">Identity Type</div>
-                <div class="ncpr-chain-node-card" style="display:flex; align-items:center; justify-content:center; min-height:60px;">
-                    <span class="ncpr-identity-pill ncpr-id-${esc((chain.identity_type||'').toLowerCase())}" style="font-size:14px; padding:8px 18px;">
-                        ${esc(chain.identity_type)}
-                    </span>
-                </div>
-            </div>
-            <div class="ncpr-chain-arrow">→</div>`;
-
-        // Profile node
+        // AI Agent Profile node
         if (chain.profile) {
             html += `
                 <div class="ncpr-chain-node">
@@ -569,17 +420,44 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
 
         html += `<div class="ncpr-chain-arrow">→</div>`;
 
-        // Profile access categories node
-        html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Profile Access</div><div class="ncpr-chain-node-card">`;
-        if (chain.profile_access_categories && chain.profile_access_categories.length) {
-            html += chain.profile_access_categories.map(c =>
+        // Identity Profiles node
+        html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Identity Profiles</div><div class="ncpr-chain-node-card">`;
+        if (chain.identity_profiles && chain.identity_profiles.length) {
+            html += chain.identity_profiles.map(ip =>
+                `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="color:#16a34a;">✓</span>
+                    <span style="font-size:12px; font-weight:850; color:#173b8c;">${esc(ip)}</span>
+                </div>`
+            ).join('');
+        } else if (chain.route && !chain.warnings.some(w => w.includes('public route'))) {
+            html += `<span class="ncpr-chain-missing">None assigned</span>`;
+        } else {
+            html += `<span class="nexus-admin-muted">Public route — no profile filter</span>`;
+        }
+        html += `</div></div>`;
+
+        if (chain.knowledge_profiles && chain.knowledge_profiles.length) {
+            html += `<div class="ncpr-chain-arrow">→</div>`;
+            html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Knowledge Profiles</div><div class="ncpr-chain-node-card">`;
+            html += chain.knowledge_profiles.map(kp =>
+                `<div style="font-size:12px; font-weight:850; color:#173b8c; margin-bottom:4px;">${esc(kp)}</div>`
+            ).join('');
+            html += `</div></div>`;
+        }
+
+        html += `<div class="ncpr-chain-arrow">→</div>`;
+
+        // Access Categories node
+        html += `<div class="ncpr-chain-node"><div class="ncpr-chain-node-label">Access Categories</div><div class="ncpr-chain-node-card">`;
+        if (chain.access_categories && chain.access_categories.length) {
+            html += chain.access_categories.map(c =>
                 `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     <span style="color:#16a34a;">✓</span>
                     <span style="font-size:12px; font-weight:850; color:#173b8c;">${esc(c)}</span>
                 </div>`
             ).join('');
         } else {
-            html += `<span class="ncpr-chain-missing">None assigned</span>`;
+            html += `<span class="ncpr-chain-missing">None resolved</span>`;
         }
         html += `</div></div>`;
 
@@ -590,7 +468,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         if (chain.policies && chain.policies.length) {
             html += `<div style="display:flex; flex-wrap:wrap; gap:5px;">`;
             html += chain.policies.map(p =>
-                `<span class="${p.is_primitive ? 'ncpr-chip-primitive' : 'ncpr-chip'}">${esc(p.policy_name)}${p.is_primitive ? ' ★' : ''}</span>`
+                `<span class="${p.is_primitive ? 'ncpr-chip-primitive' : 'ncpr-chip'}">${esc(p.policy_name || p.name)}${p.is_primitive ? ' ★' : ''}</span>`
             ).join('');
             html += `</div>`;
             html += `<div class="nexus-admin-muted" style="margin-top:8px;">${chain.policies.length} polic${chain.policies.length !== 1 ? 'ies' : 'y'} will filter knowledge chunks.</div>`;
@@ -600,6 +478,11 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         html += `</div></div>`;
 
         html += `</div>`;
+
+        if (!chain.knowledge_profiles || !chain.knowledge_profiles.length) {
+            html += `<div class="ncpr-chain-warning" style="margin-top:14px;"><span style="font-size:16px;">ℹ️</span><span>Pass an <b>identity_type</b> to see Knowledge Profiles and effective policies for a specific visitor class.</span></div>`;
+        }
+
         $('#ncpr_chain_body').html(html);
     }
 
@@ -644,16 +527,10 @@ function inject_ncpr_css() {
         .ncpr-item-active { background:#eef6ff !important; border-color:rgba(33,77,187,.55) !important; }
         .ncpr-item-active div { color:#173b8c !important; font-weight:950 !important; }
 
-        .ncpr-identity-pill { display:inline-flex; padding:5px 12px; border-radius:999px; font-size:11px; font-weight:900; white-space:nowrap; background:#eef6ff; color:#173b8c; border:1px solid rgba(33,77,187,.22); }
-        .ncpr-id-public    { background:#f0fdf4; color:#15803d; border-color:#bbf7d0; }
-        .ncpr-id-customer  { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
-        .ncpr-id-prospect  { background:#fefce8; color:#a16207; border-color:#fde68a; }
-        .ncpr-id-partner   { background:#fdf4ff; color:#7e22ce; border-color:#e9d5ff; }
-        .ncpr-id-internal  { background:#fff7ed; color:#c2410c; border-color:#fed7aa; }
-        .ncpr-id-admin     { background:#fff0f0; color:#b42318; border-color:#ffd1d1; }
-
-        .ncpr-coverage-ok     { opacity:1; }
-        .ncpr-coverage-missing { background:#f9fafb; color:#9ca3af; border-color:#e5e7eb; text-decoration:line-through; }
+        .ncpr-route-pill { display:inline-flex; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:900; white-space:nowrap; }
+        .ncpr-public { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+        .ncpr-registered { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+        .ncpr-ip-chip { display:inline-flex; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:900; background:#eef6ff; color:#173b8c; border:1px solid rgba(33,77,187,.22); margin:2px; }
 
         .ncpr-chain-warning { display:flex; align-items:flex-start; gap:10px; padding:12px 16px; border-radius:14px; background:#fff7e6; border:1px solid #f2d49b; color:#8a5d00; font-size:12px; font-weight:800; margin-bottom:14px; line-height:1.5; }
         .ncpr-chain-flow { display:flex; align-items:flex-start; gap:0; flex-wrap:wrap; overflow-x:auto; }
@@ -665,15 +542,6 @@ function inject_ncpr_css() {
         .ncpr-chain-missing { color:#b42318; font-weight:800; font-size:12px; }
         .ncpr-chip { display:inline-flex; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:900; background:#eef6ff; color:#173b8c; border:1px solid rgba(33,77,187,.22); }
         .ncpr-chip-primitive { display:inline-flex; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:900; background:#fff7e6; color:#8a5d00; border:1px solid #f2d49b; }
-
-        .ncpr-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; display:flex; align-items:center; justify-content:center; }
-        .ncpr-modal { background:#fff; border-radius:22px; width:480px; max-width:95vw; box-shadow:0 24px 60px rgba(0,0,0,.22); overflow:hidden; }
-        .ncpr-modal-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 16px; border-bottom:1px solid #e8eef7; }
-        .ncpr-modal-body { padding:20px 24px; display:flex; flex-direction:column; gap:14px; }
-        .ncpr-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 20px; border-top:1px solid #e8eef7; }
-        .ncpr-modal-footer .btn { border-radius:999px; font-weight:850; }
-        .ncpr-field-group { display:flex; flex-direction:column; gap:5px; }
-        .ncpr-field-group label { font-size:12px; font-weight:900; color:#173b8c; }
 
         @media (max-width:1100px) { .ncpr-layout { grid-template-columns:180px 180px 1fr; } }
         @media (max-width:820px) { .ncpr-layout { grid-template-columns:1fr 1fr; } .ncpr-col-panel { position:static; } }

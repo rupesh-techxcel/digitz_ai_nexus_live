@@ -120,8 +120,8 @@ Create Nexus Live Conversation
     │
     ▼
 Build core payload
-─ ai_profile.name must be present before access resolution
-─ allowed_access_policies resolved from profile access categories
+─ ai_profile.knowledge_profile_names resolved from Identity Profile chain
+─ allowed_access_policies = union of Knowledge Profile policies ∩ Identity Type safeguard
     │
     ▼
 Answer query (Nexus Core)
@@ -200,8 +200,10 @@ This app never calls OpenAI directly. All LLM and embedding calls go through Nex
 ## Design Principles
 
 1. **Stateful conversations, stateless queries** — Q&A exchanges are fire-and-forget; chat conversations maintain a document with full message history.
-2. **Profile-first resolution with identity cap** — every conversation resolves to exactly one `Nexus AI Agent Profile` before any query proceeds. The profile owns behaviour and access capability; registered identities can further reduce access through the Identity Registry Safe Guard.
-3. **Behavior over hard-coding** — tone, response style, fallback messages, and do-not-answer rules come from `Nexus AI Agent Profile`, not string literals or agent fields.
-4. **Chat Category plus identity routes** — external users declare intent by selecting a chat category. Runtime derives identity type and resolves `Nexus Category Identity Route` to the governing profile.
-5. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
-6. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.
+2. **Behavior and knowledge access are separate concerns** — `Nexus AI Agent Profile` owns behavior (tone, fallback, escalation, thresholds). Knowledge access is owned by `Nexus Identity Profile` via the person's `Nexus Identity Registry`. These two concerns must never be conflated.
+3. **Identity-driven knowledge access** — knowledge access follows the person, not the AI agent. The same person gets the same knowledge access regardless of which AI agent they are talking to. Changing the AI agent does not change what knowledge the person can retrieve.
+4. **Chat Category plus identity routes** — external users declare intent by selecting a chat category. Runtime resolves `Nexus Category Identity Route` to an AI behavior profile and the set of permitted Identity Profiles. For public visitors, a public route bypasses all identity profile matching.
+5. **Access frozen at conversation creation** — `ai_profile_snapshot_json` freezes both behavior and `knowledge_profile_names` at conversation start. Follow-up messages restore from the snapshot — no re-resolution. Configuration changes mid-session do not affect in-progress conversations.
+6. **Safeguard at identity class level** — access caps are on `Nexus Identity Type`, not on individual registry entries. All holders of an identity class are uniformly capped. This prevents per-person misconfiguration from exceeding the class boundary.
+7. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
+8. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.

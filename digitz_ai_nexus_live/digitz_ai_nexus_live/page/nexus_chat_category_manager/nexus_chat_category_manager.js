@@ -41,6 +41,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             <button class="btn btn-primary" data-route-page="nexus-category-profile-routes">Manage Routes →</button>
             <button class="btn btn-default" data-route-list="Nexus Chat Category">All Categories</button>
             <button class="btn btn-default" data-route-list="Nexus Live Channel">Channels</button>
+            <button id="nccm_test_chat_btn" class="btn nccm-test-btn">⚡ Test Chat Connectivity</button>
         </div>
     </div>
 
@@ -100,6 +101,29 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                     <div id="nccm_chain_body" style="margin-top:18px;"></div>
                 </div>
 
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Chat Connectivity modal -->
+    <div id="nccm_test_overlay" class="nccm-modal-overlay" style="display:none;">
+        <div class="nccm-modal nccm-test-modal">
+            <div class="nccm-modal-header">
+                <div>
+                    <div style="font-size:18px; font-weight:900; color:#102b67;">⚡ Chat Connectivity Test</div>
+                    <div class="nexus-admin-muted" style="margin-top:3px;">Tracing desk-user start_chat path step by step</div>
+                </div>
+                <button id="nccm_test_close" class="btn btn-xs btn-default">✕</button>
+            </div>
+            <div id="nccm_test_body" class="nccm-modal-body nccm-test-body">
+                <div class="nccm-test-running">
+                    <div class="nccm-spinner"></div>
+                    <div>Running connectivity test…</div>
+                </div>
+            </div>
+            <div class="nccm-modal-footer">
+                <button id="nccm_test_rerun" class="btn btn-default" style="display:none;">↺ Re-run</button>
+                <button id="nccm_test_close2" class="btn btn-primary">Close</button>
             </div>
         </div>
     </div>
@@ -190,6 +214,14 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
         });
         $(page.body).on('click', '#nccm_modal_save', saveCategory);
         $(page.body).on('click', '#nccm_chain_close', () => $('#nccm_chain_card').hide());
+
+        // Test Chat Connectivity
+        $(page.body).on('click', '#nccm_test_chat_btn', openTestModal);
+        $(page.body).on('click', '#nccm_test_close, #nccm_test_close2', closeTestModal);
+        $(page.body).on('click', '#nccm_test_overlay', function (e) {
+            if ($(e.target).is('#nccm_test_overlay')) closeTestModal();
+        });
+        $(page.body).on('click', '#nccm_test_rerun', runConnectivityTest);
     }
 
     // -------------------------------------------------------------------------
@@ -557,6 +589,114 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
     }
 
     // -------------------------------------------------------------------------
+    // Test Chat Connectivity
+    // -------------------------------------------------------------------------
+    function openTestModal() {
+        $('#nccm_test_overlay').show();
+        $('#nccm_test_rerun').hide();
+        $('#nccm_test_body').html(`
+            <div class="nccm-test-running">
+                <div class="nccm-spinner"></div>
+                <div>Running connectivity test…</div>
+            </div>`);
+        runConnectivityTest();
+    }
+
+    function closeTestModal() {
+        $('#nccm_test_overlay').hide();
+    }
+
+    function runConnectivityTest() {
+        $('#nccm_test_rerun').hide();
+        $('#nccm_test_body').html(`
+            <div class="nccm-test-running">
+                <div class="nccm-spinner"></div>
+                <div>Running connectivity test…</div>
+            </div>`);
+
+        frappe.call({
+            method: 'digitz_ai_nexus_live.api.nexus_chat_category_manager.test_chat_connectivity',
+            callback(r) {
+                $('#nccm_test_rerun').show();
+                if (!r.message) {
+                    $('#nccm_test_body').html(
+                        `<div class="nccm-test-step nccm-step-fail">
+                            <div class="nccm-test-step-icon">✗</div>
+                            <div class="nccm-test-step-content">
+                                <div class="nccm-test-step-label">No response from server</div>
+                                <div class="nccm-test-step-detail">The API returned an empty response. Check the server error log.</div>
+                            </div>
+                        </div>`
+                    );
+                    return;
+                }
+                renderTestResults(r.message);
+            },
+            error(r) {
+                $('#nccm_test_rerun').show();
+                const msg = (r && r.responseJSON && r.responseJSON.exception) || 'Server error — check the error log.';
+                $('#nccm_test_body').html(
+                    `<div class="nccm-test-step nccm-step-fail" style="margin-top:0;">
+                        <div class="nccm-test-step-icon">✗</div>
+                        <div class="nccm-test-step-content">
+                            <div class="nccm-test-step-label">API call failed</div>
+                            <div class="nccm-test-step-detail">${esc(msg)}</div>
+                        </div>
+                    </div>`
+                );
+            },
+        });
+    }
+
+    function renderTestResults(data) {
+        const steps = data.steps || [];
+        const overall = data.overall;
+        const passed = steps.filter(s => s.status === 'pass').length;
+        const checked = steps.filter(s => s.status !== 'skip').length;
+
+        const overallBg   = overall === 'pass' ? '#ecfdf3' : '#fff0f0';
+        const overallBdr  = overall === 'pass' ? '#bdebd2' : '#ffd1d1';
+        const overallClr  = overall === 'pass' ? '#16794c' : '#b42318';
+        const overallIcon = overall === 'pass' ? '✓' : '✗';
+        const overallMsg  = overall === 'pass'
+            ? 'All checks passed — desk user chat is operational.'
+            : 'Chat connectivity issue detected. See the failed step below.';
+
+        let html = `
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;
+                        padding:14px 18px; border-radius:14px;
+                        background:${overallBg}; border:1px solid ${overallBdr};">
+                <span style="font-size:24px; font-weight:900; color:${overallClr};">${overallIcon}</span>
+                <div>
+                    <div style="font-size:13px; font-weight:900; color:${overallClr};">${esc(overallMsg)}</div>
+                    <div class="nexus-admin-muted" style="margin-top:2px;">${passed} / ${checked} checks passed</div>
+                </div>
+            </div>
+            <div class="nccm-test-steps">`;
+
+        steps.forEach(s => {
+            const isFail = s.status === 'fail';
+            const isSkip = s.status === 'skip';
+            const cls    = isFail ? 'nccm-step-fail' : (isSkip ? 'nccm-step-skip' : 'nccm-step-pass');
+            const icon   = isFail ? '✗' : (isSkip ? '—' : '✓');
+
+            html += `
+                <div class="nccm-test-step ${cls}">
+                    <div class="nccm-test-step-num">${s.step}</div>
+                    <div class="nccm-test-step-icon">${icon}</div>
+                    <div class="nccm-test-step-content">
+                        <div class="nccm-test-step-label">${esc(s.label)}</div>
+                        ${s.detail ? `<div class="nccm-test-step-detail">${esc(s.detail)}</div>` : ''}
+                        ${s.error ? `<div class="nccm-test-step-error"><pre class="nccm-traceback">${esc(s.error)}</pre></div>` : ''}
+                    </div>
+                </div>`;
+        });
+
+        html += '</div>';
+        $('#nccm_test_body').html(html);
+    }
+
+    // -------------------------------------------------------------------------
     function esc(s) { return frappe.utils.escape_html(String(s || '')); }
 };
 
@@ -631,7 +771,41 @@ function inject_nccm_css() {
         .nccm-field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
         .nccm-req { color:#b42318; }
 
+        /* ── Test Chat button ──────────────────────────────────────────────────── */
+        .nccm-test-btn { border-radius:999px; font-weight:850; background:linear-gradient(135deg,#1e3a8a,#2563eb); color:#fff; border:none; padding:7px 18px; transition:opacity .15s; }
+        .nccm-test-btn:hover { opacity:.88; color:#fff; }
+
+        /* ── Test modal ────────────────────────────────────────────────────────── */
+        .nccm-test-modal { width:620px; max-width:96vw; }
+        .nccm-test-body { max-height:72vh; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:0; }
+        .nccm-test-running { display:flex; align-items:center; gap:14px; padding:24px; color:#53688f; font-weight:800; font-size:13px; }
+        .nccm-spinner { width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#2563eb; border-radius:50%; animation:nccm-spin .7s linear infinite; flex-shrink:0; }
+        @keyframes nccm-spin { to { transform:rotate(360deg); } }
+
+        /* ── Step rows ─────────────────────────────────────────────────────────── */
+        .nccm-test-steps { display:flex; flex-direction:column; gap:8px; }
+        .nccm-test-step { display:grid; grid-template-columns:28px 22px 1fr; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:14px; border:1px solid; }
+        .nccm-step-pass { background:#f0fdf4; border-color:#bbf7d0; }
+        .nccm-step-fail { background:#fff0f0; border-color:#ffd1d1; }
+        .nccm-step-skip { background:#f9fafb; border-color:#e5e7eb; }
+
+        .nccm-test-step-num { font-size:10px; font-weight:900; color:#9ca3af; padding-top:2px; text-align:center; }
+        .nccm-test-step-icon { font-size:15px; font-weight:900; padding-top:1px; }
+        .nccm-step-pass .nccm-test-step-icon { color:#16a34a; }
+        .nccm-step-fail .nccm-test-step-icon { color:#b42318; }
+        .nccm-step-skip .nccm-test-step-icon { color:#9ca3af; }
+
+        .nccm-test-step-content { display:flex; flex-direction:column; gap:3px; min-width:0; }
+        .nccm-test-step-label { font-size:12px; font-weight:900; color:#173b8c; }
+        .nccm-step-fail .nccm-test-step-label { color:#b42318; }
+        .nccm-step-skip .nccm-test-step-label { color:#6b7c9b; }
+        .nccm-test-step-detail { font-size:11px; font-weight:650; color:#27416f; line-height:1.5; }
+        .nccm-step-skip .nccm-test-step-detail { color:#9ca3af; }
+
+        .nccm-test-step-error { margin-top:8px; }
+        .nccm-traceback { font-family:monospace; font-size:10px; white-space:pre-wrap; word-break:break-all; line-height:1.55; color:#7f1d1d; background:#fff5f5; border:1px solid #fecaca; border-radius:10px; padding:10px 12px; max-height:220px; overflow-y:auto; margin:0; }
+
         @media (max-width:820px) { .nccm-layout { grid-template-columns:1fr; } .nccm-channel-panel { position:static; } }
-        @media (max-width:760px) { .nexus-admin-hero { flex-direction:column; } .nccm-chain-flow { flex-direction:column; } .nccm-chain-arrow { margin-top:0; padding:4px 0; transform:rotate(90deg); align-self:center; } .nccm-chain-node { max-width:100%; } }
+        @media (max-width:760px) { .nexus-admin-hero { flex-direction:column; } .nccm-chain-flow { flex-direction:column; } .nccm-chain-arrow { margin-top:0; padding:4px 0; transform:rotate(90deg); align-self:center; } .nccm-chain-node { max-width:100%; } .nccm-test-modal { width:95vw; } }
     </style>`);
 }

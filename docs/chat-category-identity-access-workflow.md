@@ -1,17 +1,17 @@
-# Chat Category, Identity, Profile, and Access Workflow
+# Chat Category, Identity, and Access Workflow
 
-This document is the working contract for the Nexus Live chat workflow.
-
-The requirement is:
+This document is the working contract for how a visitor's chat request travels from category
+selection through identity resolution to knowledge access.
 
 ```
 visitor chat request
   → chat category selected by the user
   → identity type resolved for the user
-  → AI Agent Profile allocated through the category/identity route
-  → profile access categories resolved
-  → access policies resolved
-  → knowledge chunks filtered by those policies
+  → route selected: category + channel → AI Agent Profile + permitted Identity Profiles
+  → Knowledge Profiles resolved from person's Identity Profiles (intersected with route)
+  → Access Policies unioned from Knowledge Profiles
+  → Identity Type safeguard cap applied
+  → knowledge chunks filtered by allowed policies
 ```
 
 ---
@@ -20,186 +20,272 @@ visitor chat request
 
 ### 1. Chat Category
 
-`Nexus Chat Category` is the option shown in the chat UI, such as Customer Support, Product Enquiry, or Sales.
-
-Key fields:
+`Nexus Chat Category` is the option shown in the chat UI, such as Customer Support, Product
+Enquiry, or Sales.
 
 | Field | Purpose |
 |---|---|
-| category_code | Stable category identifier |
-| category_label | Display label shown to the user |
-| channel | Live channel this category belongs to |
-| requires_authentication | Whether guests may use this category |
-| identity_verification_mode | Whether the category needs email OTP before chat starts |
-| allow_public_fallback | Whether registered-email OTP may continue as Public when no registry match exists |
-| enabled | Whether the category is selectable |
+| `category_code` | Stable category identifier |
+| `category_label` | Display label shown to the user |
+| `channel` | Live channel this category belongs to |
+| `requires_authentication` | Hide from guests when enabled |
+| `identity_verification_mode` | Whether the category needs email OTP before chat starts |
+| `allow_public_fallback` | For Registered Email OTP, allow unregistered verified emails to continue as Public |
+| `enabled` | Controls visibility |
 
-The category does not grant access by itself.
+The category does not grant access by itself. It only selects a route.
+
+---
 
 ### 2. Identity Type
 
-`identity_type` identifies who is asking through chat. It is a Link to the `Nexus Identity Type` DocType, not a fixed Select field.
+`identity_type` identifies who is asking. It is a Link to `Nexus Identity Type`.
 
-Seeded default identity records:
-
-```
-Public
-Customer
-Prospect
-Partner
-Internal
-Admin
-```
-
-Formal identity registration is handled by `Nexus Identity Registry`. One registry record represents the real person or party joining chat, usually keyed by verified email and optionally linked to `User`, `Contact`, or any installed business DocType through the generic reference fields.
-
-One registry record can hold multiple enabled identity rows. For example, the same email can be registered as both `Customer` and `Partner` if both relationships are verified.
-
-Runtime resolution lives in:
+Seeded defaults:
 
 ```
-digitz_ai_nexus_live.services.identity_resolver.resolve_identity_type
+Public    Customer    Prospect    Partner    Internal    Admin
 ```
 
-Resolution priority:
+Runtime resolution is in `digitz_ai_nexus_live.services.identity_resolver.resolve_identity_type`.
 
-1. Trusted explicit `identity_type` in the payload, for server-side integrations only. The value must reference an enabled `Nexus Identity Type`.
-2. Verified OTP challenge, or authenticated session matched to `Nexus Identity Registry`.
-3. If a chat category is selected, pick the registered identity that has an enabled `Nexus Category Identity Route` for that category.
-4. If no category route matches, use the registry row marked primary, then the first enabled valid identity row.
-5. Frappe session user and `user_type`.
-6. `api_scope` for partner/prospect integrations.
-7. `Public` fallback.
+**Resolution priority:**
 
-Unverified registry records do not elevate access. Blocked registry records are denied. A manually supplied email is not trusted for identity elevation unless it has passed OTP verification or comes from a trusted server-side integration.
+1. Trusted `identity_type` in payload (`trust_payload_identity = True`) — server-side integrations only.
+2. Verified OTP challenge.
+3. Registry blocked check (throws if blocked).
+4. Frappe session user type — Website User → `Customer`; System User → `Admin` (System Manager) or `Internal`.
+5. `api_scope` field — `partner` → `Partner`; `prospect` → `Prospect`.
+6. Default: `Public`.
 
-Category verification modes:
+Blocked registry records are denied. Unverified registries are not elevated.
+
+**Category verification modes:**
 
 | Mode | Meaning |
 |---|---|
-| None | No OTP required. Public fallback is allowed unless the category requires login. |
-| Email OTP | Visitor must prove control of the email. Registry may improve identity if one exists; otherwise identity resolves as Public. |
-| Registered Email OTP | Visitor must prove control of a verified registry email. The registry identity is used for routing. |
+| None | No OTP required |
+| Email OTP | Visitor proves email control; registry may improve identity |
+| Registered Email OTP | Visitor must prove a verified registry email |
 
-For `Registered Email OTP`, `allow_public_fallback` can be enabled to let unregistered but OTP-verified emails continue as `Public`.
+---
 
 ### 3. Category Identity Route
 
-`Nexus Category Identity Route` maps the selected category and resolved identity to a profile:
+`Nexus Category Identity Route` maps the selected category and channel to an AI Agent Profile
+and a set of **permitted Identity Profiles**.
 
-```
-channel + chat_category + identity_type → Nexus AI Agent Profile
-```
+| Field | Purpose |
+|---|---|
+| `channel` | Link → Nexus Live Channel |
+| `chat_category` | Link → Nexus Chat Category |
+| `ai_agent_profile` | AI behavior config (tone, fallback, escalation, thresholds) |
+| `is_public_route` | When enabled: serves unregistered public visitors. No profile matching. |
+| `identity_profiles` | Child table of permitted `Nexus Identity Profile` records |
+| `enabled` | Active flag |
+| `priority` | Lower = higher priority when multiple routes match |
 
-This lets the same chat category route differently for different users. For example:
+**Important separation of concerns:**
 
-| Chat Category | Identity Type | Profile |
+- `ai_agent_profile` controls **how** the AI responds — it is behavior-only.
+- `identity_profiles` controls **who** can access and **what knowledge** they can retrieve.
+
+**Two route types:**
+
+| Route type | `is_public_route` | Knowledge |
 |---|---|---|
-| Product Support | Public | Public Support Bot |
-| Product Support | Customer | Customer Support Bot |
-| Product Support | Internal | Internal Support Bot |
+| Public route | 1 | Returns `["Public"]` only — no Identity Profile matching performed |
+| Registered route | 0 | Intersects visitor's identity profiles with route's permitted profiles |
 
-The route is not an access grant. It only selects the profile that should answer for this category and identity.
+The route does not directly own knowledge. Knowledge access is resolved through Identity Profiles
+assigned to the person (see Section 5).
 
-### 4. Identity Registry Safe Guard
+---
 
-`Nexus Identity Registry` holds the verified person behind the chat. Its parent-level **Safe Guard** section lists the maximum access categories this verified person may use.
+### 4. Identity Profile
 
-```
-Nexus Identity Registry → Safe Guard Access Categories
-```
-
-This avoids scattering access limits across each identity row. A person may resolve as several identity types, but the person-level safeguard stays in one place.
-
-### 5. AI Agent Profile Access Category
-
-`Nexus AI Agent Profile Access Category` maps the resolved profile to one or more access categories. The same `Nexus AI Agent Profile` may be linked to multiple categories when the agent needs access to several policy bundles.
+`Nexus Identity Profile` is a **reusable bundle** that maps identity types to Knowledge Profiles.
+One profile can be assigned to many people via the Identity Registry.
 
 ```
-Nexus AI Agent Profile → Nexus Access Category
+Nexus Identity Profile
+  profile_name, title, enabled
+  identity_mappings (child table):
+    identity_type   → Nexus Identity Type
+    knowledge_profile → Knowledge Profile
 ```
 
-The effective access categories for a profile are all enabled assignment records for that profile.
+A single Identity Profile can carry multiple rows — one per identity type the holder may be
+verified as. This allows one profile to serve a person who is both a Customer and a Partner.
 
-### 6. Access Policies
+---
 
-Each `Nexus Access Category` contains child rows in `Nexus Access Category Policy`.
+### 5. Identity Registry
+
+`Nexus Identity Registry` is the individual person record. It holds one or more assigned
+`Nexus Identity Profile` records (with validity dates).
+
+The registry is found by:
+- Frappe session user → `registry.user` field (desk users)
+- Verified OTP challenge → linked `identity_registry`
+- Trusted visitor email (`trust_visitor_email = True`)
+
+---
+
+### 6. Knowledge Profiles and Access Policies
 
 ```
-Nexus Access Category → Nexus Access Policy
+Knowledge Profile
+  access_categories (child table):
+    Nexus Access Category
+      allowed_policies (child table):
+        Nexus Access Policy
 ```
 
-The profile policy set is the union of policies from all enabled access categories assigned to that profile.
+A `Knowledge Profile` groups multiple `Nexus Access Category` records.
+Each category holds multiple `Nexus Access Policy` records.
+A chunk's `access_policy` field is the final retrieval filter.
 
-For category-routed chat, the final retrieval policy set is:
+---
+
+### 7. Identity Type Safeguard Cap
+
+`Nexus Identity Type.safeguard_access_categories` holds a hard cap applied uniformly to all
+holders of that identity class.
+
+This is a **system-level, class-wide cap** — not a per-person limit. Individual overrides
+are not supported by design.
 
 ```
-Profile Policies ∩ Identity Registry Safe Guard Policies ∩ Identity Cap
+Identity Type "Customer" → safeguard_access_categories → ["Customer Access", "Public Access"]
 ```
 
-If the intersection is empty, retrieval is denied. This prevents a route mistake from exposing broad profile access to a narrower person. Example: a customer registry safeguarded to `Customer Access` will not receive internal policies even if the selected route accidentally points to an internal profile.
+Any holder of the `Customer` identity type can never retrieve policies outside those categories,
+regardless of what their Knowledge Profile grants.
 
 ---
 
 ## Runtime Flow
 
-Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to preview the chain manually without sending an OTP or starting a real conversation.
-
-### Start Chat
-
-`start_live_chat(payload)` must perform this sequence:
+### Start Chat — Visitor Path
 
 ```
-logged-in internal System User?
-    ├─ yes → load active Nexus User Profile Assignment
-    │       → load assigned Nexus AI Agent Profile
-    │       → System Manager without assignment may continue with default behavior
-    └─ no  → payload.chat_category
-            ↓
-            resolve_identity_type(payload)
-            ↓
-            resolve_behavior_from_chat_category(chat_category, identity_type, is_authenticated)
-            ↓
-            load Nexus AI Agent Profile from Nexus Category Identity Route
-    ↓
-create Nexus Live Conversation with assigned_ai_agent_profile snapshot
-    ↓
-continue_live_chat(conversation_id, payload)
+start_live_chat(payload)
+│
+├── 1. apply_session_user_context(payload)
+│
+├── 2. If chat_category: enforce_category_verification(payload)
+│       OTP check → sets payload.identity_registry if verified
+│
+├── 3. apply_tenant_context_to_payload(payload)
+│
+├── 4. If chat_category:
+│   ├── resolve_identity_type(payload)
+│   │
+│   ├── resolve_behavior_from_chat_category(category, identity_type, is_authenticated, payload)
+│   │       Public identity:
+│   │         → find route with is_public_route = 1
+│   │         → knowledge_profile_names = []
+│   │       Registered identity:
+│   │         → find person's registry
+│   │         → get active identity profiles
+│   │         → intersect with route's permitted identity_profiles
+│   │         → collect knowledge_profile for matching identity_type
+│   │         → union → knowledge_profile_names
+│   │       Returns behavior dict including knowledge_profile_names
+│   │
+│   ├── resolve_identity_registry_name(payload)
+│   └── resolve_identity_safeguard_access_categories(payload)
+│           Reads from Nexus Identity Type (not registry)
+│           Stored as identity_safeguard_access_json on conversation
+│
+├── 5. assign_agent(payload)
+│
+├── 6. create_conversation(payload, agent, ai_profile_override)
+│       ai_profile_snapshot_json includes knowledge_profile_names
+│
+└── 7. Return conversation_id + status
 ```
 
-The profile snapshot is important. Follow-up messages should use the same profile as the first message, even if admin configuration changes during the conversation.
-
-For `System Manager` sessions, Core grants all enabled access policies unless the request is public-only. This is an admin bypass of policy narrowing, not a public visitor bypass.
-
-### Continue Chat
-
-`continue_live_chat(conversation_id, payload)` must:
+### Continue Chat — Follow-up Messages
 
 ```
-load conversation
-    ↓
-resolve profile from conversation.assigned_ai_agent_profile
-    ↓
-build ai_profile dict
-    ↓
-resolve allowed_access_policies from ai_profile.name
-    ↓
-call digitz_ai_nexus.services.answer_service.answer_query
+send_chat_message(conversation_id, payload)
+│
+├── 1. load conversation
+│
+├── 2. enrich_payload_from_conversation(payload, conversation)
+│       Restores: tenant, channel, chat_category, identity_type,
+│                 identity_registry, identity_safeguard_access_categories
+│
+└── 3. _process_ai_response() (background job)
+        │
+        ├── _resolve_behavior(payload, conversation)
+        │       → resolve_behavior_from_conversation(conversation)
+        │           reads ai_profile_snapshot_json → restores knowledge_profile_names
+        │
+        ├── build_core_chat_payload()
+        │       → _build_ai_profile_dict(behavior)
+        │           includes knowledge_profile_names list
+        │       → resolve_allowed_policies({..., ai_profile: { knowledge_profile_names }})
+        │
+        └── answer_query(core_payload)
 ```
 
-The key ordering rule is:
+**Profile and knowledge access are frozen at conversation creation.** The
+`ai_profile_snapshot_json` field on the conversation stores `knowledge_profile_names`. Follow-up
+messages restore from the snapshot rather than re-resolving. This ensures the same knowledge
+boundary is active throughout the whole conversation even if admin configuration changes mid-session.
+
+### Internal / Desk User Path
+
+Desk users resolve knowledge via `Nexus Identity Registry` — the same path as visitors.
 
 ```
-ai_profile must be built before resolve_allowed_policies() is called
+session_user (Frappe desk user)
+    ↓
+Nexus Identity Registry (matched by registry.user = frappe.session.user)
+    ↓
+Active identity profiles on the registry
+    ↓
+Identity Profile mappings where identity_type = "Internal" | "Admin"
+    ↓
+knowledge_profile_names list
+    ↓
+resolve_allowed_policies({knowledge_profile_names})
 ```
 
-If access resolution runs without `ai_profile.name`, Nexus Core returns an empty policy list and retrieval fails closed.
+`System Manager` sessions bypass profile narrowing and receive all enabled access policies.
+
+---
+
+## Access Resolution Logic
+
+`engine.access_resolver.resolve_allowed_policies(query_contract)`
+
+```python
+# force_public_only  →  allowed = ["Public"]
+# System Manager     →  allowed = all enabled policies
+# knowledge_profile_names list:
+#   policies = union of all knowledge profiles' categories' policies
+#   cap = identity_safeguard_access_categories → their policies
+#   allowed = policies ∩ cap   (if cap is None → no restriction)
+# no knowledge_profile_names →  allowed = []  (fails closed)
+```
+
+**force_public_only fires when:**
+```
+not ai_profile.name AND (identity_type == "Public" OR user_type == "Guest")
+```
+
+If a routed AI profile exists, Public visitors use that profile's knowledge access — they are
+not forced to Public-only. Only truly unrouted public requests are force-public-only.
 
 ---
 
 ## Core Query Contract
 
-The payload sent from Live to Nexus Core must include:
+The payload sent from Live to Nexus Core includes:
 
 ```json
 {
@@ -211,6 +297,7 @@ The payload sent from Live to Nexus Core must include:
   "chat_category": "PRODUCT-SUPPORT",
   "ai_profile": {
     "name": "Customer Support Bot",
+    "knowledge_profile_names": ["Customer Knowledge", "Warranty Knowledge"],
     "behavior_prompt": "...",
     "tone": "Professional",
     "response_style": "Balanced",
@@ -219,7 +306,7 @@ The payload sent from Live to Nexus Core must include:
     "confidence_threshold": 0.65,
     "escalation_enabled": 1,
     "memory_mode": "Session",
-    "default_response_mode": "chat"
+    "identity_type": "Customer"
   },
   "allowed_access_policies": [
     "Public",
@@ -229,50 +316,42 @@ The payload sent from Live to Nexus Core must include:
 }
 ```
 
-`allowed_access_policies` must be derived from `ai_profile.name`, not from channel role, Frappe role, or category label.
+`allowed_access_policies` is derived from `ai_profile.knowledge_profile_names`, not from `ai_profile.name`.
 
 ---
 
-## Public Access Guardrail
+## Fail-Closed Rules
 
-Current Nexus Core behavior supports a public guardrail:
+| Situation | Result |
+|---|---|
+| No route found for category + identity | Throws — configuration error surfaced to user |
+| Route found but no matching identity profiles | `knowledge_profile_names = []` → `allowed_access_policies = []` → retrieval denied |
+| Public route | `["Public"]` only |
+| Safeguard produces empty intersection | `allowed_access_policies = []` → retrieval denied |
+| Registry is Blocked | Throws — access denied |
+
+---
+
+## Admin Configuration Checklist
+
+For each chat category and route:
 
 ```
-force_public_only = true → allowed_access_policies = ["Public"]
+[ ] Nexus Category Identity Route exists for the channel + category combination
+[ ] Public route: is_public_route = 1, ai_agent_profile assigned
+[ ] Registered routes: permitted identity_profiles configured
+[ ] ai_agent_profile has behavior configured (prompt, tone, thresholds)
+[ ] Identity Profiles have identity_mappings rows for all relevant identity types
+[ ] Each identity_type mapping points to an enabled Knowledge Profile
+[ ] Knowledge Profile has at least one enabled Access Category with policies
+[ ] Nexus Identity Type safeguard_access_categories configured for all registered types
 ```
 
-If public chat should only ever retrieve public knowledge, keep this guardrail enabled for guest requests. In that mode, the category-selected profile still controls behavior and conversation snapshot, but access is capped to `Public`.
+For internal desk users:
 
-If the product requirement is that public visitors can receive profile-specific policies through a selected category, then Live must not set `force_public_only` for those category-routed chat requests. Instead, configure the `Public` identity route profile with only the access categories that public visitors may use.
-
----
-
-## Implementation Status
-
-All items below are implemented and active in the runtime.
-
-- `Nexus Chat Category` DocType.
-- `Nexus Category Identity Route` DocType for category + identity → profile routing.
-- `Nexus AI Agent Profile Access Category` DocType.
-- Identity resolution service.
-- Chat category + identity profile resolver (`profile_resolver.resolve_behavior_from_chat_category`).
-- Identity Safe Guard intersection in `access_resolver.resolve_allowed_policies`.
-- Hard identity cap for `Public` identity.
-- `chat_category`, `resolved_identity_type`, `assigned_ai_agent_profile`, and identity safeguard categories stored on `Nexus Live Conversation` at creation — follow-up messages use the same boundary.
-- `build_core_chat_payload()` builds `ai_profile` before calling `resolve_allowed_policies()`.
-- Admin pages/APIs for chat categories, category routes, profile access allocation, and chain preview.
-- Default seed creates a `Public` identity route whose profile has `Public Access`.
-
----
-
-## Acceptance Checklist
-
-[x] Guest selects a public chat category and resolves to the configured Public identity route.
-[x] Customer selects the same category and resolves to the Customer identity route.
-[x] The conversation stores `assigned_ai_agent_profile`.
-[x] Follow-up messages use the conversation profile snapshot.
-[x] The core payload includes `ai_profile.name` before access resolution.
-[x] `allowed_access_policies` matches profile access categories intersected with identity safeguard and identity cap.
-[x] Empty or missing profile access categories fail closed.
-[x] A missing category identity route returns a clear configuration error.
-[ ] Automated tests cover the category → identity → profile → policy chain.
+```
+[ ] Nexus Identity Registry entry exists with registry.user = frappe_username
+[ ] Registry is Verified
+[ ] Identity Profiles assigned with rows for "Internal" or "Admin" identity type
+[ ] Each mapping points to an enabled Knowledge Profile
+```

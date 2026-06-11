@@ -1,0 +1,76 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:NAAPI-.YYYY.-.{#####}",
+ "creation": "2026-06-10 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "profile_template",
+  "nickname",
+  "column_break_1",
+  "status",
+  "created_on",
+  "section_conversation",
+  "conversation"
+ ],
+ "fields": [
+  {
+   "fieldname": "profile_template",
+   "fieldtype": "Link",
+   "label": "Profile Template",
+   "options": "Nexus AI Agent Profile",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "nickname",
+   "fieldtype": "Data",
+   "label": "Nickname",
+   "description": "Friendly name shown in the chat widget header for this session.",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nClosed",
+   "default": "Active",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "created_on",
+   "fieldtype": "Datetime",
+   "label": "Created On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_conversation",
+   "fieldtype": "Section Break",
+   "label": "Conversation"
+  },
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "Nexus Live Conversation",
+   "in_list_view": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-06-10 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Nexus Live Agents",
+ "name": "Nexus AI Agent Profile Instance",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "sort_field": "created_on",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

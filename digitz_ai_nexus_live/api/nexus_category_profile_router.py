@@ -2,7 +2,6 @@ import frappe
 
 from digitz_ai_nexus_live.services.identity_resolver import (
     get_enabled_identity_types,
-    is_valid_identity_type,
 )
 from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
@@ -20,9 +19,16 @@ def get_page_data():
         fields=["name", "agent"],
         order_by="name asc",
     )
+    identity_profiles = frappe.get_all(
+        "Nexus Identity Profile",
+        filters={"enabled": 1},
+        fields=["name", "profile_name", "title"],
+        order_by="profile_name asc",
+    )
     return {
         "channels": channels,
         "profiles": profiles,
+        "identity_profiles": identity_profiles,
         "identity_types": get_enabled_identity_types(),
     }
 
@@ -43,68 +49,18 @@ def get_category_routes(channel, category_code):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"channel": channel, "chat_category": category_code},
-        fields=[
-            "name",
-            "identity_type",
-            "ai_agent_profile",
-            "enabled",
-            "priority",
-            "description",
-        ],
+        fields=["name", "ai_agent_profile", "is_public_route", "enabled", "priority", "description"],
         order_by="priority asc",
     )
 
-    configured_types = {r.identity_type for r in routes}
-    available_types = [
-        identity_type
-        for identity_type in get_enabled_identity_types()
-        if identity_type not in configured_types
-    ]
-
-    return {
-        "routes": routes,
-        "available_identity_types": available_types,
-    }
-
-
-@frappe.whitelist()
-def save_route(
-    channel,
-    category_code,
-    identity_type,
-    ai_agent_profile,
-    priority=10,
-    description=None,
-    name=None,
-):
-    if not is_valid_identity_type(identity_type):
-        frappe.throw(f"Identity Type '{identity_type}' is not enabled or does not exist.")
-
-    if name and frappe.db.exists("Nexus Category Identity Route", name):
-        doc = frappe.get_doc("Nexus Category Identity Route", name)
-    else:
-        existing = frappe.db.get_value(
-            "Nexus Category Identity Route",
-            {"channel": channel, "chat_category": category_code, "identity_type": identity_type},
-            "name",
+    for route in routes:
+        route["identity_profiles"] = frappe.get_all(
+            "Nexus Route Identity Profile",
+            filters={"parent": route.name},
+            pluck="identity_profile",
         )
-        if existing:
-            frappe.throw(
-                f"A route for identity '{identity_type}' already exists for this category. Edit the existing route."
-            )
-        doc = frappe.new_doc("Nexus Category Identity Route")
-        doc.channel = channel
-        doc.chat_category = category_code
-        doc.identity_type = identity_type
 
-    doc.ai_agent_profile = ai_agent_profile
-    doc.priority = int(priority or 10)
-    doc.description = description or ""
-    doc.enabled = 1
-    doc.save(ignore_permissions=True)
-    frappe.db.commit()
-
-    return {"status": "success", "name": doc.name}
+    return {"routes": routes}
 
 
 @frappe.whitelist()
@@ -122,29 +78,35 @@ def delete_route(name):
 
 
 @frappe.whitelist()
-def get_route_chain(channel, category_code, identity_type):
-    """Return the full chain for one route: identity_type → profile → access → policies."""
+def get_route_chain(channel, category_code, route_name=None, identity_type=None):
+    """
+    Return the full access chain for a route:
+    Route → Identity Profiles → Knowledge Profiles (per identity_type) → Access Categories → Policies
+    """
+    filters = {"channel": channel, "chat_category": category_code, "enabled": 1}
+    if route_name:
+        filters["name"] = route_name
+
     routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category_code, "identity_type": identity_type, "enabled": 1},
-        fields=["name", "ai_agent_profile"],
+        filters=filters,
+        fields=["name", "ai_agent_profile", "is_public_route"],
         order_by="priority asc",
         limit_page_length=1,
     )
 
     result = {
-        "identity_type": identity_type,
         "route": None,
         "profile": None,
-        "profile_access_categories": [],
+        "identity_profiles": [],
+        "knowledge_profiles": [],
         "access_categories": [],
-        "profile_policies": [],
         "policies": [],
         "warnings": [],
     }
 
     if not routes:
-        result["warnings"].append(f"No enabled route for identity '{identity_type}'.")
+        result["warnings"].append("No enabled route found.")
         return result
 
     route = routes[0]
@@ -160,39 +122,80 @@ def get_route_chain(channel, category_code, identity_type):
         "escalation_enabled": profile.escalation_enabled,
     }
 
-    cat_names = frappe.get_all(
-        "Nexus AI Agent Profile Access Category",
-        filters={"ai_agent_profile": profile_name, "enabled": 1},
-        pluck="access_category",
-    )
-
-    if not cat_names:
-        result["warnings"].append(f"Profile '{profile_name}' has no Access Category. Retrieval will be denied.")
+    if route.is_public_route:
+        result["warnings"].append("This is a public route — knowledge access is Public only.")
+        access_resolution = resolve_allowed_policies({
+            "force_public_only": True,
+            "ai_profile": {"name": profile_name},
+        })
+        result["access_resolution"] = access_resolution
+        result["policies"] = [{"policy_name": "Public"}]
         return result
 
-    result["profile_access_categories"] = cat_names
-    result["access_categories"] = cat_names
-
-    policy_names = frappe.get_all(
-        "Nexus Access Category Policy",
-        filters={"parent": ["in", cat_names], "parentfield": "allowed_policies"},
-        pluck="access_policy",
+    route_profile_names = frappe.get_all(
+        "Nexus Route Identity Profile",
+        filters={"parent": route.name},
+        pluck="identity_profile",
     )
+    result["identity_profiles"] = route_profile_names
 
-    if policy_names:
-        result["profile_policies"] = frappe.get_all(
-            "Nexus Access Policy",
-            filters={"policy_name": ["in", list(set(policy_names))], "disabled": 0},
-            fields=["policy_name", "is_primitive"],
-            order_by="policy_name asc",
+    if not route_profile_names:
+        result["warnings"].append("No Identity Profiles assigned to this route.")
+        return result
+
+    if not identity_type:
+        result["warnings"].append(
+            "Pass identity_type to see knowledge profiles and effective policies."
         )
-    else:
-        result["warnings"].append("Access categories exist but contain no policies.")
+        return result
+
+    knowledge_profile_names = []
+    for ip_name in route_profile_names:
+        if not frappe.db.exists("Nexus Identity Profile", ip_name):
+            continue
+        ip_doc = frappe.get_doc("Nexus Identity Profile", ip_name)
+        if not ip_doc.enabled:
+            continue
+        for row in ip_doc.identity_mappings or []:
+            if row.identity_type == identity_type and row.knowledge_profile:
+                knowledge_profile_names.append(row.knowledge_profile)
+
+    knowledge_profile_names = list(set(knowledge_profile_names))
+    result["knowledge_profiles"] = knowledge_profile_names
+
+    if not knowledge_profile_names:
+        result["warnings"].append(
+            f"No Knowledge Profiles mapped to identity_type '{identity_type}' "
+            "via this route's Identity Profiles."
+        )
+        return result
+
+    category_names = []
+    for kp_name in knowledge_profile_names:
+        cats = frappe.get_all(
+            "Knowledge Profile Access Category",
+            filters={"parent": kp_name, "parentfield": "access_categories", "enabled": 1},
+            pluck="access_category",
+        )
+        category_names.extend(cats)
+    category_names = list(set(category_names))
+    result["access_categories"] = category_names
+
+    if not category_names:
+        result["warnings"].append("No enabled Access Categories in the resolved Knowledge Profiles.")
+
+    safeguard_cats = frappe.get_all(
+        "Nexus Identity Type Safe Guard Category",
+        filters={"parent": identity_type, "parentfield": "safeguard_access_categories"},
+        pluck="access_category",
+    )
 
     access_resolution = resolve_allowed_policies({
         "ai_profile": {
             "name": profile_name,
+            "knowledge_profile_names": knowledge_profile_names,
             "identity_type": identity_type,
+            "identity_safeguard_access_categories": safeguard_cats or None,
         },
         "identity_type": identity_type,
     })
@@ -201,9 +204,9 @@ def get_route_chain(channel, category_code, identity_type):
     if allowed_policy_names:
         result["policies"] = frappe.get_all(
             "Nexus Access Policy",
-            filters={"policy_name": ["in", allowed_policy_names], "disabled": 0},
-            fields=["policy_name", "is_primitive"],
-            order_by="policy_name asc",
+            filters={"name": ["in", allowed_policy_names], "disabled": 0},
+            fields=["name", "is_primitive"],
+            order_by="name asc",
         )
     else:
         result["warnings"].append(

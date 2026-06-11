@@ -19,14 +19,15 @@
     // ── State ──────────────────────────────────────────────────────────────────
 
     const S = {
-        ready:           false,
-        open:            false,
-        conversation_id: null,
-        locked:          false,   // conversation is Closed
-        sending:         false,
-        tenant:          cfg.tenant || null,
-        channel:         cfg.channel || null,
-        _realtime_bound: false,
+        ready:            false,
+        open:             false,
+        conversation_id:  null,
+        agent_instance:   null,
+        locked:           false,   // conversation is Closed
+        sending:          false,
+        tenant:           cfg.tenant || null,
+        channel:          cfg.channel || null,
+        _realtime_bound:  false,
     };
 
     // ── Context ────────────────────────────────────────────────────────────────
@@ -296,7 +297,7 @@
 
     async function start_new_chat() {
         reset_messages();
-        set_header('AI Assistant', 'Connecting…');
+        set_header('Connecting…', '');
         set_input_placeholder('Please wait…');
 
         if (!S.tenant) { await resolve_tenant(); }
@@ -321,7 +322,8 @@
             }
 
             S.conversation_id = data.conversation_id;
-            set_header('AI Assistant', data.agent_name || '');
+            S.agent_instance = data.agent_instance || null;
+            set_header(data.agent_name || 'AI Assistant', '');
             set_input_placeholder('Type a message…');
             // Show greeting immediately from HTTP response (avoids race with realtime)
             if (data.greeting) {

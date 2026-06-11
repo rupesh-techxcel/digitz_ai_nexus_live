@@ -1,7 +1,7 @@
 {
   "actions": [],
   "allow_rename": 1,
-  "autoname": "field:category_code",
+  "autoname": "format:{category_code}-{tenant}",
   "creation": "2026-06-03 00:00:00.000000",
   "doctype": "DocType",
   "engine": "InnoDB",
@@ -10,6 +10,7 @@
     "category_label",
     "column_break_1",
     "channel",
+    "tenant",
     "enabled",
     "section_visibility",
     "requires_authentication",
@@ -27,8 +28,7 @@
       "fieldtype": "Data",
       "in_list_view": 1,
       "label": "Category Code",
-      "reqd": 1,
-      "unique": 1
+      "reqd": 1
     },
     {
       "description": "What the user sees in the chat window, e.g. Customer Support, Product Enquiry, Connect to Sales",
@@ -49,6 +49,13 @@
       "label": "Channel",
       "options": "Nexus Live Channel",
       "reqd": 1
+    },
+    {
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Tenant",
+      "options": "Nexus Tenant"
     },
     {
       "default": "1",
@@ -121,7 +128,7 @@
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Chat Category",
-  "naming_rule": "By fieldname",
+  "naming_rule": "Expression",
   "owner": "Administrator",
   "permissions": [
     {

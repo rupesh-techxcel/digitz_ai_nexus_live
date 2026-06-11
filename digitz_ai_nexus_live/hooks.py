@@ -79,6 +79,25 @@ web_include_js = "nexus_chat_widget.bundle.js"
 # 	"filters": "digitz_ai_nexus_live.utils.jinja_filters"
 # }
 
+# Fixtures
+# --------
+# Workspace HTML blocks shipped with the app — loaded on install and bench migrate.
+
+fixtures = [
+    {
+        "doctype": "Custom HTML Block",
+        "filters": [
+            ["name", "in", [
+                "nexus-home-workspace-html-block",
+                "nexus-live-workspace-html-block",
+                "nexus-studio-workspace-html-block",
+                "nexus-administration-workspace-html-block",
+                "nexus-platform-workspace-html-block",
+            ]]
+        ],
+    }
+]
+
 # Installation
 # ------------
 

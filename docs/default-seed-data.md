@@ -101,33 +101,56 @@ These records are owned by `digitz_ai_nexus_live` and create the first working c
 
 This is the category users can select first when testing a fresh setup.
 
-### Agent and Profile
+### AI Agent Profile
 
 | DocType | Name | Purpose |
 |---|---|---|
-| Nexus Live Agent | `PUBLIC-AI-ASSISTANT` | Default public AI responder |
-| Nexus AI Agent Profile | generated name | Behaviour and access authority for the public assistant |
+| Nexus AI Agent Profile | `PUBLIC-AI-ASSISTANT` | Default public AI agent profile template |
 
-The profile is assigned:
+The profile is seeded with:
 
-| Access Category |
-|---|
-| `Public Access` |
+| Setting | Value |
+|---|---|
+| `display_name` | Nexus Assistant |
+| `nickname_pool` | 25 built-in names (Aria, Nova, Zara … Vera) — one is picked randomly at each session start |
+| `agent_role` | Public Responder |
+| `escalation_enabled` | 1 |
+| Access Category | `Public Access` |
 
 So this profile can retrieve only knowledge chunks whose policy is allowed by `Public Access`.
+
+Each conversation creates a `Nexus AI Agent Profile Instance` from this template. The instance
+carries the session nickname shown in the chat widget header.
+
+### Identity Profile
+
+| DocType | Name | Purpose |
+|---|---|---|
+| Nexus Identity Profile | `DEFAULT-PUBLIC-PROFILE` | Seeded profile for the public category route |
+
+The default identity profile maps the `Public` identity type with no knowledge profile
+restriction. It is attached to the seeded public category route so the route resolver can
+confirm a valid identity profile exists for public visitors.
 
 ### Category Route
 
 The default runtime route is:
 
 ```text
-WEBSITE-CHAT + GENERAL-SUPPORT + Public
-    -> PUBLIC-AI-ASSISTANT profile
-    -> profile access: Public Access
-    -> Public policy
+WEBSITE-CHAT + GENERAL-SUPPORT
+    is_public_route = 1
+    -> AI Agent Profile: PUBLIC-AI-ASSISTANT
+    -> Profile access: Public Access → Public policy
+    -> Identity Profile: DEFAULT-PUBLIC-PROFILE (attached to route)
 ```
 
 Use **Nexus Chat Workflow Tester** to verify this route.
+
+### Workspace
+
+The install seed also creates the **Nexus Live** Frappe workspace, which links all 9 admin
+pages and all key DocTypes in a single organised home page. It is accessible from the desk
+sidebar under the `Digitz AI Nexus Live` module.
 
 ---
 
@@ -178,9 +201,9 @@ Once the public route is working, add tenant-specific routes:
 
 | Scenario | Records to add |
 |---|---|
-| Customer support | Customer identity registry row, customer access policy/category, customer AI profile route |
-| Partner support | Partner identity registry row, partner policy/category, partner route |
-| Internal desk assistant | Internal AI profile, internal access category, user profile assignment |
-| Registered email flow | Chat Category with `Registered Email OTP`, Identity Registry records, route per resolved identity |
+| Customer support | Identity Type "Customer" with safeguard, Knowledge Profile for customer content, Identity Profile mapping "Customer" → that Knowledge Profile, Identity Registry for each verified customer, registered route with permitted Identity Profiles |
+| Partner support | Same pattern as Customer with "Partner" identity type |
+| Internal desk assistant | Identity Registry entry with `user = frappe_username`, Identity Profile mapping "Internal" → internal Knowledge Profile |
+| Registered email flow | Chat Category with `Registered Email OTP`, Identity Registry records with Identity Profiles, route with permitted profiles |
 
-Keep the rule simple: every identity that can select a category needs an enabled route to an AI profile, and that profile needs at least one enabled access category. For registered identities, configure the parent registry Safe Guard so runtime can intersect the person's allowed categories with the profile access categories.
+Keep the rule simple: every registered visitor needs a `Nexus Identity Registry` entry with assigned `Identity Profiles`. Every Identity Profile needs `identity_mappings` rows linking identity types to Knowledge Profiles. Every Knowledge Profile needs at least one enabled Access Category. For each identity class, configure the `Nexus Identity Type` safeguard.

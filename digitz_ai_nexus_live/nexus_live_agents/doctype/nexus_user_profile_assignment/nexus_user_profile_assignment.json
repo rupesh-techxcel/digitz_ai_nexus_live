@@ -7,7 +7,6 @@
   "engine": "InnoDB",
   "field_order": [
     "user",
-    "knowledge_profile",
     "active",
     "column_break_1",
     "assigned_by",
@@ -26,15 +25,6 @@
       "in_list_view": 1,
       "label": "User",
       "options": "User",
-      "reqd": 1
-    },
-    {
-      "description": "The Knowledge Profile governing this user's knowledge access scope.",
-      "fieldname": "knowledge_profile",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Knowledge Profile",
-      "options": "Knowledge Profile",
       "reqd": 1
     },
     {

@@ -7,7 +7,6 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
 
     const state = {
         users: [],
-        profiles: [],
         assignmentMap: {},
         selectedUser: null,
         filterText: '',
@@ -30,17 +29,17 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             <div class="nexus-admin-badge">DIGITZ AI Nexus</div>
             <h2>User Profile Manager</h2>
             <p>
-                Assign a <b>Knowledge Profile</b> to each internal desk user.
-                The profile governs which Access Categories (and their policies) the user can reach.
-                One active profile per user at any time.
+                Configure which internal desk users can handle <b>human escalations</b>.
+                Knowledge access for desk users is governed by their <b>Nexus Identity Registry</b>
+                entry — assign Identity Profiles there, not here.
             </p>
             <div class="nexus-admin-flow-pill">
-                User &nbsp;→&nbsp; Knowledge Profile &nbsp;→&nbsp; Access Category &nbsp;→&nbsp; Knowledge
+                User &nbsp;→&nbsp; Nexus Identity Registry &nbsp;→&nbsp; Identity Profile &nbsp;→&nbsp; Knowledge
             </div>
         </div>
         <div class="nexus-admin-hero-actions">
             <button class="btn btn-default" data-route-list="Nexus User Profile Assignment">All Assignments</button>
-            <button class="btn btn-default" data-route-list="Knowledge Profile">Knowledge Profiles</button>
+            <button class="btn btn-default" data-route-page="nexus-identity-registry-manager">Identity Registry</button>
         </div>
     </div>
 
@@ -60,7 +59,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         <div>
             <div id="nupm_placeholder" class="nexus-admin-card nupm-placeholder">
                 <div class="nupm-placeholder-icon">←</div>
-                <div>Select a user to manage their profile assignment</div>
+                <div>Select a user to view their escalation assignment</div>
             </div>
 
             <div id="nupm_user_content" style="display:none;">
@@ -77,41 +76,36 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                     </div>
                 </div>
 
-                <!-- Assign profile -->
+                <!-- Escalation info -->
                 <div class="nexus-admin-card" style="margin-bottom:18px;">
                     <div class="nexus-admin-section-head">
                         <div>
-                            <div class="nexus-admin-card-title">Knowledge Profile Assignment</div>
-                            <p>Select a Knowledge Profile and click Assign. Any existing active assignment is deactivated first.</p>
+                            <div class="nexus-admin-card-title">Escalation Assignment</div>
+                            <p>Escalation settings are managed via the standard Frappe form. Click <b>New Assignment</b> to create one.</p>
                         </div>
+                        <button id="nupm_new_assignment_btn" class="btn btn-primary btn-sm">New Assignment</button>
                     </div>
-                    <div class="nupm-assign-row">
-                        <select id="nupm_profile_select" class="form-control">
-                            <option value="">— Select profile —</option>
-                        </select>
-                        <input id="nupm_notes" type="text" class="form-control" placeholder="Optional notes…" style="flex:1;">
-                        <button id="nupm_assign_btn" class="btn btn-primary">Assign</button>
-                    </div>
-                </div>
-
-                <!-- Effective policies -->
-                <div class="nexus-admin-card" style="margin-bottom:18px;">
-                    <div class="nexus-admin-section-head">
-                        <div>
-                            <div class="nexus-admin-card-title">Effective Access Policies</div>
-                            <p>Knowledge policies granted to this user through their active Knowledge Profile.</p>
-                        </div>
-                    </div>
-                    <div id="nupm_policies_area"></div>
-                    <div id="nupm_no_policies" class="nexus-empty-state" style="display:none;">
-                        No policies accessible. Assign a profile with a configured Access Category.
-                    </div>
+                    <div id="nupm_escalation_area"></div>
                 </div>
 
                 <!-- Assignment history -->
-                <div class="nexus-admin-card">
+                <div class="nexus-admin-card" style="margin-bottom:18px;">
                     <div class="nexus-admin-card-title">Assignment History</div>
                     <div id="nupm_history_area"></div>
+                </div>
+
+                <!-- Identity registry link -->
+                <div class="nexus-admin-card">
+                    <div class="nexus-admin-section-head">
+                        <div>
+                            <div class="nexus-admin-card-title">Knowledge Access</div>
+                            <p>
+                                Knowledge access is not configured here. Open the <b>Identity Registry Manager</b>
+                                to find this user's registry entry and assign Identity Profiles.
+                            </p>
+                        </div>
+                        <button id="nupm_registry_btn" class="btn btn-default btn-sm">Open Identity Registry</button>
+                    </div>
                 </div>
 
             </div>
@@ -127,11 +121,21 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         $(page.body).on('click', '[data-route-list]', function () {
             frappe.set_route('List', $(this).data('route-list'));
         });
+        $(page.body).on('click', '[data-route-page]', function () {
+            frappe.set_route($(this).data('route-page'));
+        });
         $(page.body).on('input', '#nupm_search', function () {
             state.filterText = $(this).val().toLowerCase();
             renderUserList();
         });
-        $(page.body).on('click', '#nupm_assign_btn', assignProfile);
+        $(page.body).on('click', '#nupm_new_assignment_btn', () => {
+            if (state.selectedUser) {
+                frappe.new_doc('Nexus User Profile Assignment', { user: state.selectedUser });
+            }
+        });
+        $(page.body).on('click', '#nupm_registry_btn', () => {
+            frappe.set_route('nexus-identity-registry-manager');
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -144,17 +148,14 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                 $('#nupm_users_loading').hide();
                 if (!r.message) return;
                 state.users = r.message.users || [];
-                state.profiles = r.message.profiles || [];
                 state.assignmentMap = r.message.assignment_map || {};
                 renderUserList();
-                populateProfileSelect();
             },
         });
     }
 
     function loadUserData(user) {
-        $('#nupm_policies_area').empty();
-        $('#nupm_no_policies').hide();
+        $('#nupm_escalation_area').html('<div class="nexus-empty-state">Loading…</div>');
         $('#nupm_history_area').html('<div class="nexus-empty-state">Loading…</div>');
 
         frappe.call({
@@ -162,16 +163,8 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             args: { user },
             callback(r) {
                 if (!r.message) return;
-                renderPolicies(r.message.effective_policies || []);
+                renderEscalation(r.message.assignments || []);
                 renderHistory(r.message.assignments || []);
-
-                const activeProfile = r.message.active_profile;
-                if (activeProfile) {
-                    $('#nupm_active_badge').html(`<span class="nexus-status-pill enabled">Active: ${esc(activeProfile)}</span>`);
-                    $('#nupm_profile_select').val(activeProfile);
-                } else {
-                    $('#nupm_active_badge').html(`<span class="nexus-status-pill disabled">No Active Profile</span>`);
-                }
             },
         });
     }
@@ -196,8 +189,8 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         $list.html(filtered.map(u => {
             const assigned = state.assignmentMap[u.name];
             const dot = assigned
-                ? '<span class="nupm-dot nupm-dot-active" title="Has active profile"></span>'
-                : '<span class="nupm-dot nupm-dot-none" title="No profile assigned"></span>';
+                ? '<span class="nupm-dot nupm-dot-active" title="Has active assignment"></span>'
+                : '<span class="nupm-dot nupm-dot-none" title="No assignment"></span>';
 
             return `
                 <div class="nexus-kv-row nupm-user-item" data-user="${esc(u.name)}" style="margin-bottom:5px; cursor:pointer;">
@@ -231,62 +224,46 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         $('#nupm_user_email').text(u ? u.name : '');
         $('#nupm_placeholder').hide();
         $('#nupm_user_content').show();
+
+        const a = state.assignmentMap[user];
+        if (a) {
+            $('#nupm_active_badge').html(`<span class="nexus-status-pill enabled">Active Assignment</span>`);
+        } else {
+            $('#nupm_active_badge').html(`<span class="nexus-status-pill disabled">No Assignment</span>`);
+        }
+
         loadUserData(user);
     }
 
     // -------------------------------------------------------------------------
-    // Assign
+    // Escalation summary
     // -------------------------------------------------------------------------
-    function populateProfileSelect() {
-        const $sel = $('#nupm_profile_select');
-        $sel.find('option:not(:first)').remove();
-        state.profiles.forEach(p => {
-            const label = p.title ? `${esc(p.name)} — ${esc(p.title)}` : esc(p.name);
-            $sel.append(`<option value="${esc(p.name)}">${label}</option>`);
-        });
-    }
-
-    function assignProfile() {
-        const profile = $('#nupm_profile_select').val();
-        if (!profile) {
-            frappe.show_alert({ message: 'Please select a Knowledge Profile.', indicator: 'orange' });
+    function renderEscalation(assignments) {
+        const active = assignments.find(a => a.active);
+        if (!active) {
+            $('#nupm_escalation_area').html(
+                '<div class="nexus-admin-muted" style="padding:8px;">No active escalation assignment. Click <b>New Assignment</b> to configure.</div>'
+            );
             return;
         }
 
-        frappe.call({
-            method: 'digitz_ai_nexus_live.api.nexus_user_profile_manager.assign_profile',
-            args: {
-                user: state.selectedUser,
-                knowledge_profile: profile,
-                notes: $('#nupm_notes').val().trim(),
-            },
-            callback(r) {
-                if (r.message && r.message.status === 'success') {
-                    frappe.show_alert({ message: 'Knowledge Profile assigned.', indicator: 'green' });
-                    state.assignmentMap[state.selectedUser] = { knowledge_profile: profile, active: 1 };
-                    $('#nupm_notes').val('');
-                    renderUserList();
-                    loadUserData(state.selectedUser);
-                }
-            },
-        });
-    }
-
-    // -------------------------------------------------------------------------
-    // Policies
-    // -------------------------------------------------------------------------
-    function renderPolicies(policies) {
-        if (!policies.length) {
-            $('#nupm_no_policies').show();
-            return;
-        }
-        const chips = policies.map(p => {
-            const cls = p.is_primitive ? 'nupm-chip-primitive' : 'nupm-chip';
-            return `<span class="${cls}">${esc(p.policy_name)}${p.is_primitive ? ' ★' : ''}</span>`;
-        }).join('');
-        $('#nupm_policies_area').html(`
-            <div style="display:flex; flex-wrap:wrap; gap:6px; padding:8px 0 4px;">${chips}</div>
-            <div class="nexus-admin-muted" style="padding:4px 0 8px;">${policies.length} polic${policies.length !== 1 ? 'ies' : 'y'} accessible.</div>`);
+        $('#nupm_escalation_area').html(`
+            <div style="display:flex; flex-wrap:wrap; gap:10px; padding:8px 0;">
+                <div class="nexus-kv-row" style="flex:1; min-width:200px;">
+                    <span style="font-size:12px; font-weight:900; color:#173b8c;">Can Handle Escalations</span>
+                    <span class="nexus-status-pill ${active.can_handle_escalations ? 'enabled' : 'disabled'}">${active.can_handle_escalations ? 'Yes' : 'No'}</span>
+                </div>
+                <div class="nexus-kv-row" style="flex:1; min-width:200px;">
+                    <span style="font-size:12px; font-weight:900; color:#173b8c;">Max Sessions</span>
+                    <b style="color:#214dbb;">${active.max_escalation_sessions || '—'}</b>
+                </div>
+            </div>
+            <div class="nexus-admin-muted" style="margin-top:4px; padding:0 0 4px;">
+                Assigned ${active.assigned_on ? frappe.datetime.str_to_user(active.assigned_on) : '—'}
+                &nbsp;·&nbsp;
+                <a href="#Form/Nexus User Profile Assignment/${esc(active.name)}" onclick="frappe.set_route('Form','Nexus User Profile Assignment','${esc(active.name)}'); return false;">Open Doc</a>
+            </div>
+        `);
     }
 
     // -------------------------------------------------------------------------
@@ -300,10 +277,13 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
 
         const rows = assignments.map(a => `
             <tr>
-                <td><b style="color:#173b8c;">${esc(a.knowledge_profile)}</b></td>
                 <td style="text-align:center;">
                     <span class="nexus-status-pill ${a.active ? 'enabled' : 'disabled'}">${a.active ? 'Active' : 'Inactive'}</span>
                 </td>
+                <td style="text-align:center;">
+                    <span class="nexus-status-pill ${a.can_handle_escalations ? 'enabled' : 'disabled'}">${a.can_handle_escalations ? 'Yes' : 'No'}</span>
+                </td>
+                <td style="text-align:center; color:#214dbb; font-weight:900;">${a.max_escalation_sessions || '—'}</td>
                 <td>${esc(a.assigned_by || '—')}</td>
                 <td>${a.assigned_on ? frappe.datetime.str_to_user(a.assigned_on) : '—'}</td>
                 <td>${esc(a.notes || '—')}</td>
@@ -317,8 +297,9 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
         $('#nupm_history_area').html(`
             <table class="table table-bordered nexus-admin-table" style="margin-bottom:0;">
                 <thead><tr>
-                    <th>Knowledge Profile</th>
                     <th style="width:80px; text-align:center;">Status</th>
+                    <th style="width:100px; text-align:center;">Escalations</th>
+                    <th style="width:80px; text-align:center;">Max Sessions</th>
                     <th>Assigned By</th>
                     <th>Assigned On</th>
                     <th>Notes</th>
@@ -329,7 +310,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
 
         $('#nupm_history_area').off('click', '.nupm-deactivate-btn').on('click', '.nupm-deactivate-btn', function () {
             const name = $(this).data('name');
-            frappe.confirm('Deactivate this profile assignment?', () => {
+            frappe.confirm('Deactivate this assignment?', () => {
                 frappe.call({
                     method: 'digitz_ai_nexus_live.api.nexus_user_profile_manager.deactivate_assignment',
                     args: { name },
@@ -396,15 +377,7 @@ function inject_nupm_css() {
         .nupm-dot-active { background:#16a34a; }
         .nupm-dot-none { background:#d1d5db; }
 
-        .nupm-assign-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-        .nupm-assign-row .form-control { flex:1; min-width:160px; }
-        .nupm-assign-row .btn { border-radius:999px; font-weight:850; flex-shrink:0; }
-
-        .nupm-chip, .nupm-chip-primitive { display:inline-flex; align-items:center; padding:5px 12px; border-radius:999px; font-size:12px; font-weight:900; white-space:nowrap; }
-        .nupm-chip { background:#eef6ff; color:#173b8c; border:1px solid rgba(33,77,187,.22); }
-        .nupm-chip-primitive { background:#fff7e6; color:#8a5d00; border:1px solid #f2d49b; }
-
         @media (max-width:900px) { .nupm-layout { grid-template-columns:1fr; } .nupm-user-panel { position:static; } }
-        @media (max-width:760px) { .nexus-admin-hero { flex-direction:column; } .nupm-assign-row { flex-direction:column; align-items:stretch; } }
+        @media (max-width:760px) { .nexus-admin-hero { flex-direction:column; } }
     </style>`);
 }

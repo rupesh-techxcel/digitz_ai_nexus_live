@@ -18,39 +18,43 @@ See [Default Seed Data](default-seed-data.md) for the records created by the ins
 ### Step 2 — AI Agent Profiles
 
 1. Create a `Nexus Live Agent` (type: AI) for each AI responder.
-2. Create a `Nexus AI Agent Profile` for each agent — configure behaviour fields (tone, response style, fallback message, escalation settings).
-3. Open **Nexus Profile Access Allocation** (`/nexus-profile-access-allocation`) and assign one or more Access Categories to each profile. A profile may hold multiple access categories; runtime access is the union of all enabled categories assigned to that profile.
+2. Create a `Nexus AI Agent Profile` for each agent — configure **behavior only**: tone, response style, fallback message, escalation settings, confidence threshold.
 
-### Step 3 — Channels, Chat Categories, and Identity Routes
+Knowledge access is configured via Identity Profiles (see Step 3), not on the AI Agent Profile.
+
+### Step 3 — Identity Access Configuration
+
+1. In `Nexus Identity Type`, add `safeguard_access_categories` to cap each identity class (e.g. "Customer" can only access Customer and Public categories).
+2. Create `Knowledge Profile` records — each bundles one or more Access Categories.
+3. Create `Nexus Identity Profile` records — each maps identity types to Knowledge Profiles. One profile can serve multiple people.
+4. In `Nexus Identity Registry`, register each known person (by verified email or Frappe user). Assign the appropriate Identity Profiles with valid date ranges.
+
+### Step 4 — Channels, Chat Categories, and Routes
 
 1. Create `Nexus Live Channel` records (Website Chat, Portal, API, etc.).
 2. For each channel, open **Nexus Chat Category Manager** (`/nexus-chat-category-manager`) and configure the categories the chat UI should show.
-3. Open **Nexus Identity Registry Manager** (`/app/nexus-identity-registry-manager`) and register known people or parties by verified email. Add one or more identity rows, such as Customer, Partner, or Premium Customer.
-4. On each chat category, choose an identity verification mode when needed: `None`, `Email OTP`, or `Registered Email OTP`.
-5. Open **Nexus Category Profile Routes** (`/nexus-category-profile-routes`) and map each category + identity type to an AI Agent Profile:
+3. On each chat category, choose an identity verification mode: `None`, `Email OTP`, or `Registered Email OTP`.
+4. Open **Nexus Category Profile Routes** (`/nexus-category-profile-routes`) and configure routes:
 
-   | Identity Type | Example Label | Example Profile |
-   |---|---|---|
-   | Public | General Enquiry | Website Public Bot |
-   | Customer | Customer Support | Customer Support Bot |
-   | Prospect | Connect to Sales | Sales Bot |
+   | Route type | Config |
+   |---|---|
+   | Public | `is_public_route = 1`, assign AI Agent Profile. Knowledge = ["Public"] only. |
+   | Registered | Add permitted Identity Profiles to the child table. Assign AI Agent Profile. |
 
-   A category with no enabled route for the resolved identity type cannot start a conversation.
+   A category with no enabled route cannot start a conversation.
 
-6. Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to verify complete runtime resolution for a sample channel, category, email, and verification state.
-7. Use the route chain preview to verify:
+5. Use **Nexus Chat Workflow Tester** (`/nexus-chat-workflow-tester`) to verify complete runtime resolution for a sample channel, category, email, and verification state.
+6. Verify the route chain shows:
 
    ```
-   Chat Category → Identity Type → AI Agent Profile → Access Categories → Access Policies
+   Chat Category → Route → Identity Profiles → Knowledge Profiles → Access Categories → Policies
    ```
 
-   The preview should show every access category linked to the resolved profile, not just a single category.
+### Step 5 — Internal User Access
 
-### Step 4 — Internal User Assignments
-
-1. Open **Nexus User Profile Manager** (`/app/nexus-user-profile-manager`).
-2. For every internal desk user who will query the system, assign an active AI Agent Profile.
-3. Verify the assigned profile has an Access Category configured — the page shows a warning if not.
+1. For every internal desk user who needs knowledge access, create a `Nexus Identity Registry` entry with `user = frappe_username` and `verification_status = Verified`.
+2. Assign Identity Profiles that have `identity_mappings` rows for `identity_type = "Internal"` or `"Admin"`.
+3. `Nexus User Profile Assignment` is only needed for escalation configuration (to receive human escalation alerts).
 
 ### Step 5 — Escalation
 

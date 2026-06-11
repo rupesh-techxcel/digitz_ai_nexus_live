@@ -39,7 +39,7 @@ def get_agent_behavior(agent):
         "escalation_enabled": agent_doc.escalation_enabled,
         "escalation_policy": agent_doc.escalation_policy,
         "do_not_answer_rules": agent_doc.do_not_answer_rules,
-        "knowledge_profile_name": agent_doc.knowledge_profile or "",
+        "knowledge_profile_names": [],
         "confidence_threshold_source": "Nexus AI Agent Profile",
     })
 

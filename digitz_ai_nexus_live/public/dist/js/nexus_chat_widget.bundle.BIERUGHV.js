@@ -7,6 +7,7 @@
       ready: false,
       open: false,
       conversation_id: null,
+      agent_instance: null,
       locked: false,
       sending: false,
       tenant: cfg.tenant || null,
@@ -244,7 +245,7 @@
     }
     async function start_new_chat() {
       reset_messages();
-      set_header("AI Assistant", "Connecting\u2026");
+      set_header("Connecting\u2026", "");
       set_input_placeholder("Please wait\u2026");
       if (!S.tenant) {
         await resolve_tenant();
@@ -265,7 +266,8 @@
           return;
         }
         S.conversation_id = data.conversation_id;
-        set_header("AI Assistant", data.agent_name || "");
+        S.agent_instance = data.agent_instance || null;
+        set_header(data.agent_name || "AI Assistant", "");
         set_input_placeholder("Type a message\u2026");
         if (data.greeting) {
           append_message("agent", data.greeting);
@@ -829,4 +831,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.6JGINCEP.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.BIERUGHV.js.map

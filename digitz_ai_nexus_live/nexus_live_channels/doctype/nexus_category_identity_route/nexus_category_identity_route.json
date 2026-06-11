@@ -9,9 +9,11 @@
     "channel",
     "chat_category",
     "column_break_1",
-    "identity_type",
     "ai_agent_profile",
     "enabled",
+    "is_public_route",
+    "section_identity_profiles",
+    "identity_profiles",
     "section_meta",
     "priority",
     "description"
@@ -38,16 +40,7 @@
       "fieldtype": "Column Break"
     },
     {
-      "description": "The identity type of the visitor for whom this route applies.",
-      "fieldname": "identity_type",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Identity Type",
-      "options": "Nexus Identity Type",
-      "reqd": 1
-    },
-    {
-      "description": "The AI Agent Profile resolved when a visitor of this identity type selects this category.",
+      "description": "AI behavior configuration — tone, fallback message, escalation settings, confidence threshold, intent overrides.",
       "fieldname": "ai_agent_profile",
       "fieldtype": "Link",
       "in_list_view": 1,
@@ -63,13 +56,33 @@
       "label": "Enabled"
     },
     {
+      "default": "0",
+      "description": "When enabled, this route serves unregistered public visitors. Knowledge access is automatically restricted to Public policy only — no Identity Profile matching is performed.",
+      "fieldname": "is_public_route",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Is Public Route"
+    },
+    {
+      "fieldname": "section_identity_profiles",
+      "fieldtype": "Section Break",
+      "label": "Permitted Identity Profiles"
+    },
+    {
+      "description": "Identity Profiles permitted to use this route. At runtime the visitor's assigned profiles are intersected against this list. Leave empty only if this is a public route.",
+      "fieldname": "identity_profiles",
+      "fieldtype": "Table",
+      "label": "Permitted Identity Profiles",
+      "options": "Nexus Route Identity Profile"
+    },
+    {
       "fieldname": "section_meta",
       "fieldtype": "Section Break",
       "label": "Metadata"
     },
     {
       "default": "10",
-      "description": "Lower number = higher priority when multiple routes match the same identity type.",
+      "description": "Lower number = higher priority when multiple routes match for the same category.",
       "fieldname": "priority",
       "fieldtype": "Int",
       "label": "Priority"
@@ -82,7 +95,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-06-03 00:00:00.000000",
+  "modified": "2026-06-10 00:00:00",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Category Identity Route",

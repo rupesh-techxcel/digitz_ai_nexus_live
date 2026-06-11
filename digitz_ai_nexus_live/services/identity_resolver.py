@@ -10,14 +10,12 @@ def get_enabled_identity_types():
     if not frappe.db.exists("DocType", "Nexus Identity Type"):
         return list(DEFAULT_IDENTITY_TYPES)
 
-    identity_types = frappe.get_all(
+    return frappe.get_all(
         "Nexus Identity Type",
         filters={"enabled": 1},
         pluck="name",
         order_by="sort_order asc, title asc",
     )
-
-    return identity_types
 
 
 def is_valid_identity_type(identity_type):
@@ -40,17 +38,18 @@ def resolve_identity_type(payload):
     Derive the visitor's identity type from request context.
 
     Priority:
-    1. Trusted explicit identity_type in payload, for server-side integrations only.
-    2. Verified OTP challenge or authenticated session registry.
-    3. Derived from frappe session user type and roles.
+    1. Trusted explicit identity_type in payload (server-side integrations only).
+    2. Verified OTP challenge.
+    3. Frappe session user type and roles.
+    4. api_scope field (Partner / Prospect for programmatic API calls).
+    5. Default: Public.
 
-    Returns a `Nexus Identity Type` document name.
+    Blocks if the resolved registry is blocked.
     """
     explicit = payload.get("identity_type")
     if explicit:
         if payload.get("trust_payload_identity") and is_valid_identity_type(explicit):
             return explicit
-
         if payload.get("trust_payload_identity"):
             frappe.throw(f"Identity Type '{explicit}' is not enabled or does not exist.")
 
@@ -58,14 +57,18 @@ def resolve_identity_type(payload):
     if verified_challenge_identity:
         return verified_challenge_identity
 
-    registered_identity = resolve_registered_identity_type(payload)
-    if registered_identity:
-        return registered_identity
+    # Raise if the registry for this person is blocked
+    _assert_registry_not_blocked(payload)
 
     user = frappe.session.user
     user_type = payload.get("user_type") or "Guest"
 
     if not user or user == "Guest" or user_type == "Guest":
+        api_scope = payload.get("api_scope") or ""
+        if api_scope.lower() == "partner":
+            return "Partner"
+        if api_scope.lower() == "prospect":
+            return "Prospect"
         return "Public"
 
     frappe_user_type = frappe.db.get_value("User", user, "user_type") or ""
@@ -75,105 +78,192 @@ def resolve_identity_type(payload):
 
     if frappe_user_type == "System User":
         roles = set(frappe.get_roles(user))
-
         if "System Manager" in roles:
             return "Admin"
-
         return "Internal"
-
-    api_scope = payload.get("api_scope") or ""
-    if api_scope.lower() == "partner":
-        return "Partner"
-    if api_scope.lower() == "prospect":
-        return "Prospect"
 
     return "Public"
 
 
-def resolve_registered_identity_type(payload):
-    """Resolve identity from a verified Nexus Identity Registry record."""
-    if not frappe.db.exists("DocType", "Nexus Identity Registry"):
-        return None
-
-    registry_name = _find_identity_registry(payload)
-    if not registry_name:
-        return None
-
-    registry = frappe.get_doc("Nexus Identity Registry", registry_name)
-
-    if registry.verification_status == "Blocked":
-        frappe.throw(
-            "This identity is blocked from chat access. Please contact support.",
-            title="Identity Blocked",
-        )
-
-    if registry.verification_status != "Verified":
-        return None
-
-    identities = _get_active_registry_identities(registry)
-    if not identities:
-        return None
-
-    routed_identity = _pick_identity_for_chat_category(
-        identities=identities,
-        chat_category=payload.get("chat_category"),
-        channel=payload.get("channel"),
-    )
-    if routed_identity:
-        return routed_identity
-
-    primary = next((row.identity_type for row in identities if row.is_primary), None)
-    if primary:
-        return primary
-
-    return identities[0].identity_type
-
-
 def resolve_identity_registry_name(payload):
-    """Return the matched enabled identity registry for this payload, if any."""
+    """Return the matched enabled identity registry name for this payload, if any."""
     return _find_identity_registry(payload)
 
 
-def resolve_identity_safeguard_access_categories(payload):
+def resolve_identity_safeguard_access_categories(payload, identity_type=None):
     """
-    Return parent-level Safe Guard access categories for the matched registry.
+    Return safeguard access categories for the resolved identity type.
+
+    Safeguards now live on Nexus Identity Type (not on the registry).
+    They are a hard cap applied uniformly to all holders of that identity class.
 
     Returns:
-    - None when no registry is resolved, so no registry safeguard cap applies.
-    - [] when a registry exists but no enabled safeguards are configured, so
-      registered identity access fails closed.
+    - None if identity_type is Public or unknown (no cap applies).
+    - [] if the identity type exists but has no safeguards (fails closed for registered users).
     - list[str] of access category names when safeguards are configured.
     """
-    if not frappe.db.exists("DocType", "Nexus Identity Registry"):
+    resolved_type = identity_type or payload.get("identity_type")
+    if not resolved_type or resolved_type == "Public":
         return None
 
+    if not frappe.db.exists("Nexus Identity Type", resolved_type):
+        return []
+
+    categories = frappe.get_all(
+        "Nexus Identity Type Safe Guard Category",
+        filters={"parent": resolved_type, "parentfield": "safeguard_access_categories"},
+        pluck="access_category",
+    )
+
+    return categories if categories else None
+
+
+def resolve_registered_identity_type(payload):
+    """
+    Return the identity type for a verified registered visitor.
+
+    Used by challenge-based verification (Email OTP / Registered Email OTP) to
+    determine what identity class to stamp on the challenge at issue time.
+
+    Resolution:
+    1. Find the registry entry (by OTP challenge, Frappe user, or trusted email).
+    2. Require verification_status = "Verified".
+    3. Get active identity profiles (sorted primary-first, date-range checked).
+    4. If channel + chat_category are in the payload, narrow by the route's
+       permitted identity profiles.
+    5. Return the identity_type from the first mapping in the best matching profile.
+
+    Returns None if no registry, not verified, or no compatible profile/mapping.
+    """
     registry_name = _find_identity_registry(payload)
     if not registry_name:
         return None
 
     registry = frappe.get_doc("Nexus Identity Registry", registry_name)
+    if registry.verification_status != "Verified":
+        return None
 
-    if registry.verification_status == "Blocked":
-        frappe.throw(
-            "This identity is blocked from chat access. Please contact support.",
-            title="Identity Blocked",
+    active_profiles = _get_active_registry_identity_profiles(registry)
+    if not active_profiles:
+        return None
+
+    # Keep insertion order (primary-first from sort) as a list
+    person_profile_names = [
+        row.identity_profile for row in active_profiles if row.identity_profile
+    ]
+
+    # Narrow to route's permitted profiles when channel + category are known
+    channel = payload.get("channel")
+    chat_category = payload.get("chat_category")
+    if channel and chat_category:
+        route_name = frappe.db.get_value(
+            "Nexus Category Identity Route",
+            {"channel": channel, "chat_category": chat_category, "enabled": 1},
+            "name",
+            order_by="priority asc",
         )
+        if route_name:
+            permitted = set(
+                frappe.get_all(
+                    "Nexus Route Identity Profile",
+                    filters={"parent": route_name},
+                    pluck="identity_profile",
+                )
+            )
+            person_profile_names = [p for p in person_profile_names if p in permitted]
 
+    if not person_profile_names:
+        return None
+
+    # Return the first identity_type found — primary profile takes precedence
+    for profile_name in person_profile_names:
+        if not frappe.db.exists("Nexus Identity Profile", profile_name):
+            continue
+        ip_doc = frappe.get_doc("Nexus Identity Profile", profile_name)
+        if not ip_doc.enabled:
+            continue
+        for row in ip_doc.identity_mappings or []:
+            if row.identity_type:
+                return row.identity_type
+
+    return None
+
+
+def resolve_registry_knowledge_profiles(payload, identity_type, route_name=None):
+    """
+    Resolve the union of Knowledge Profile names for this visitor/user.
+
+    Resolution:
+    1. Find the person's Nexus Identity Registry entry.
+    2. Get all their active assigned Identity Profiles.
+    3. If a route_name is given, intersect with the route's permitted profiles.
+    4. From matched profiles, collect all knowledge_profile values where
+       identity_type == session identity_type.
+    5. Return deduplicated list (union).
+
+    Returns [] for Public (caller uses force_public_only bypass instead).
+    Returns [] if no registry or no matching mappings.
+    """
+    if identity_type == "Public":
+        return []
+
+    registry_name = _find_identity_registry(payload)
+    if not registry_name:
+        return []
+
+    registry = frappe.get_doc("Nexus Identity Registry", registry_name)
     if registry.verification_status != "Verified":
         return []
 
-    return [
-        row.access_category
-        for row in registry.safe_guard_access_categories or []
-        if row.access_category
-    ]
+    active_profiles = _get_active_registry_identity_profiles(registry)
+    if not active_profiles:
+        return []
 
+    person_profile_names = {row.identity_profile for row in active_profiles if row.identity_profile}
+
+    # Narrow to route-permitted profiles when a route is known
+    if route_name and frappe.db.exists("Nexus Category Identity Route", route_name):
+        route_permitted = set(
+            frappe.get_all(
+                "Nexus Route Identity Profile",
+                filters={"parent": route_name},
+                pluck="identity_profile",
+            )
+        )
+        matched_profile_names = person_profile_names.intersection(route_permitted)
+    else:
+        matched_profile_names = person_profile_names
+
+    if not matched_profile_names:
+        return []
+
+    knowledge_profiles = []
+    for profile_name in matched_profile_names:
+        if not frappe.db.exists("Nexus Identity Profile", profile_name):
+            continue
+        ip_doc = frappe.get_doc("Nexus Identity Profile", profile_name)
+        if not ip_doc.enabled:
+            continue
+        for row in ip_doc.identity_mappings or []:
+            if row.identity_type == identity_type and row.knowledge_profile:
+                knowledge_profiles.append(row.knowledge_profile)
+
+    return list(set(knowledge_profiles))
+
+
+# ── Private helpers ────────────────────────────────────────────────────────────
 
 def _find_identity_registry(payload):
+    """Locate the Nexus Identity Registry for this session/payload."""
+    if not frappe.db.exists("DocType", "Nexus Identity Registry"):
+        return None
+
+    # 1. OTP challenge registry
     verified_registry = _resolve_verified_challenge_registry(payload)
     if verified_registry:
         return verified_registry
 
+    # 2. Authenticated Frappe session user
     user = frappe.session.user
     if user and user != "Guest":
         registry_name = frappe.db.get_value(
@@ -184,6 +274,7 @@ def _find_identity_registry(payload):
         if registry_name:
             return registry_name
 
+    # 3. Trusted visitor email
     email = _get_payload_email(payload)
     if email and payload.get("trust_visitor_email"):
         return frappe.db.get_value(
@@ -193,6 +284,43 @@ def _find_identity_registry(payload):
         )
 
     return None
+
+
+def _assert_registry_not_blocked(payload):
+    """Raise if the resolved registry is blocked. Silent if no registry found."""
+    if not frappe.db.exists("DocType", "Nexus Identity Registry"):
+        return
+
+    registry_name = _find_identity_registry(payload)
+    if not registry_name:
+        return
+
+    status = frappe.db.get_value("Nexus Identity Registry", registry_name, "verification_status")
+    if status == "Blocked":
+        frappe.throw(
+            "This identity is blocked from chat access. Please contact support.",
+            title="Identity Blocked",
+        )
+
+
+def _get_active_registry_identity_profiles(registry):
+    """
+    Return active Nexus Registry Identity Profile rows from the registry,
+    sorted primary-first. Validity dates are respected.
+    """
+    today = getdate(nowdate())
+    rows = []
+
+    for row in registry.identity_profiles or []:
+        if not row.identity_profile:
+            continue
+        if row.valid_from and getdate(row.valid_from) > today:
+            continue
+        if row.valid_until and getdate(row.valid_until) < today:
+            continue
+        rows.append(row)
+
+    return sorted(rows, key=lambda r: 0 if r.is_primary else 1)
 
 
 def _resolve_verified_challenge_registry(payload):
@@ -207,10 +335,18 @@ def _resolve_verified_challenge_registry(payload):
         email=payload.get("visitor_email") or payload.get("email"),
     )
 
-    if not challenge:
+    return challenge.identity_registry if challenge else None
+
+
+def _resolve_verified_challenge_identity(payload):
+    if not payload.get("identity_verification_challenge"):
         return None
 
-    return challenge.identity_registry
+    from digitz_ai_nexus_live.services.identity_verification import (
+        resolve_identity_from_verified_challenge,
+    )
+
+    return resolve_identity_from_verified_challenge(payload)
 
 
 def _get_payload_email(payload):
@@ -225,61 +361,4 @@ def _get_payload_email(payload):
         if session_user and session_user != "Guest":
             email = frappe.db.get_value("User", session_user, "email") or session_user
 
-    if not email:
-        return None
-
-    return email.strip().lower()
-
-
-def _get_active_registry_identities(registry):
-    today = getdate(nowdate())
-    rows = []
-
-    for row in registry.identities or []:
-        if not row.enabled or not row.identity_type:
-            continue
-        if not is_valid_identity_type(row.identity_type):
-            continue
-        if row.valid_from and getdate(row.valid_from) > today:
-            continue
-        if row.valid_until and getdate(row.valid_until) < today:
-            continue
-        rows.append(row)
-
-    return sorted(rows, key=lambda item: 0 if item.is_primary else 1)
-
-
-def _pick_identity_for_chat_category(identities, chat_category=None, channel=None):
-    if not chat_category:
-        return None
-
-    category_channel = frappe.db.get_value("Nexus Chat Category", chat_category, "channel")
-    route_channel = category_channel or channel
-    if not route_channel:
-        return None
-
-    for row in identities:
-        route = frappe.db.exists(
-            "Nexus Category Identity Route",
-            {
-                "channel": route_channel,
-                "chat_category": chat_category,
-                "identity_type": row.identity_type,
-                "enabled": 1,
-            },
-        )
-        if route:
-            return row.identity_type
-
-    return None
-
-
-def _resolve_verified_challenge_identity(payload):
-    if not payload.get("identity_verification_challenge"):
-        return None
-
-    from digitz_ai_nexus_live.services.identity_verification import (
-        resolve_identity_from_verified_challenge,
-    )
-
-    return resolve_identity_from_verified_challenge(payload)
+    return email.strip().lower() if email else None

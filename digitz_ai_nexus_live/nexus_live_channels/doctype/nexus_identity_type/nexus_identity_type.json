@@ -11,7 +11,9 @@
     "enabled",
     "sort_order",
     "section_description",
-    "description"
+    "description",
+    "section_safeguard",
+    "safeguard_access_categories"
   ],
   "fields": [
     {
@@ -50,6 +52,18 @@
       "fieldname": "description",
       "fieldtype": "Small Text",
       "label": "Description"
+    },
+    {
+      "fieldname": "section_safeguard",
+      "fieldtype": "Section Break",
+      "label": "Safeguard Cap"
+    },
+    {
+      "description": "Hard cap applied to all holders of this identity type. Regardless of their Knowledge Profile, they can never access policies outside these categories. Leave empty for no cap.",
+      "fieldname": "safeguard_access_categories",
+      "fieldtype": "Table",
+      "label": "Safeguard Access Categories",
+      "options": "Nexus Identity Type Safe Guard Category"
     }
   ],
   "index_web_pages_for_search": 1,

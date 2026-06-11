@@ -7,11 +7,9 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 
     const state = {
         registries: [],
-        identityTypes: [],
-        accessCategories: [],
+        availableIdentityProfiles: [],
         selected: null,
-        identities: [],
-        safeGuardAccessCategories: [],
+        identityProfiles: [],
     };
 
     inject_css();
@@ -25,7 +23,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
     <div class="nir-toolbar">
         <div>
             <div class="nir-title">Identity Registry Manager</div>
-            <div class="nir-muted">Register the real person behind a chat and assign one or more identity types.</div>
+            <div class="nir-muted">Register a real person and assign the Identity Profiles that govern their knowledge access.</div>
         </div>
         <div class="nir-actions">
             <button class="btn btn-default" data-list="Nexus Identity Registry">Open List</button>
@@ -57,7 +55,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
                     <div><label>Full Name</label><input class="form-control" id="nir_full_name"></div>
                 </div>
                 <div class="nir-two">
-                    <div><label>User</label><input class="form-control" id="nir_user"></div>
+                    <div><label>User</label><input class="form-control" id="nir_user" placeholder="Frappe username — for desk users"></div>
                     <div><label>Reference DocType</label><input class="form-control" id="nir_reference_doctype" placeholder="e.g. Contact, Lead, Member"></div>
                 </div>
                 <div class="nir-two">
@@ -84,20 +82,16 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 
             <div class="nir-section-head">
                 <div>
-                    <div class="nir-panel-title">Safe Guard</div>
-                    <div class="nir-muted">Limit this verified person to these access categories. Runtime intersects this with the routed AI Agent Profile access.</div>
+                    <div class="nir-panel-title">Identity Profiles</div>
+                    <div class="nir-muted">
+                        Assign one or more <b>Nexus Identity Profile</b> records to this person.
+                        Each profile maps identity types to Knowledge Profiles, governing what knowledge they can access.
+                        Access ceilings (safeguards) are configured on each <b>Nexus Identity Type</b>, not here.
+                    </div>
                 </div>
+                <button class="btn btn-default" id="nir_add_profile">Add Profile</button>
             </div>
-            <div id="nir_safe_guard_rows"></div>
-
-            <div class="nir-section-head">
-                <div>
-                    <div class="nir-panel-title">Registered Identities</div>
-                    <div class="nir-muted">Add every identity this person may resolve as. Mark one primary identity for fallback routing.</div>
-                </div>
-                <button class="btn btn-default" id="nir_add_identity">Add Identity</button>
-            </div>
-            <div id="nir_identity_rows"></div>
+            <div id="nir_profile_rows"></div>
         </div>
     </div>
 </div>`;
@@ -110,9 +104,9 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
         $(page.body).on('click', '#nir_new', newRegistry);
         $(page.body).on('click', '#nir_search_btn', () => loadData($('#nir_search').val()));
         $(page.body).on('click', '#nir_save', saveRegistry);
-        $(page.body).on('click', '#nir_add_identity', () => {
-            state.identities.push({ identity_type: '', enabled: 1, is_primary: 0 });
-            renderIdentityRows();
+        $(page.body).on('click', '#nir_add_profile', () => {
+            state.identityProfiles.push({ identity_profile: '', is_primary: 0 });
+            renderProfileRows();
         });
         $(page.body).on('click', '#nir_open_doc', () => {
             if (state.selected) frappe.set_route('Form', 'Nexus Identity Registry', state.selected);
@@ -121,11 +115,10 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             loadRegistry($(this).data('name'));
         });
         $(page.body).on('click', '.nir-remove-row', function () {
-            state.identities.splice(Number($(this).data('idx')), 1);
-            renderIdentityRows();
+            state.identityProfiles.splice(Number($(this).data('idx')), 1);
+            renderProfileRows();
         });
-        $(page.body).on('change input', '.nir-identity-input', syncIdentityRows);
-        $(page.body).on('change input', '.nir-safe-guard-input', syncSafeGuardRows);
+        $(page.body).on('change input', '.nir-profile-input', syncProfileRows);
     }
 
     function loadData(search) {
@@ -135,8 +128,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             callback(r) {
                 if (!r.message) return;
                 state.registries = r.message.registries || [];
-                state.identityTypes = r.message.identity_types || [];
-                state.accessCategories = r.message.access_categories || [];
+                state.availableIdentityProfiles = r.message.identity_profiles || [];
                 renderRegistryList();
                 if (!state.selected) newRegistry();
             },
@@ -150,23 +142,20 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             callback(r) {
                 if (!r.message) return;
                 fillForm(r.message.registry);
-                state.safeGuardAccessCategories = r.message.registry.safe_guard_access_categories || [];
-                state.identities = r.message.identities || [];
-                renderSafeGuardRows();
-                renderIdentityRows();
+                state.identityProfiles = r.message.identity_profiles || [];
+                renderProfileRows();
             },
         });
     }
 
     function saveRegistry() {
-        syncIdentityRows();
-        syncSafeGuardRows();
+        syncProfileRows();
         const registry = collectForm();
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_identity_registry.save_registry',
             args: {
                 registry: JSON.stringify(registry),
-                identities: JSON.stringify(state.identities),
+                identity_profiles: JSON.stringify(state.identityProfiles),
             },
             callback(r) {
                 if (!r.message) return;
@@ -176,28 +165,6 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
                 loadRegistry(r.message.name);
             },
         });
-    }
-
-    function renderSafeGuardRows() {
-        syncSafeGuardRows(false);
-        const noAccessCategories = !state.accessCategories.length;
-        if (noAccessCategories) {
-            $('#nir_safe_guard_rows').html('<div class="nir-empty">No Access Categories found. Configure Nexus Access Category first.</div>');
-            return;
-        }
-
-        const selected = new Set(state.safeGuardAccessCategories.map(row => row.access_category));
-        $('#nir_safe_guard_rows').html(`
-            <div class="nir-safe-guard-list">
-                ${state.accessCategories.map(c => `
-                    <label class="nir-safe-guard-option">
-                        <input type="checkbox" class="nir-safe-guard-input" value="${esc(c.name)}" ${selected.has(c.name) ? 'checked' : ''}>
-                        <span>${esc(c.category_name || c.name)}</span>
-                    </label>
-                `).join('')}
-            </div>
-            ${selected.size ? '' : '<div class="nir-muted" style="margin-top:8px;">No safeguard categories selected. Registered identity access will fail closed until configured.</div>'}
-        `);
     }
 
     function renderRegistryList() {
@@ -218,35 +185,39 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
         `).join(''));
     }
 
-    function renderIdentityRows() {
-        syncIdentityRows(false);
-        const noIdentityTypes = !state.identityTypes.length;
+    function renderProfileRows() {
+        syncProfileRows(false);
+        const noProfiles = !state.availableIdentityProfiles.length;
         const options = ['<option value=""></option>'].concat(
-            state.identityTypes.map(t => `<option value="${esc(t)}">${esc(t)}</option>`)
+            state.availableIdentityProfiles.map(p => {
+                const label = p.title ? `${esc(p.profile_name || p.name)} — ${esc(p.title)}` : esc(p.profile_name || p.name);
+                return `<option value="${esc(p.name)}">${label}</option>`;
+            })
         ).join('');
 
-        $('#nir_identity_rows').html(state.identities.map((row, idx) => `
+        $('#nir_profile_rows').html(state.identityProfiles.map((row, idx) => `
             <div class="nir-identity-row" data-idx="${idx}">
-                <select class="form-control nir-identity-input" data-field="identity_type" data-idx="${idx}" ${noIdentityTypes ? 'disabled' : ''}>
+                <select class="form-control nir-profile-input" data-field="identity_profile" data-idx="${idx}" ${noProfiles ? 'disabled' : ''}>
                     ${options}
                 </select>
-                <label><input type="checkbox" class="nir-identity-input" data-field="enabled" data-idx="${idx}" ${Number(row.enabled) ? 'checked' : ''}> Enabled</label>
-                <label><input type="checkbox" class="nir-identity-input" data-field="is_primary" data-idx="${idx}" ${Number(row.is_primary) ? 'checked' : ''}> Primary</label>
+                <label><input type="checkbox" class="nir-profile-input" data-field="is_primary" data-idx="${idx}" ${Number(row.is_primary) ? 'checked' : ''}> Primary</label>
+                <input type="date" class="form-control nir-profile-input" data-field="valid_from" data-idx="${idx}" value="${esc(row.valid_from || '')}" placeholder="Valid from">
+                <input type="date" class="form-control nir-profile-input" data-field="valid_until" data-idx="${idx}" value="${esc(row.valid_until || '')}" placeholder="Valid until">
                 <button class="btn btn-default nir-remove-row" data-idx="${idx}">Remove</button>
             </div>
-        `).join('') || `<div class="nir-empty">${noIdentityTypes ? 'No enabled Identity Types found. Configure Nexus Identity Type first.' : 'No identities assigned yet.'}</div>`);
+        `).join('') || `<div class="nir-empty">${noProfiles ? 'No enabled Identity Profiles found. Create a Nexus Identity Profile first.' : 'No Identity Profiles assigned yet. Click <b>Add Profile</b> to assign one.'}</div>`);
 
-        state.identities.forEach((row, idx) => {
-            $(`.nir-identity-row[data-idx="${idx}"] [data-field="identity_type"]`).val(row.identity_type || '');
+        state.identityProfiles.forEach((row, idx) => {
+            $(`.nir-identity-row[data-idx="${idx}"] [data-field="identity_profile"]`).val(row.identity_profile || '');
         });
     }
 
-    function syncIdentityRows(readDom = true) {
+    function syncProfileRows(readDom = true) {
         if (!readDom) return;
         $('.nir-identity-row').each(function () {
             const idx = Number($(this).data('idx'));
-            const row = state.identities[idx] || {};
-            $(this).find('.nir-identity-input').each(function () {
+            const row = state.identityProfiles[idx] || {};
+            $(this).find('.nir-profile-input').each(function () {
                 const field = $(this).data('field');
                 if ($(this).attr('type') === 'checkbox') {
                     row[field] = $(this).is(':checked') ? 1 : 0;
@@ -254,24 +225,15 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
                     row[field] = $(this).val();
                 }
             });
-            state.identities[idx] = row;
+            state.identityProfiles[idx] = row;
         });
-    }
-
-    function syncSafeGuardRows(readDom = true) {
-        if (!readDom) return;
-        state.safeGuardAccessCategories = $('.nir-safe-guard-input:checked').map(function () {
-            return { access_category: $(this).val() };
-        }).get();
     }
 
     function newRegistry() {
         state.selected = null;
-        state.identities = [];
-        state.safeGuardAccessCategories = [];
+        state.identityProfiles = [];
         fillForm({ enabled: 1, verification_status: 'Unverified' });
-        renderSafeGuardRows();
-        renderIdentityRows();
+        renderProfileRows();
         renderRegistryList();
     }
 
@@ -307,7 +269,6 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             enabled: $('#nir_enabled').is(':checked') ? 1 : 0,
             verification_status: $('#nir_verification_status').val(),
             notes: $('#nir_notes').val(),
-            safe_guard_access_categories: state.safeGuardAccessCategories,
         };
     }
 
@@ -333,11 +294,11 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             .nir-form { display:flex; flex-direction:column; gap:12px; margin-bottom:18px; }
             .nir-two { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; }
             .nir-check { display:flex; gap:8px; align-items:center; margin-top:28px; }
-            .nir-identity-row { display:grid; grid-template-columns: minmax(160px,1fr) 110px 100px 90px; gap:10px; align-items:center; border-top:1px solid #edf1f7; padding:10px 0; }
-            .nir-safe-guard-list { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid #edf1f7; padding-top:10px; }
-            .nir-safe-guard-option { display:inline-flex; align-items:center; gap:8px; border:1px solid #d9e2f2; border-radius:999px; padding:7px 12px; color:#344054; font-size:12px; font-weight:700; }
+            .nir-section-head { align-items:flex-start; border-top:1px solid #edf1f7; padding-top:14px; margin-top:6px; }
+            .nir-section-head > div { flex:1; }
+            .nir-identity-row { display:grid; grid-template-columns: minmax(200px,1fr) 80px 120px 120px 90px; gap:10px; align-items:center; border-top:1px solid #edf1f7; padding:10px 0; }
             .nir-empty { color:#667085; padding:12px; text-align:center; }
-            @media (max-width: 900px) { .nir-grid, .nir-two, .nir-identity-row { grid-template-columns:1fr; } }
+            @media (max-width: 900px) { .nir-grid, .nir-two { grid-template-columns:1fr; } .nir-identity-row { grid-template-columns:1fr 80px; } }
         `).appendTo('head');
     }
 };

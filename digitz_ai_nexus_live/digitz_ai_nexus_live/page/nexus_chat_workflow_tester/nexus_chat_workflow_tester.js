@@ -160,7 +160,7 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
                         <div class="ncwt-kv"><b>Email</b><span>${esc(registry.email)}</span></div>
                         <div class="ncwt-kv"><b>Status</b><span>${esc(registry.verification_status)}</span></div>
                         <div class="ncwt-kv"><b>Reference</b><span>${esc(formatReference(registry))}</span></div>
-                        <div class="ncwt-tags">${(r.registered_identities || []).map(i => `<span>${esc(i.identity_type)}${i.is_primary ? ' primary' : ''}</span>`).join('')}</div>
+                        <div class="ncwt-tags">${(r.registered_identities || []).map(i => `<span>${esc(i.identity_profile)}${i.is_primary ? ' ★' : ''}</span>`).join('')}</div>
                     ` : '<div class="ncwt-empty">No registry match.</div>'}
                 </div>
                 <div>

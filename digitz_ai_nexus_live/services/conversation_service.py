@@ -1,4 +1,5 @@
 import json
+import random
 import frappe
 from frappe.utils import now_datetime
 
@@ -57,14 +58,17 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
         profile = ai_profile_override or assigned_agent
         if profile:
             conversation.assigned_ai_agent_profile = profile.name
+            nickname = _pick_nickname(profile)
             conversation.ai_profile_snapshot_json = json.dumps({
                 "name": profile.name,
+                "nickname": nickname,
                 "chat_category": payload.get("chat_category"),
                 "identity_type": payload.get("identity_type"),
                 "identity_registry": payload.get("identity_registry"),
                 "identity_safeguard_access_categories": payload.get(
                     "identity_safeguard_access_categories"
                 ),
+                "knowledge_profile_names": payload.get("knowledge_profile_names") or [],
                 "behavior_prompt": profile.behavior_prompt,
                 "tone": profile.tone,
                 "response_style": profile.response_style,
@@ -80,6 +84,29 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
             })
 
     conversation.insert(ignore_permissions=True)
+
+    # Create a runtime agent profile instance to represent this session's persona.
+    # Re-use the nickname already picked for the snapshot so both are consistent.
+    if assigned_agent:
+        profile = ai_profile_override or assigned_agent
+        if profile:
+            # Extract nickname from the frozen snapshot rather than picking again
+            try:
+                _snap = json.loads(conversation.ai_profile_snapshot_json or "{}")
+                _nickname = _snap.get("nickname") or _pick_nickname(profile)
+            except Exception:
+                _nickname = _pick_nickname(profile)
+
+            instance = frappe.new_doc("Nexus AI Agent Profile Instance")
+            instance.profile_template = profile.name
+            instance.nickname = _nickname
+            instance.conversation = conversation.name
+            instance.status = "Active"
+            instance.created_on = now_datetime()
+            instance.insert(ignore_permissions=True)
+            conversation.db_set("agent_profile_instance", instance.name, update_modified=False)
+            conversation.agent_profile_instance = instance.name
+
     return conversation
 
 
@@ -160,6 +187,14 @@ def set_conversation_status(conversation, status):
 
     if status == "Closed":
         conversation_doc.closed_on = now_datetime()
+        if conversation_doc.agent_profile_instance:
+            frappe.db.set_value(
+                "Nexus AI Agent Profile Instance",
+                conversation_doc.agent_profile_instance,
+                "status",
+                "Closed",
+                update_modified=False,
+            )
 
     conversation_doc.save(ignore_permissions=True)
     return conversation_doc
@@ -206,3 +241,31 @@ def get_conversation_messages(conversation, limit=20):
         order_by="message_time asc",
         limit_page_length=limit,
     )
+
+
+_DEFAULT_NICKNAME_POOL = [
+    "Aria", "Nova", "Zara", "Lyra", "Sage",
+    "Echo", "Finn", "Milo", "Luca", "Orion",
+    "Iris", "Jade", "Remi", "Skye", "Taya",
+    "Ezra", "Cleo", "Demi", "Halo", "Juno",
+    "Kira", "Lena", "Noel", "Pax",  "Vera",
+]
+
+
+def _pick_nickname(profile):
+    """
+    Pick a display name for a new agent profile instance.
+
+    Priority:
+    1. Random choice from the profile's nickname_pool (one name per line).
+    2. The profile's display_name.
+    3. Random choice from the built-in _DEFAULT_NICKNAME_POOL.
+    4. The profile's agent_name.
+    """
+    pool_text = getattr(profile, "nickname_pool", None) or ""
+    names = [n.strip() for n in pool_text.splitlines() if n.strip()]
+    if names:
+        return random.choice(names)
+    if profile.display_name:
+        return profile.display_name
+    return random.choice(_DEFAULT_NICKNAME_POOL)

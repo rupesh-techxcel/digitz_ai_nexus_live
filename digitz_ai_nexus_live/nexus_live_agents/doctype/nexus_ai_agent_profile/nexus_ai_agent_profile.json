@@ -1,14 +1,16 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "field:agent_code",
+ "autoname": "format:{agent_code}-{tenant}",
  "creation": "2026-05-10 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "agent_code",
+  "tenant",
   "agent_name",
   "display_name",
+  "nickname_pool",
   "agent_role",
   "visibility",
   "enabled",
@@ -23,7 +25,6 @@
   "avatar",
   "description",
   "section_behavior",
-  "knowledge_profile",
   "behavior_prompt",
   "tone",
   "response_style",
@@ -52,8 +53,14 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Agent Code",
-   "reqd": 1,
-   "unique": 1
+   "reqd": 1
+  },
+  {
+   "fieldname": "tenant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Tenant",
+   "options": "Nexus Tenant"
   },
   {
    "fieldname": "agent_name",
@@ -63,10 +70,16 @@
    "reqd": 1
   },
   {
-   "description": "Nickname shown to visitors in the chat window.",
+   "description": "Nickname shown to visitors in the chat window. Used as the fallback when no nickname pool is configured.",
    "fieldname": "display_name",
    "fieldtype": "Data",
    "label": "Display Name"
+  },
+  {
+   "description": "One name per line. A name is randomly picked from this list each time a new chat session starts. Leave blank to always use the Display Name.",
+   "fieldname": "nickname_pool",
+   "fieldtype": "Small Text",
+   "label": "Nickname Pool"
   },
   {
    "fieldname": "agent_role",
@@ -154,14 +167,6 @@
    "label": "Behavior"
   },
   {
-   "description": "Knowledge Profile that governs what knowledge this agent can access.",
-   "fieldname": "knowledge_profile",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Knowledge Profile",
-   "options": "Knowledge Profile"
-  },
-  {
    "fieldname": "behavior_prompt",
    "fieldtype": "Long Text",
    "label": "Behavior Prompt",
@@ -242,10 +247,10 @@
    "options": "Nexus Profile Intent Override"
   },
   {
+   "description": "Chat categories this agent can receive and respond to.",
    "fieldname": "section_category_access",
    "fieldtype": "Section Break",
-   "label": "Chat Category Access",
-   "description": "Chat categories this agent can receive and respond to."
+   "label": "Chat Category Access"
   },
   {
    "fieldname": "chat_categories",
@@ -254,10 +259,10 @@
    "options": "Nexus Chat Category Link"
   },
   {
+   "collapsible": 1,
    "fieldname": "section_legacy",
    "fieldtype": "Section Break",
-   "label": "Legacy Fields",
-   "collapsible": 1
+   "label": "Legacy Fields"
   },
   {
    "default": "Governed",
@@ -296,11 +301,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-09 00:00:00",
+ "modified": "2026-06-10 09:50:24.351882",
  "modified_by": "Administrator",
  "module": "Nexus Live Agents",
  "name": "Nexus AI Agent Profile",
- "naming_rule": "By fieldname",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
@@ -317,6 +322,7 @@
   }
  ],
  "row_format": "Dynamic",
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

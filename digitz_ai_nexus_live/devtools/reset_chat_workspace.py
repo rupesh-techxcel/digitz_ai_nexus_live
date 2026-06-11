@@ -29,7 +29,6 @@ RESET_GROUPS = [
             "Nexus Queue Assignment",
             "Nexus Agent Queue",
             "Nexus Escalation Rule",
-            "Nexus Channel Routing Rule",
             "Nexus Website Widget",
             "Nexus Category Identity Route",
             "Nexus Chat Category",

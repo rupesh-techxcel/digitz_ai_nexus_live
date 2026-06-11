@@ -75,7 +75,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
         is_authenticated = payload.get("user_type", "Guest") != "Guest"
         identity_type = resolve_identity_type(payload)
         resolved_behavior = resolve_behavior_from_chat_category(
-            chat_category, identity_type, is_authenticated
+            chat_category, identity_type, is_authenticated, payload=payload
         )
     elif profile:
         from digitz_ai_nexus_live.services.profile_resolver import _build_behavior_dict
@@ -85,6 +85,7 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
     if resolved_behavior:
         ai_profile = {
             "name": resolved_behavior.profile_name or "",
+            "knowledge_profile_names": list(resolved_behavior.knowledge_profile_names or []),
             "behavior_prompt": resolved_behavior.behavior_prompt,
             "tone": resolved_behavior.tone,
             "response_style": resolved_behavior.response_style,
@@ -103,7 +104,8 @@ def build_core_payload(payload, agent=None, profile=None, is_public=False):
     resolved_identity_type = ai_profile.get("identity_type") or payload.get("identity_type")
     force_public_only = bool(
         is_public
-        and not ai_profile.get("name")
+        or resolved_identity_type == "Public"
+        or (not ai_profile.get("name") and not ai_profile.get("knowledge_profile_names"))
     )
 
     access_resolution = resolve_allowed_policies({

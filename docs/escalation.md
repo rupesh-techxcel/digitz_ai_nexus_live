@@ -6,14 +6,15 @@ Escalation transfers a conversation from an AI agent to a human agent when the u
 
 ## Escalation Trigger
 
-Escalation fires when **both** conditions are met:
+Escalation fires when **all three** conditions are met:
 
 | Condition | How it is set |
 |---|---|
 | `user_requested_human = True` | Router LLM matches the user message against the "Human Agent Request" intent handler (or any custom escalation intent) and returns `ACTION:ESCALATE` |
 | `escalation_enabled = True` | Set on the conversation's resolved `Nexus AI Agent Profile` |
+| `enable_escalation = 1` | Set on the `Nexus Chat Category` the conversation is in |
 
-If `escalation_enabled = False` on the profile, escalation never fires regardless of what the user says.
+If any condition is false, escalation does not fire. The category flag (`enable_escalation`) lets admins block human escalation for specific categories (e.g., a simple FAQ category) without touching the AI profile.
 
 **Low confidence and RAG fallback do not trigger escalation.** When the AI cannot find an answer, it responds gracefully via the LLM Host and invites a follow-up question. The user decides whether to escalate by explicitly asking.
 
@@ -53,7 +54,8 @@ answer_query() returns:
     ▼
 live_chat_service checks:
     user_requested_human = True
-    escalation_enabled = True (from profile)
+    escalation_enabled = True (from Nexus AI Agent Profile)
+    category_allows_escalation = True (Nexus Chat Category.enable_escalation)
     │
     ▼
 create_escalation(
@@ -65,65 +67,62 @@ create_escalation(
 )
     │
     ▼
-get_escalation_rule(agent_role)
-─ Look up Nexus Escalation Rule by agent_role
-─ Configuration error if no rule found
-    │
-    ▼
-Select target agent:
-─ If target_agent is set → use that agent directly
-─ Else: get_queue_agents(target_queue)
-        → select first available human agent from queue
-    │
-    ▼
-update_conversation_assignment(conversation, human_agent)
-─ Update assigned_agent on conversation
-    │
-    ▼
 mark_escalated(conversation)
 ─ Set conversation.status = "Escalated"
 ─ Set conversation.escalation_status = "Pending"
+─ Set conversation.escalated_at = now_datetime()
     │
     ▼
 create Nexus Live Escalation record
-─ Captures: conversation, reason, from_agent, to_agent, escalated_at
+─ Captures: conversation, reason, from_agent, escalated_at
+    │
+    ▼
+publish_escalation_alert(conversation)
+─ Finds agents with can_handle_escalations=1 assigned to this chat_category
+  via Nexus User Profile Assignment.escalation_categories
+─ Publishes nexus_escalation_alert to each agent's user room (personal alert)
+─ Falls back to broadcast if no agents configured
 ```
+
+### After Escalation: Handling Visitor Messages
+
+While `conversation.status = "Escalated"`, `continue_live_chat` does NOT invoke the AI. Instead:
+1. Visitor messages are stored and forwarded to the agent panel via `response_type="visitor_message"`
+2. The visitor receives a holding acknowledgement via `response_type="message_held"`
+3. The human agent responds via `agent_send_message` → `response_type="message"` with `sender_type="Human Agent"`
 
 ---
 
 ## Escalation Rules
 
-Each `Nexus Escalation Rule` defines the target for escalations from a given agent role:
+`Nexus Escalation Rule` records are used by `create_escalation` to determine which AI agent profile (`to_agent`) or queue (`to_queue`) to record on the `Nexus Live Escalation` document. This provides an audit trail of intended routing.
+
+> **Note:** `Nexus Escalation Rule` governs what is **recorded** on the escalation record, not which human agents receive realtime alerts. Human agent alerting is controlled separately by `Nexus User Profile Assignment.escalation_categories`.
 
 | Field | Purpose |
 |---|---|
 | `rule_name` | Display name |
-| `agent_role` | Which agent role this rule applies to (e.g. Sales, Support) |
-| `target_queue` | Link → Nexus Agent Queue (load-balanced selection) |
-| `target_agent` | Link → Nexus Live Agent (direct assignment; overrides queue) |
-| `rule_conditions_json` | Custom condition JSON for advanced rules |
+| `agent_role` | Which AI agent role this rule applies to |
+| `target_queue` | Link → Nexus Agent Queue (records intended queue) |
+| `target_agent` | Link → Nexus AI Agent Profile (direct; overrides queue) |
 | `enabled` | Whether this rule is active |
 
-Rules are looked up by `agent_role`. If no enabled rule exists for the agent's role, escalation cannot proceed — this is a configuration error that should be resolved before deploying escalation-enabled profiles.
+If no enabled rule exists for the agent's role, `to_agent` and `to_queue` are left blank on the escalation record — escalation still proceeds normally.
 
 ---
 
 ## Agent Queues
 
-Queues group human agents for load-balanced escalation targeting.
-
-**Nexus Agent Queue** — named group of human agents.
-
-**Nexus Queue Assignment** — maps a `Nexus Live Agent` to a `Nexus Agent Queue`. One agent can be in multiple queues.
+`Nexus Agent Queue` groups AI agent profiles for load-balanced routing records.
 
 ```
 Nexus Escalation Rule
 └── target_queue → Nexus Agent Queue
                     └── Nexus Queue Assignment (1:many)
-                            └── Nexus Live Agent
+                            └── Nexus AI Agent Profile
 ```
 
-When all agents in a queue are at capacity or unavailable, `get_queue_agents` returns an empty list and escalation records a `no_agent_available` state rather than silently failing.
+The first available agent from the queue is recorded as `to_agent` on the `Nexus Live Escalation` document.
 
 ---
 
@@ -134,9 +133,11 @@ A conversation's `escalation_status` field:
 | Value | Meaning |
 |---|---|
 | (empty) | No escalation |
-| Pending | Escalation triggered, awaiting human pickup |
-| Assigned | Human agent has taken the conversation |
-| Resolved | Human agent closed the escalation |
+| Pending | Escalation triggered; no human agent has claimed it yet |
+| Accepted | A human agent has claimed the conversation (`claim_conversation` called); `human_agent` field is set |
+| Resolved | Human agent resolved the escalation (`resolve_escalation` called); AI resumes |
+
+The corresponding `Nexus Live Escalation` record also tracks `status` (Pending → Resolved).
 
 ---
 

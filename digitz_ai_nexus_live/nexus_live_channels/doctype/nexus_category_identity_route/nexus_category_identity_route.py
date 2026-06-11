@@ -20,17 +20,14 @@ class NexusCategoryIdentityRoute(Document):
             )
 
     def _warn_if_profile_missing_access(self):
-        if not self.ai_agent_profile:
+        if self.is_public_route:
             return
 
-        has_access = frappe.db.exists(
-            "Nexus AI Agent Profile Access Category",
-            {"ai_agent_profile": self.ai_agent_profile, "enabled": 1},
-        )
-        if not has_access:
+        if not self.identity_profiles:
             frappe.msgprint(
-                f"Profile '{self.ai_agent_profile}' has no Access Category configured. "
-                "Queries through this route will be denied until access is assigned.",
-                title="Access Category Missing",
+                "This route has no Identity Profiles configured. "
+                "Registered visitors will not be matched to this route until "
+                "at least one Identity Profile is assigned.",
+                title="Identity Profile Missing",
                 indicator="orange",
             )

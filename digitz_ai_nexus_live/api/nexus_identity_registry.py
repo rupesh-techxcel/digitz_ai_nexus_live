@@ -2,8 +2,6 @@ import json
 
 import frappe
 
-from digitz_ai_nexus_live.services.identity_resolver import get_enabled_identity_types
-
 
 @frappe.whitelist()
 def get_page_data(search=None):
@@ -31,15 +29,16 @@ def get_page_data(search=None):
         limit_page_length=50,
     )
 
+    identity_profiles = frappe.get_all(
+        "Nexus Identity Profile",
+        filters={"enabled": 1},
+        fields=["name", "profile_name", "title"],
+        order_by="profile_name asc",
+    )
+
     return {
         "registries": registries,
-        "identity_types": get_enabled_identity_types(),
-        "access_categories": frappe.get_all(
-            "Nexus Access Category",
-            filters={"disabled": 0},
-            fields=["name", "category_name"],
-            order_by="category_name asc",
-        ),
+        "identity_profiles": identity_profiles,
     }
 
 
@@ -62,35 +61,24 @@ def get_registry(name):
             "verification_status": doc.verification_status,
             "verified_on": doc.verified_on,
             "notes": doc.notes,
-            "safe_guard_access_categories": [
-                {
-                    "name": row.name,
-                    "access_category": row.access_category,
-                }
-                for row in doc.safe_guard_access_categories
-            ],
         },
-        "identities": [
+        "identity_profiles": [
             {
                 "name": row.name,
-                "identity_type": row.identity_type,
-                "enabled": row.enabled,
+                "identity_profile": row.identity_profile,
                 "is_primary": row.is_primary,
                 "valid_from": row.valid_from,
                 "valid_until": row.valid_until,
-                "reference_doctype": row.reference_doctype,
-                "reference_name": row.reference_name,
-                "notes": row.notes,
             }
-            for row in doc.identities
+            for row in doc.identity_profiles
         ],
     }
 
 
 @frappe.whitelist()
-def save_registry(registry, identities):
+def save_registry(registry, identity_profiles):
     registry_data = json.loads(registry or "{}")
-    identity_rows = json.loads(identities or "[]")
+    profile_rows = json.loads(identity_profiles or "[]")
 
     name = registry_data.get("name")
     if name and frappe.db.exists("Nexus Identity Registry", name):
@@ -110,29 +98,16 @@ def save_registry(registry, identities):
     doc.verification_status = registry_data.get("verification_status") or "Unverified"
     doc.notes = registry_data.get("notes")
 
-    doc.set("safe_guard_access_categories", [])
-    for row in registry_data.get("safe_guard_access_categories") or []:
-        if not row.get("access_category"):
+    doc.set("identity_profiles", [])
+    for row in profile_rows:
+        if not row.get("identity_profile"):
             continue
 
-        doc.append("safe_guard_access_categories", {
-            "access_category": row.get("access_category"),
-        })
-
-    doc.set("identities", [])
-    for row in identity_rows:
-        if not row.get("identity_type"):
-            continue
-
-        doc.append("identities", {
-            "identity_type": row.get("identity_type"),
-            "enabled": int(row.get("enabled") or 0),
+        doc.append("identity_profiles", {
+            "identity_profile": row.get("identity_profile"),
             "is_primary": int(row.get("is_primary") or 0),
             "valid_from": row.get("valid_from"),
             "valid_until": row.get("valid_until"),
-            "reference_doctype": row.get("reference_doctype"),
-            "reference_name": row.get("reference_name"),
-            "notes": row.get("notes"),
         })
 
     doc.save(ignore_permissions=True)
