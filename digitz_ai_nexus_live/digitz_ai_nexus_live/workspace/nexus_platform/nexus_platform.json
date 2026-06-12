@@ -1,0 +1,34 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"bRCgzWxUKZ\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"nexus-platform-workspace-html-block\",\"col\":12}}]",
+ "creation": "2026-05-03 19:37:04.922624",
+ "custom_blocks": [
+  {
+   "custom_block_name": "nexus-platform-workspace-html-block",
+   "label": "nexus-platform-workspace-html-block"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Nexus Platform",
+ "links": [],
+ "modified": "2026-06-12 12:53:06.814403",
+ "modified_by": "Administrator",
+ "module": "Digitz AI Nexus Live",
+ "name": "Nexus Platform",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 9.0,
+ "shortcuts": [],
+ "title": "Nexus Platform"
+}

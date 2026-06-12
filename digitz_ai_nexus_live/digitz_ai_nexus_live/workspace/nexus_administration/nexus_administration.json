@@ -1,0 +1,34 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"dReCSWSeOS\",\"type\":\"custom_block\",\"data\":{\"custom_block_name\":\"nexus-administration-workspace-html-block\",\"col\":12}}]",
+ "creation": "2026-04-29 13:31:15.106246",
+ "custom_blocks": [
+  {
+   "custom_block_name": "nexus-administration-workspace-html-block",
+   "label": "nexus-administration-workspace-html-block"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Nexus Administration",
+ "links": [],
+ "modified": "2026-06-12 12:52:43.119031",
+ "modified_by": "Administrator",
+ "module": "Digitz AI Nexus Live",
+ "name": "Nexus Administration",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 7.0,
+ "shortcuts": [],
+ "title": "Nexus Administration"
+}

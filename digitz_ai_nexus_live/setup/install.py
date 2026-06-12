@@ -104,23 +104,42 @@ def after_install():
 
 
 def seed_defaults():
-    # ── 1. Tenant first — everything else is scoped under it ─────────────────
+    """
+    Creates platform-level infrastructure only.
+    No tenant, channel, agent, or knowledge records are created here.
+    Those are created on demand via dedicated seed functions in devtools/.
+    """
+    seed_identity_types()
+    ensure_nexus_live_workspace()
+
+    frappe.db.commit()
+    frappe.logger().info("Nexus Live platform defaults seeded.")
+
+    return {
+        "success": True,
+        "message": "Nexus Live platform defaults seeded.",
+    }
+
+
+def seed_digitz_nexus_live_foundation():
+    """
+    Optional manual seed for the default DIGITZ-NEXUS development tenant.
+
+    NOT called during installation. Run from bench console when needed:
+
+        from digitz_ai_nexus_live.setup.install import seed_digitz_nexus_live_foundation
+        seed_digitz_nexus_live_foundation()
+    """
     tenant = ensure_default_tenant()
 
-    # ── 2. Core access governance scoped to this tenant ───────────────────────
     core_seed = seed_default_access_governance(tenant=tenant)
 
-    # ── 3. Identity types (global lookup list, no tenant scope) ───────────────
-    seed_identity_types()
-
-    # ── 4. Channels, category, agent, identity profile ────────────────────────
     channel          = ensure_default_chat_channel(tenant)
     qa_channel       = ensure_default_qa_channel(tenant)
     category         = ensure_default_chat_category(channel, tenant)
     profile          = ensure_default_ai_agent_profile(channel, qa_channel, tenant)
     identity_profile = ensure_default_identity_profile(tenant)
 
-    # ── 5. Wire access category to agent profile ──────────────────────────────
     public_access_cat = frappe.db.get_value(
         "Nexus Access Category",
         {"category_name": "Public Access", "tenant": tenant},
@@ -129,17 +148,15 @@ def seed_defaults():
     if public_access_cat:
         ensure_profile_access_category(profile, public_access_cat)
 
-    # ── 6. Route, business unit, tenant config, workspace ─────────────────────
     ensure_default_category_route(channel, category, profile, identity_profile)
     ensure_tenant_configuration(tenant, channel, qa_channel)
-    ensure_nexus_live_workspace()
 
     frappe.db.commit()
-    frappe.logger().info("Nexus Live defaults seeded.")
+    frappe.logger().info("Nexus Live DIGITZ-NEXUS foundation seeded.")
 
     return {
         "success": True,
-        "message": "Nexus Live default chat workflow seed completed.",
+        "message": "Nexus Live DIGITZ-NEXUS foundation seeded.",
         "core_seed": core_seed,
         "tenant": tenant,
         "live_channel": channel,
@@ -147,11 +164,6 @@ def seed_defaults():
         "chat_category": category,
         "ai_agent_profile": profile,
         "identity_profile": identity_profile,
-        "identity_route": {
-            "channel": channel,
-            "chat_category": category,
-            "is_public_route": True,
-        },
     }
 
 
