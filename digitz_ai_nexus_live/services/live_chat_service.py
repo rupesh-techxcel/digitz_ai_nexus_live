@@ -21,6 +21,7 @@ from digitz_ai_nexus_live.services.profile_resolver import (
 from digitz_ai_nexus_live.services.conversation_service import (
     create_conversation,
     get_conversation,
+    get_agent_nickname,
     update_conversation_assignment,
     add_message,
     get_conversation_messages,
@@ -48,6 +49,12 @@ from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 MAX_HISTORY_MESSAGES = 20
 CHAT_RESPONSE_SENTENCE_LIMIT = 6
 DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
+PUBLIC_IDENTITY_FALLBACK = (
+    "I wasn't able to find an answer for your question in the publicly available knowledge. "
+    "Some topics may be covered under verified access. "
+    "If you'd like, share your email and I'll send you a quick verification code — "
+    "that way I can check if there's more relevant information available for you."
+)
 
 # ── Closing signal detection ───────────────────────────────────────────────────
 
@@ -446,8 +453,8 @@ def start_live_chat(payload):
             payload["knowledge_profile_names"] = internal_behavior.knowledge_profile_names or []
             payload["identity_type"] = internal_behavior.identity_type
 
-        if ai_profile_override and ai_profile_override.get("agent"):
-            payload["agent"] = ai_profile_override.agent
+        if ai_profile_override and ai_profile_override.get("agent_name"):
+            payload["agent"] = ai_profile_override.agent_name
 
         # Desk users always use internal-visibility agents.
         # Explicit routing priority (handled in assign_agent / find_available_agent):
@@ -455,6 +462,21 @@ def start_live_chat(payload):
         #   2. Channel's default_agent (configure on Nexus Live Channel)
         #   3. Role/intent detection fallback
         if not payload.get("agent"):
+            # Switch to the Desk-type channel for this tenant so the role-based
+            # fallback finds the Internal Assistant (whose default_channel is the
+            # Desk channel, not the website channel resolved by tenant context).
+            tenant = payload.get("tenant")
+            if tenant:
+                desk_channel = frappe.db.get_value(
+                    "Nexus Live Channel",
+                    {"tenant": tenant, "channel_type": "Desk", "enabled": 1},
+                    "name",
+                )
+                if desk_channel:
+                    payload["channel"] = desk_channel
+            # Signal the role explicitly so detect_required_role doesn't default
+            # to "Public Responder" (which is only valid for unauthenticated visitors).
+            payload.setdefault("agent_role", "Internal Assistant")
             payload.setdefault("visibility", "Internal")
 
         agent = assign_agent(payload)
@@ -501,7 +523,7 @@ def start_live_chat(payload):
             "conversation_id": conversation.conversation_id,
             "agent": agent.name,
             "agent_code": agent.agent_code,
-            "agent_name": agent.display_name or agent.agent_name,
+            "agent_name": get_agent_nickname(conversation, agent),
             "agent_instance": getattr(conversation, "agent_profile_instance", None),
             "greeting": greeting if status == "ready" else None,
         }
@@ -549,8 +571,8 @@ def start_live_chat(payload):
                 f"and identity type ({identity_type})."
             )
 
-    if ai_profile_override and ai_profile_override.get("agent"):
-        payload["agent"] = ai_profile_override.agent
+    if ai_profile_override and ai_profile_override.get("agent_name"):
+        payload["agent"] = ai_profile_override.agent_name
 
     agent = assign_agent(payload)
     if not agent:
@@ -652,7 +674,7 @@ def start_live_chat(payload):
         "conversation_id": conversation.conversation_id,
         "agent": agent.name,
         "agent_code": agent.agent_code,
-        "agent_name": agent.display_name or agent.agent_name,
+        "agent_name": get_agent_nickname(conversation, agent),
         "agent_instance": getattr(conversation, "agent_profile_instance", None),
     }
 
@@ -958,6 +980,15 @@ def _process_ai_response(conversation_id, payload_json):
         if answer.strip() == DEFAULT_FALLBACK_ANSWER and fallback_message != DEFAULT_FALLBACK_ANSWER:
             answer = fallback_message
 
+        # When a Public visitor hits a fallback, the dead-end message is replaced
+        # with an identity verification offer — the visitor can upgrade from the
+        # default Public identity by verifying their email via OTP.
+        is_fallback = bool(core_response.get("fallback_used") or not core_response.get("answer"))
+        is_public_visitor = bool(behavior and behavior.identity_type == "Public")
+        identity_verification_offer = is_fallback and is_public_visitor
+        if identity_verification_offer:
+            answer = PUBLIC_IDENTITY_FALLBACK
+
         add_message(
             conversation=conversation,
             sender_type="AI Agent",
@@ -1019,7 +1050,7 @@ def _process_ai_response(conversation_id, payload_json):
             "conversation": conversation.name,
             "agent": agent.name,
             "agent_code": agent.agent_code,
-            "agent_name": agent.display_name or agent.agent_name,
+            "agent_name": get_agent_nickname(conversation, agent),
 
             "message": answer,
             "answer": answer,
@@ -1031,6 +1062,7 @@ def _process_ai_response(conversation_id, payload_json):
 
             "confidence_threshold": threshold,
             "fallback_used": 1 if core_response.get("fallback_used") else 0,
+            "identity_verification_offer": identity_verification_offer,
 
             "tenant": payload.get("tenant"),
             "channel": payload.get("channel"),

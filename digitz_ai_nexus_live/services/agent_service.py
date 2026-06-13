@@ -52,13 +52,19 @@ def is_agent_available(agent):
     if not agent.enabled:
         return False
 
-    if agent.status not in ("Idle", "Waiting"):
-        return False
-
     max_sessions = int(agent.max_active_sessions or 1)
     current_sessions = int(agent.current_active_sessions or 0)
 
-    return current_sessions < max_sessions
+    if current_sessions >= max_sessions:
+        return False
+
+    # For single-session agents, status must be Idle or Waiting.
+    # Multi-session agents (max > 1) are available whenever below the session limit —
+    # "Assigned" status just means they have an active session, not that they're full.
+    if max_sessions == 1 and agent.status not in ("Idle", "Waiting"):
+        return False
+
+    return True
 
 
 def set_agent_status(agent, status, conversation=None, remarks=None):

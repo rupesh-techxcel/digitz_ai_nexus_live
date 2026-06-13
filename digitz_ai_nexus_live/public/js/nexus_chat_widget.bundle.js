@@ -28,6 +28,8 @@
         tenant:           cfg.tenant || null,
         channel:          cfg.channel || null,
         _realtime_bound:  false,
+        visitor_email:                   null,
+        identity_verification_challenge: null,
     };
 
     // ── Context ────────────────────────────────────────────────────────────────
@@ -49,6 +51,15 @@
         return String(s || '')
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function format_message(raw, is_agent) {
+        const safe = escape_html(raw || '');
+        if (!is_agent) return safe;
+        // Split on double newlines → paragraphs; single newline → <br>
+        const paras = safe.split(/\n{2,}/);
+        if (paras.length === 1) return safe.replace(/\n/g, '<br>');
+        return paras.map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('');
     }
 
     function fmt_time(iso) {
@@ -234,6 +245,9 @@
             }
 
             append_message('agent', data.message || data.answer);
+            if (data.identity_verification_offer && !is_desk()) {
+                render_identity_verification_prompt();
+            }
         });
 
         frappe.realtime.on('nexus_chat_typing', function (data) {
@@ -299,6 +313,10 @@
         reset_messages();
         set_header('Connecting…', '');
         set_input_placeholder('Please wait…');
+
+        // Reset identity state for new conversation — each chat starts as Public
+        S.visitor_email                   = null;
+        S.identity_verification_challenge = null;
 
         if (!S.tenant) { await resolve_tenant(); }
 
@@ -410,9 +428,12 @@
         S.sending = true;
 
         try {
+            const msg_payload = { message, tenant: S.tenant };
+            if (S.visitor_email) msg_payload.visitor_email = S.visitor_email;
+            if (S.identity_verification_challenge) msg_payload.identity_verification_challenge = S.identity_verification_challenge;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
-                payload: JSON.stringify({ message, tenant: S.tenant }),
+                payload: JSON.stringify(msg_payload),
             });
             // AI reply comes via realtime
         } catch (_) {
@@ -482,6 +503,136 @@
         }
     }
 
+    // ── Identity verification prompt ───────────────────────────────────────────
+
+    function render_identity_verification_prompt() {
+        const msgs = el('ncw-messages');
+        const prompt = document.createElement('div');
+        prompt.className = 'ncw-verify-prompt';
+        prompt.innerHTML =
+            '<div class="ncw-verify-label">Enter your email to verify your identity:</div>' +
+            '<div class="ncw-verify-row">' +
+                '<input type="email" class="ncw-verify-input" id="ncw-verify-email" placeholder="your@email.com" autocomplete="email">' +
+                '<button class="ncw-verify-btn" id="ncw-verify-email-btn">Send Code</button>' +
+            '</div>' +
+            '<div class="ncw-verify-msg" id="ncw-verify-email-msg" style="display:none;"></div>';
+        msgs.appendChild(prompt);
+        scroll_bottom();
+
+        document.getElementById('ncw-verify-email-btn').addEventListener('click', function () {
+            submit_email_for_verification(prompt);
+        });
+        document.getElementById('ncw-verify-email').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); submit_email_for_verification(prompt); }
+        });
+        document.getElementById('ncw-verify-email').focus();
+    }
+
+    async function submit_email_for_verification(prompt_el) {
+        const email_input = document.getElementById('ncw-verify-email');
+        const email = (email_input ? email_input.value : '').trim();
+        const msg_el  = document.getElementById('ncw-verify-email-msg');
+        const btn     = document.getElementById('ncw-verify-email-btn');
+
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            msg_el.className = 'ncw-verify-msg ncw-verify-error';
+            msg_el.textContent = 'Please enter a valid email address.';
+            msg_el.style.display = '';
+            return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Sending…';
+        msg_el.style.display = 'none';
+
+        try {
+            const r = await api(
+                'digitz_ai_nexus_live.api.identity_verification.request_identity_verification',
+                { conversation_id: S.conversation_id, email: email }
+            );
+            const data = r.message || {};
+
+            S.visitor_email = email;
+
+            if (data.required === 0) {
+                // Verification not required — email noted, carry on
+                prompt_el.innerHTML =
+                    '<div class="ncw-verify-msg ncw-verify-success">✓ Email noted. You can continue the conversation.</div>';
+                scroll_bottom();
+                return;
+            }
+
+            // Replace email form with OTP entry
+            const challenge_token = data.challenge_token;
+            prompt_el.innerHTML =
+                '<div class="ncw-verify-label">A code was sent to <strong>' + escape_html(email) + '</strong>. Enter it below:</div>' +
+                '<div class="ncw-verify-row">' +
+                    '<input type="text" class="ncw-verify-input" id="ncw-verify-otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">' +
+                    '<button class="ncw-verify-btn" id="ncw-verify-otp-btn">Verify</button>' +
+                '</div>' +
+                '<div class="ncw-verify-msg" id="ncw-verify-otp-msg" style="display:none;"></div>';
+            scroll_bottom();
+
+            document.getElementById('ncw-verify-otp-btn').addEventListener('click', function () {
+                submit_otp_verification(prompt_el, challenge_token);
+            });
+            document.getElementById('ncw-verify-otp').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); submit_otp_verification(prompt_el, challenge_token); }
+            });
+            document.getElementById('ncw-verify-otp').focus();
+
+        } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Send Code';
+            msg_el.className = 'ncw-verify-msg ncw-verify-error';
+            msg_el.textContent = (err && err.message) || 'Could not send code. Please try again.';
+            msg_el.style.display = '';
+        }
+    }
+
+    async function submit_otp_verification(prompt_el, challenge_token) {
+        const otp_input = document.getElementById('ncw-verify-otp');
+        const otp  = (otp_input ? otp_input.value : '').trim();
+        const msg_el = document.getElementById('ncw-verify-otp-msg');
+        const btn    = document.getElementById('ncw-verify-otp-btn');
+
+        if (!otp) {
+            msg_el.className = 'ncw-verify-msg ncw-verify-error';
+            msg_el.textContent = 'Please enter the verification code.';
+            msg_el.style.display = '';
+            return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Verifying…';
+        msg_el.style.display = 'none';
+
+        try {
+            const r = await api(
+                'digitz_ai_nexus_live.api.identity_verification.verify_identity_verification',
+                { challenge_token: challenge_token, otp: otp }
+            );
+            const data = r.message || {};
+
+            if (data.status === 'verified') {
+                S.identity_verification_challenge = data.challenge_token;
+                S.visitor_email = data.email || S.visitor_email;
+
+                prompt_el.innerHTML =
+                    '<div class="ncw-verify-msg ncw-verify-success">✓ Identity verified as <strong>' +
+                    escape_html(data.identity_type || 'Verified') +
+                    '</strong>. Your next message will use your verified access.</div>';
+                scroll_bottom();
+            }
+        } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Verify';
+            msg_el.className = 'ncw-verify-msg ncw-verify-error';
+            msg_el.textContent = (err && err.message) || 'Invalid code. Please try again.';
+            msg_el.style.display = '';
+        }
+    }
+
     // ── Messages ───────────────────────────────────────────────────────────────
 
     function append_message(side, text, time, sender_label) {
@@ -491,9 +642,10 @@
         const label_html = sender_label
             ? '<div class="ncw-sender-label">' + escape_html(sender_label) + '</div>'
             : '';
+        const is_agent = side === 'agent' || side === 'human-agent';
         div.innerHTML =
             label_html +
-            '<div class="ncw-bubble">' + escape_html(text || '') + '</div>' +
+            '<div class="ncw-bubble">' + format_message(text, is_agent) + '</div>' +
             (time ? '<div class="ncw-time">' + fmt_time(time) + '</div>' : '');
         msgs.appendChild(div);
         scroll_bottom();
@@ -753,9 +905,19 @@
     padding: 9px 13px;
     border-radius: 16px;
     font-size: 13.5px;
-    line-height: 1.45;
+    line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
+}
+.ncw-msg-agent .ncw-bubble,
+.ncw-msg-human-agent .ncw-bubble {
+    white-space: normal;
+}
+.ncw-bubble p {
+    margin: 0 0 0.55em 0;
+}
+.ncw-bubble p:last-child {
+    margin-bottom: 0;
 }
 .ncw-msg-agent .ncw-bubble {
     background: #f0f4ff;
@@ -876,6 +1038,68 @@
     color: #718096;
     line-height: 1.35;
 }
+
+/* ── Identity verification prompt ── */
+.ncw-verify-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0;
+    padding: 12px 14px;
+    background: #f0f4ff;
+    border: 1.5px solid #c7d9f5;
+    border-radius: 14px;
+    max-width: 90%;
+    align-self: flex-start;
+}
+.ncw-verify-label {
+    font-size: 12px;
+    color: #4a6085;
+    font-weight: 500;
+    line-height: 1.4;
+}
+.ncw-verify-label strong { color: #1a2942; }
+.ncw-verify-row {
+    display: flex;
+    gap: 7px;
+}
+.ncw-verify-input {
+    flex: 1;
+    min-width: 0;
+    border: 1.5px solid #c7d9f5;
+    border-radius: 9px;
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    background: #fff;
+    color: #1a2942;
+    transition: border-color 0.15s;
+}
+.ncw-verify-input:focus { border-color: #2158c7; }
+.ncw-verify-btn {
+    padding: 6px 13px;
+    background: #2158c7;
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.ncw-verify-btn:hover    { background: #1a47aa; }
+.ncw-verify-btn:disabled { background: #c0cde0; cursor: not-allowed; }
+.ncw-verify-msg {
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 2px;
+}
+.ncw-verify-error   { color: #c53030; }
+.ncw-verify-success { color: #276749; font-weight: 500; }
+.ncw-verify-success strong { color: #22543d; }
 
 /* ── Footer ── */
 #ncw-footer {

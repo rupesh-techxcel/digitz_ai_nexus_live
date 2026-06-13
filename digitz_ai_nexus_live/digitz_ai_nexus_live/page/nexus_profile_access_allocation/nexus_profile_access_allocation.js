@@ -6,6 +6,8 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     });
 
     const S = {
+        tenants:       [],
+        tenant:        '',
         profiles:      [],
         categories:    [],
         selected:      null,
@@ -18,7 +20,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     inject_kam_css();
     $(page.body).html(shell());
     bind();
-    load();
+    loadTenants();
 
     // ── Shell ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +30,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 
   <div class="nexus-admin-hero">
     <div>
-      <div class="nexus-admin-badge">DIGITZ AI Nexus</div>
+      <span class="nexus-admin-badge">Knowledge Access Manager</span>
       <h2>Knowledge Access Manager</h2>
       <p>Configure which Access Categories each Knowledge Profile unlocks.
          Identity Profiles map visitors to Knowledge Profiles — this is where
@@ -50,6 +52,13 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 
     <!-- Left: profile list -->
     <div class="nexus-admin-card kam-list-panel">
+      <!-- Tenant filter bar -->
+      <div class="kam-tenant-filter-bar">
+        <label class="kam-tenant-filter-label" for="kam-tenant-select">Tenant</label>
+        <select class="kam-tenant-select" id="kam-tenant-select" title="Switch tenant">
+        </select>
+      </div>
+      <div class="kam-list-divider"></div>
       <div class="nexus-admin-card-title">
         Knowledge Profiles
         <span id="kam-profile-count" class="kam-count"></span>
@@ -72,12 +81,53 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 
     // ── Load ───────────────────────────────────────────────────────────────────
 
+    function loadTenants() {
+        frappe.call({
+            method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_available_tenants',
+            callback(r) {
+                const data          = r.message || {};
+                S.tenants           = data.tenants || (Array.isArray(r.message) ? r.message : []);
+                const defaultTenant = data.default_tenant || '';
+
+                const sel = document.getElementById('kam-tenant-select');
+                // Remove the placeholder "All Tenants" option — a tenant must always be selected
+                sel.innerHTML = '';
+                S.tenants.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.name;
+                    opt.textContent = t.tenant_name || t.name;
+                    sel.appendChild(opt);
+                });
+
+                // Priority: 1) nexus-admin localStorage selection
+                //           2) Nexus Settings default_tenant
+                //           3) first available tenant
+                const adminTenant = localStorage.getItem('nexus_admin_active_tenant') || '';
+                if (adminTenant && S.tenants.some(t => t.name === adminTenant)) {
+                    S.tenant = adminTenant;
+                } else if (defaultTenant && S.tenants.some(t => t.name === defaultTenant)) {
+                    S.tenant = defaultTenant;
+                } else if (S.tenants.length > 0) {
+                    S.tenant = S.tenants[0].name;
+                }
+                sel.value = S.tenant;
+                updateTenantBadge();
+                load();
+            },
+        });
+    }
+
     function load() {
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_page_data',
+            args: { tenant: S.tenant || '' },
             callback(r) {
                 S.profiles   = r.message.profiles   || [];
                 S.categories = r.message.categories || [];
+                S.selected   = null;
+                S.detail     = null;
+                document.getElementById('kam-placeholder').style.display = '';
+                document.getElementById('kam-detail').style.display = 'none';
                 renderList();
             },
         });
@@ -97,6 +147,11 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
         });
     }
 
+    function updateTenantBadge() {
+        // Label inside the select reflects the current value — nothing extra needed.
+        // Left for call-site compatibility.
+    }
+
     // ── Render ─────────────────────────────────────────────────────────────────
 
     function renderList() {
@@ -105,7 +160,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
         if (cntEl) cntEl.textContent = S.profiles.length;
 
         if (!S.profiles.length) {
-            el.innerHTML = `<div class="nexus-empty-state">No Knowledge Profiles found.<br>
+            el.innerHTML = `<div class="nexus-empty-state">No Knowledge Profiles found${S.tenant ? ' for this tenant' : ''}.<br>
                 <a class="kam-link" id="kam-create-first">Create one</a></div>`;
             document.getElementById('kam-create-first')?.addEventListener('click', showNewDialog);
             return;
@@ -138,6 +193,12 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 
         const hasPending = S.pendingAssign.size || S.pendingRemove.size;
 
+        // Filter categories to this profile's tenant
+        const profileTenant = d.tenant || S.tenant;
+        const visibleCats = profileTenant
+            ? S.categories.filter(c => !c.tenant || c.tenant === profileTenant)
+            : S.categories;
+
         el.innerHTML = `
 
 <!-- Profile header -->
@@ -145,9 +206,13 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
   <div class="nexus-admin-section-head">
     <div>
       <div class="nexus-admin-card-title">${esc(d.title)}</div>
-      <div class="nexus-admin-muted">${esc(d.name)} &nbsp;·&nbsp; ${d.enabled
-        ? '<span class="nexus-status-pill enabled">Enabled</span>'
-        : '<span class="nexus-status-pill disabled">Disabled</span>'}</div>
+      <div class="nexus-admin-muted">
+        ${esc(d.name)} &nbsp;·&nbsp;
+        ${d.enabled
+          ? '<span class="nexus-status-pill enabled">Enabled</span>'
+          : '<span class="nexus-status-pill disabled">Disabled</span>'}
+        ${d.tenant ? `&nbsp;·&nbsp; <span class="kam-tenant-pill">${esc(d.tenant)}</span>` : ''}
+      </div>
       ${d.description ? `<div class="nexus-admin-muted" style="margin-top:6px;">${esc(d.description)}</div>` : ''}
     </div>
     <div>
@@ -162,9 +227,13 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     <div class="nexus-admin-card-title">Access Categories</div>
     <div class="nexus-admin-muted">Toggle to assign or remove. Save when done.</div>
   </div>
-  ${S.categories.length ? `
+  <div class="kam-public-note">
+    <span class="kam-public-note-icon">ℹ</span>
+    Categories whose policies are entirely Public are not shown — public knowledge is served autonomously and does not require allocation.
+  </div>
+  ${visibleCats.length ? `
   <div class="kam-cat-grid">
-    ${S.categories.map(cat => {
+    ${visibleCats.map(cat => {
         const active = assignedSet.has(cat.name);
         return `
     <div class="kam-cat-tile ${active ? 'kam-cat-tile-on' : ''}" data-cat="${esc(cat.name)}">
@@ -179,7 +248,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
          + `${S.pendingRemove.size ? `−${S.pendingRemove.size} to remove` : ''}</span>
     <button class="btn btn-primary btn-sm" id="kam-save-btn" style="border-radius:999px;">Save changes</button>
     <button class="btn btn-default btn-sm" id="kam-discard-btn" style="border-radius:999px;">Discard</button>
-  </div>` : ''}` : `<div class="nexus-empty-state">No Access Categories found.
+  </div>` : ''}` : `<div class="nexus-empty-state">No assignable Access Categories found for this tenant.
     <a class="kam-link" onclick="frappe.set_route('Form','Nexus Access Category','new')">Create one</a></div>`}
 </div>
 
@@ -200,6 +269,72 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
       ${p.description ? `<div class="nexus-admin-muted" style="margin-top:3px;">${esc(p.description)}</div>` : ''}
     </div>`).join('')}
   </div>` : `<div class="nexus-empty-state">No policies resolved — assign at least one Access Category.</div>`}
+</div>
+
+<!-- Identity Allocation -->
+<div class="nexus-admin-card" style="margin-bottom:14px;">
+  <div class="nexus-admin-section-head">
+    <div class="nexus-admin-card-title">Identity Allocation</div>
+    <div class="nexus-admin-muted">Identity types allocated to use this Knowledge Profile</div>
+  </div>
+  <div id="kam-identity-rules-list">
+  ${d.identity_rules && d.identity_rules.length ? `
+  <div class="kam-id-rule-list">
+    ${d.identity_rules.map(r => `
+    <div class="kam-id-rule-row">
+      <div class="kam-id-rule-main">
+        <div class="kam-id-rule-type">${esc(r.it_label || r.identity_type)}</div>
+        <div class="nexus-admin-muted">${esc(r.rule_label)}</div>
+        ${r.description ? `<div class="nexus-admin-muted" style="margin-top:2px;">${esc(r.description)}</div>` : ''}
+      </div>
+      <button class="btn btn-xs btn-default kam-delete-rule-btn" style="border-radius:999px;color:#b42318;"
+              data-rule="${esc(r.name)}" title="Remove allocation">Remove</button>
+    </div>`).join('')}
+  </div>` : `<div class="nexus-admin-muted" style="padding:4px 0 10px;">No identity types allocated yet.</div>`}
+  </div>
+  <button class="btn btn-xs btn-default kam-add-rule-btn" style="border-radius:999px;margin-top:8px;"
+          data-profile="${esc(d.name)}">+ Allocate Identity Type</button>
+</div>
+
+<!-- Chat Category Routing -->
+<div class="nexus-admin-card" style="margin-bottom:14px;">
+  <div class="nexus-admin-section-head">
+    <div class="nexus-admin-card-title">Chat Category Routing</div>
+    <a class="kam-nav-link" onclick="frappe.set_route('nexus-category-profile-routes')">
+      Manage Routes ↗
+    </a>
+  </div>
+  ${d.chat_routes && d.chat_routes.length ? `
+  <div class="kam-chat-route-list">
+    ${d.chat_routes.map(r => `
+    <div class="kam-chat-route-row">
+      <div class="kam-chat-route-main">
+        <div class="kam-chat-cat-name">
+          ${esc(r.category_label)}
+          ${!r.enabled ? '<span class="nexus-status-pill disabled" style="margin-left:6px;">Disabled</span>' : ''}
+        </div>
+        <div class="nexus-admin-muted" style="margin-top:2px;">${esc(r.channel)}</div>
+      </div>
+      <div class="kam-chat-route-chain">
+        <div class="kam-route-chain-label">via</div>
+        ${r.via.map(v => `
+        <div class="kam-route-chip">
+          <span class="kam-route-chip-type">${esc(v.identity_type)}</span>
+          <span class="kam-route-chip-name">${esc(v.label)}</span>
+        </div>`).join('')}
+        ${r.ai_agent_profile ? `
+        <div class="kam-route-chip kam-route-chip-agent">
+          <span class="kam-route-chip-type">Agent</span>
+          <span class="kam-route-chip-name">${esc(r.ai_agent_profile)}</span>
+        </div>` : ''}
+      </div>
+    </div>`).join('')}
+  </div>` : `
+  <div class="nexus-empty-state">
+    No chat categories route to this Knowledge Profile yet.<br>
+    Configure routing via <a class="kam-link" onclick="frappe.set_route('nexus-category-profile-routes')">Category Profile Routes</a>
+    and assign this Knowledge Profile in the relevant <a class="kam-link" onclick="frappe.set_route('List','Nexus Identity Profile')">Identity Profiles</a>.
+  </div>`}
 </div>
 
 <!-- Used by Identity Profiles -->
@@ -227,6 +362,13 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     // ── Events ─────────────────────────────────────────────────────────────────
 
     function bind() {
+        // Tenant selector change
+        $(page.body).on('change', '#kam-tenant-select', function () {
+            S.tenant = this.value;
+            updateTenantBadge();
+            load();
+        });
+
         $(page.body).on('click', '.kam-profile-row', function () {
             const name = $(this).data('name');
             loadDetail(name);
@@ -304,6 +446,82 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
             renderDetail();
         });
 
+        // Allocate a new identity type → Knowledge Profile rule
+        $(page.body).on('click', '.kam-add-rule-btn', function () {
+            const profile = $(this).data('profile');
+            frappe.call({
+                method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_available_identity_types',
+                args: { knowledge_profile: profile },
+                callback(r) {
+                    const types = r.message || [];
+                    if (!types.length) {
+                        frappe.show_alert({ message: 'All identity types are already allocated to this profile.', indicator: 'orange' });
+                        return;
+                    }
+                    const d = new frappe.ui.Dialog({
+                        title: 'Allocate Identity Type',
+                        fields: [
+                            {
+                                fieldtype: 'Select',
+                                fieldname: 'identity_type',
+                                label: 'Identity Type',
+                                options: types.map(t => t.name).join('\n'),
+                                reqd: 1,
+                            },
+                            {
+                                fieldtype: 'Data',
+                                fieldname: 'rule_label',
+                                label: 'Rule Label',
+                                description: 'Auto-generated if left blank',
+                            },
+                            {
+                                fieldtype: 'Small Text',
+                                fieldname: 'description',
+                                label: 'Description',
+                            },
+                        ],
+                        primary_action_label: 'Allocate',
+                        primary_action(vals) {
+                            frappe.call({
+                                method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.create_identity_knowledge_rule',
+                                args: {
+                                    identity_type:     vals.identity_type,
+                                    knowledge_profile: profile,
+                                    rule_label:        vals.rule_label || '',
+                                    description:       vals.description || '',
+                                },
+                                callback(res) {
+                                    d.hide();
+                                    if (S.detail) {
+                                        S.detail.identity_rules = S.detail.identity_rules || [];
+                                        S.detail.identity_rules.push(res.message);
+                                    }
+                                    frappe.show_alert({ message: 'Identity type allocated', indicator: 'green' });
+                                    loadDetail(profile);
+                                },
+                            });
+                        },
+                    });
+                    d.show();
+                },
+            });
+        });
+
+        // Remove an identity knowledge rule
+        $(page.body).on('click', '.kam-delete-rule-btn', function () {
+            const rule = $(this).data('rule');
+            frappe.confirm('Remove this identity allocation?', () => {
+                frappe.call({
+                    method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.delete_identity_knowledge_rule',
+                    args: { rule_name: rule },
+                    callback() {
+                        frappe.show_alert({ message: 'Allocation removed', indicator: 'green' });
+                        loadDetail(S.selected);
+                    },
+                });
+            });
+        });
+
         $(page.body).on('click', '[data-open-kp]', function () {
             frappe.set_route('Form', 'Knowledge Profile', $(this).data('open-kp'));
         });
@@ -316,11 +534,25 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     }
 
     function showNewDialog() {
+        const tenantOptions = S.tenants.map(t => t.name);
         const d = new frappe.ui.Dialog({
             title: 'New Knowledge Profile',
             fields: [
-                { fieldtype: 'Data',       fieldname: 'profile_name', label: 'Profile Name (slug)',
-                  description: 'Uppercase, hyphens only. e.g. CUSTOMER-KP', reqd: 1 },
+                {
+                    fieldtype: 'Select',
+                    fieldname: 'tenant',
+                    label: 'Tenant',
+                    options: tenantOptions.join('\n'),
+                    default: S.tenant || (tenantOptions[0] || ''),
+                    reqd: 1,
+                },
+                {
+                    fieldtype: 'Data',
+                    fieldname: 'profile_name',
+                    label: 'Profile Name (slug)',
+                    description: 'Uppercase, hyphens only. e.g. CUSTOMER-KP',
+                    reqd: 1,
+                },
                 { fieldtype: 'Data',       fieldname: 'title',        label: 'Title', reqd: 1 },
                 { fieldtype: 'Small Text', fieldname: 'description',  label: 'Description' },
             ],
@@ -328,10 +560,21 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
             primary_action(vals) {
                 frappe.call({
                     method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.create_knowledge_profile',
-                    args: { profile_name: vals.profile_name, title: vals.title, description: vals.description || '' },
+                    args: {
+                        profile_name: vals.profile_name,
+                        title:        vals.title,
+                        tenant:       vals.tenant,
+                        description:  vals.description || '',
+                    },
                     callback(r) {
                         d.hide();
-                        S.profiles.push({ name: r.message.name, title: r.message.title, enabled: true, cat_count: 0 });
+                        S.profiles.push({
+                            name: r.message.name,
+                            title: r.message.title,
+                            tenant: r.message.tenant,
+                            enabled: true,
+                            cat_count: 0,
+                        });
                         renderList();
                         loadDetail(r.message.name);
                         document.querySelectorAll('.kam-profile-row').forEach(row => {
@@ -376,12 +619,20 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
         .nexus-status-pill.enabled { background:#ecfdf3; color:#16794c; border:1px solid #bdebd2; }
         .nexus-status-pill.disabled { background:#fff0f0; color:#b42318; border:1px solid #ffd1d1; }
 
+        /* tenant filter bar — sits at the top of the profiles panel */
+        .kam-tenant-filter-bar { display:flex; align-items:center; gap:8px; padding:12px 14px 10px; background:#f5f8ff; border-bottom:1px solid rgba(33,77,187,.1); }
+        .kam-tenant-filter-label { font-size:11px; font-weight:800; color:#214dbb; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; flex-shrink:0; }
+        .kam-tenant-select { flex:1; min-width:0; height:30px; padding:0 10px; border-radius:8px; border:1px solid rgba(33,77,187,.28); background:#fff; color:#102b67; font-size:12px; font-weight:700; cursor:pointer; outline:none; appearance:auto; }
+        .kam-tenant-select:focus { border-color:#214dbb; box-shadow:0 0 0 2px rgba(33,77,187,.15); }
+        .kam-list-divider { height:1px; background:rgba(77,163,255,.12); }
+        .kam-tenant-pill { display:inline-flex; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800; background:#eef6ff; border:1px solid rgba(33,77,187,.2); color:#214dbb; margin-left:4px; }
+
         /* layout */
         .kam-layout { display:grid; grid-template-columns:260px 1fr; gap:18px; align-items:start; }
 
         /* profile list */
         .kam-list-panel { position:sticky; top:64px; padding:0; overflow:hidden; }
-        .kam-list-panel .nexus-admin-card-title { margin:16px 16px 0; }
+        .kam-list-panel .nexus-admin-card-title { margin:14px 16px 0; }
         #kam-profile-list { max-height:540px; overflow-y:auto; padding-bottom:8px; }
         .kam-count { font-size:11px; font-weight:700; background:#fff; border:1px solid rgba(33,77,187,.2); border-radius:999px; padding:2px 8px; color:#214dbb; margin-left:4px; }
         .kam-profile-row { padding:11px 16px; cursor:pointer; border-bottom:1px solid #f1f5f9; transition:background .12s; }
@@ -405,6 +656,10 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
         .kam-cat-tile-status { font-size:11px; color:#6b7c9b; margin-top:8px; font-weight:700; }
         .kam-cat-tile-on .kam-cat-tile-status { color:#214dbb; font-weight:900; }
 
+        /* public-only info note */
+        .kam-public-note { display:flex; align-items:flex-start; gap:8px; padding:8px 12px; margin-bottom:12px; background:#f0f4ff; border:1px solid rgba(33,77,187,.18); border-radius:10px; font-size:11.5px; color:#4a6085; font-weight:600; line-height:1.5; }
+        .kam-public-note-icon { font-size:14px; color:#214dbb; flex-shrink:0; margin-top:1px; }
+
         /* save bar */
         .kam-save-bar { display:flex; align-items:center; gap:10px; margin-top:14px; padding:10px 14px; background:#fff7e6; border:1px solid #f2d49b; border-radius:12px; font-size:13px; color:#8a5d00; font-weight:700; }
         .kam-save-bar .btn { margin-left:auto; }
@@ -416,6 +671,28 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 
         .kam-link { color:#214dbb; text-decoration:none; cursor:pointer; font-weight:800; }
         .kam-link:hover { text-decoration:underline; }
+
+        /* identity allocation */
+        .kam-id-rule-list { display:flex; flex-direction:column; gap:8px; margin-bottom:4px; }
+        .kam-id-rule-row { display:flex; align-items:center; justify-content:space-between; gap:12px; background:#f8fbff; border:1px solid rgba(77,163,255,.22); border-radius:12px; padding:10px 14px; }
+        .kam-id-rule-main { flex:1; }
+        .kam-id-rule-type { font-size:13px; font-weight:800; color:#102b67; }
+
+        .kam-nav-link { font-size:11px; font-weight:800; color:#214dbb; text-decoration:none; cursor:pointer; white-space:nowrap; padding:5px 12px; border-radius:999px; border:1px solid rgba(33,77,187,.22); background:#f0f5ff; transition:background .12s; }
+        .kam-nav-link:hover { background:#deeaff; }
+
+        /* chat category routing chain */
+        .kam-chat-route-list { display:flex; flex-direction:column; gap:10px; }
+        .kam-chat-route-row { background:#f8fbff; border:1px solid rgba(77,163,255,.22); border-radius:14px; padding:12px 14px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+        .kam-chat-route-main { min-width:160px; }
+        .kam-chat-cat-name { font-size:13px; font-weight:800; color:#102b67; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+        .kam-chat-route-chain { display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex:1; }
+        .kam-route-chain-label { font-size:10px; font-weight:900; color:#6b7c9b; text-transform:uppercase; letter-spacing:.05em; margin-right:2px; }
+        .kam-route-chip { display:inline-flex; align-items:center; gap:4px; background:#eef6ff; border:1px solid rgba(33,77,187,.18); border-radius:999px; padding:3px 10px; font-size:11px; }
+        .kam-route-chip-type { font-weight:900; color:#6b7c9b; font-size:10px; text-transform:uppercase; }
+        .kam-route-chip-name { font-weight:700; color:#102b67; }
+        .kam-route-chip-agent { background:#fff7e6; border-color:#f2d49b; }
+        .kam-route-chip-agent .kam-route-chip-name { color:#8a5d00; }
 
         @media (max-width:760px) {
           .nexus-admin-hero { flex-direction:column; }

@@ -49,40 +49,37 @@ Chat is stateful. A `Nexus Live Conversation` document is created on the first m
 POST start_chat(payload)
     │
     ▼
-Enrich payload
+Enrich payload (apply_session_user_context)
     │
-    ▼
-Resolve profile context
-─ Resolve identity_type from payload/session
-─ Resolve Nexus Category Identity Route when chat_category is provided
-─ Snapshot assigned_ai_agent_profile on conversation
+    ├── Desk / internal user path ──────────────────────────────────────────────
+    │    Resolve Nexus User Profile Assignment → ai_profile_override
+    │    payload["agent"] = ai_profile_override.agent_name  (if assignment found)
+    │    fallback visibility = "Internal"
     │
-    ▼
-Assign agent
+    └── External / guest user path ─────────────────────────────────────────────
+         Resolve identity_type (6-step priority chain — see identity-resolution.md)
+         If chat_category in payload:
+             Resolve Nexus Category Identity Route → AI Agent Profile
+         Assign agent
     │
     ▼
 Create Nexus Live Conversation
 ─ Generates unique conversation_id (NLCV-XXXXX format)
 ─ Sets status = Open
-─ Records assigned_agent, channel, visitor info
-─ Records assigned_ai_agent_profile
+─ Records assigned_agent, channel, tenant, visitor info
+─ Freezes ai_profile_snapshot_json (behavior + knowledge_profile_names)
     │
     ▼
-Resolve access policies
-─ Build ai_profile from conversation profile snapshot
-─ Resolve allowed_access_policies from profile access categories
+Resolve access policies from snapshot
     │
     ▼
-Call Nexus Core with conversation context
-    │
-    ▼
-Persist messages:
-  Nexus Live Message (role=user, content=query)
-  Nexus Live Message (role=assistant, content=answer)
+If no initial message: send greeting, set intent = await_category (if no category yet)
+If message provided: enqueue background AI response
     │
     ▼
 Return:
-  conversation_id, answer, confidence, agent_code
+  conversation_id, greeting, agent_name, agent_code
+  (AI answer, if any, arrives via realtime nexus_chat_response event)
 ```
 
 ### Continuing a Chat
@@ -91,34 +88,41 @@ Return:
 POST send_chat_message(conversation_id, payload)
     │
     ▼
-Load Nexus Live Conversation
+Load Nexus Live Conversation + message history (max 20 messages)
     │
     ▼
-Load message history (max 20 messages)
+Special intents handled synchronously (no AI call):
+─ intent = await_category  AND  message starts with "__cat__:"
+    → resolve Nexus Chat Category by category_code field
+    → store chat_category on conversation, send acknowledgement
+─ intent = await_name
+    → capture visitor_name, proceed to category picker or processing
     │
     ▼
 Build context continuity payload
-─ Format previous messages as conversation_context string
+─ Format prior messages as conversation_context string
 ─ Set is_follow_up = True
-─ Preserve tenant and channel from conversation
-─ Reuse the conversation's assigned_ai_agent_profile snapshot
-─ Resolve allowed_access_policies from that profile before retrieval
+─ Restore tenant, channel, identity_type from conversation snapshot
+─ Restore knowledge_profile_names from ai_profile_snapshot_json
+─ Resolve allowed_access_policies from snapshot before retrieval
     │
     ▼
-Call Nexus Core with full context
+Enqueue background AI response (_enqueue_ai_response)
+─ answer_query (Nexus Core) with full context
+─ check fallback_used flag in response
+─ if Public visitor AND fallback_used → set identity_verification_offer = True
     │
     ▼
-Evaluate escalation
-(see Escalation doc)
+Evaluate escalation (escalation_service.should_escalate)
     │
-    ├── Should escalate → mark conversation Escalated, create escalation record
+    ├── Should escalate → mark Escalated, create escalation record
     │
     ▼
 Persist messages
     │
     ▼
-Return:
-  answer, confidence, escalation_status, sources
+Publish realtime nexus_chat_response:
+  { answer, identity_verification_offer, fallback_used, response_type, ... }
 ```
 
 ---
@@ -178,16 +182,57 @@ Messages are append-only. They are never modified after creation.
 
 ---
 
+## Identity Verification Offer
+
+When a **Public visitor** (identity_type = "Public") asks a question and the retrieval engine finds nothing under public access (`fallback_used = True`), the system offers identity verification instead of a dead-end reply.
+
+```
+AI response (background worker)
+    │
+    ├── fallback_used = True  AND  identity_type = "Public"
+    │       ↓
+    │   answer  = PUBLIC_IDENTITY_FALLBACK message (explains the offer)
+    │   identity_verification_offer = True
+    │
+    ▼
+Realtime nexus_chat_response published with identity_verification_offer: true
+    │
+    ▼
+Widget (non-desk only):
+    render_identity_verification_prompt()
+    │
+    ├── Visitor enters email
+    │   → request_identity_verification(conversation_id, email)
+    │       Resolves channel + chat_category from conversation record
+    │       Issues OTP, returns challenge_token
+    │
+    ├── Visitor enters OTP
+    │   → verify_identity_verification(challenge_token, otp)
+    │       Sets challenge status = Verified, resolved_identity_type recorded
+    │
+    └── Widget stores challenge_token in state (S.identity_verification_challenge)
+        Subsequent messages include identity_verification_challenge in payload
+        identity_resolver Step 2 upgrades identity type from the verified challenge
+```
+
+The conversation identity is NOT changed mid-session — the snapshot is frozen. The upgraded identity takes effect in the **next new conversation** the visitor starts, or in the remaining messages of the current one if the challenge is verified before the next send.
+
+---
+
 ## Visitor Information
 
 The conversation captures visitor metadata at creation time:
 
 - `visitor_name` — provided by the client or defaulted to "Guest"
-- `visitor_email` — optional, used for lead capture and follow-up
+- `visitor_email` — optional; also stored in widget state (`S.visitor_email`) after identity verification
 - `visitor_phone` — optional
 - `user_type` — Guest / Website User / Desk User
 
 For authenticated users, `user_type` is resolved from the session. For public visitors, it is always `Guest`.
+
+**Widget identity state** (cleared on every new conversation):
+- `S.visitor_email` — set after OTP email submission
+- `S.identity_verification_challenge` — set after successful OTP verification; injected into every subsequent message payload
 
 ---
 

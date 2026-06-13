@@ -120,12 +120,19 @@ The single event for all server-to-client chat messages. The `response_type` fie
     "escalation": null,
     "confidence_threshold": 0.65,
     "fallback_used": 0,
+    "identity_verification_offer": false,
     "agent_code": "PUBLIC-AI-ASSISTANT",
     "agent_name": "Public AI Assistant",
     "tenant": "DIGITZ-NEXUS",
     "channel": "WEBSITE-CHAT"
 }
 ```
+
+**`identity_verification_offer: true`** is set when:
+- `identity_type = "Public"` (visitor is unidentified), AND
+- `fallback_used = True` (retrieval found nothing under public access)
+
+When `true`, the `message` field contains the `PUBLIC_IDENTITY_FALLBACK` offer text. The widget renders an inline email + OTP form for the visitor to verify their identity. Desk users never see this offer.
 
 **Human agent message payload** (same event, different `sender_type`):
 ```json
@@ -340,8 +347,10 @@ Sends a follow-up message in an existing conversation. Same async pattern as `st
 |---|---|---|---|
 | `message` | String | Yes | Max 500 characters |
 | `tenant` | String | Recommended | Must match the conversation's tenant |
+| `visitor_email` | String | No | Set by widget after OTP email submission |
+| `identity_verification_challenge` | String | No | OTP challenge token; upgrades identity type via resolver Step 2 |
 
-All other fields (channel, context, identity, etc.) are re-enriched from the conversation document automatically and do not need to be re-sent.
+The widget automatically injects `visitor_email` and `identity_verification_challenge` into every message payload when they are set in widget state (`S`). Both are cleared when a new conversation starts. All other fields (channel, context, identity snapshot, etc.) are re-enriched from the conversation document automatically and do not need to be re-sent.
 
 **Response:**
 ```json
@@ -470,14 +479,19 @@ start_chat(payload) — DESK USER
 │       → Nexus User Profile Assignment (active=1) → Nexus AI Agent Profile
 │       Throws if no assignment and user is not System Manager
 │
-├── 4. assign_agent(payload)
-│       Routes to "Internal Assistant" role agent if no explicit agent on profile
+├── 4. If profile found: payload["agent"] = ai_profile_override.agent_name
+│       (agent_name is the correct field on Nexus AI Agent Profile)
+│       If no explicit agent: payload.visibility = "Internal"
 │
-├── 5. create_conversation(payload, agent, ai_profile_override)
+├── 5. assign_agent(payload)
+│       Priority: explicit agent → channel default_agent → role-based fallback
+│       Throws "No AI agent available for desk chat" if nothing found
+│
+├── 6. create_conversation(payload, agent, ai_profile_override)
 │       Creates Nexus Live Conversation, status=Open
 │       Snapshots ai_profile_snapshot_json for consistent behavior
 │
-├── 6. update_conversation_assignment(conversation, agent) → status=Responding
+├── 7. update_conversation_assignment(conversation, agent) → status=Responding
 │
 ├── If message provided:
 │   ├── add_message(sender_type="User", message)
@@ -840,32 +854,64 @@ Priority 4 — Agent behavior (legacy)
 
 ## Identity Resolution
 
-Identity type is determined before route selection.
+Identity type is determined before route selection. Resolution stops at the first match.
 
 ```
 resolve_identity_type(payload)
 │
-├── 1. trust_payload_identity = True → use explicit payload.identity_type (server-side only)
+├── 1. trust_payload_identity = True + identity_type in payload + identity_type enabled
+│       → use explicit identity_type directly
+│       (Server-to-server only. Never trust from a browser.)
 │
-├── 2. Verified OTP challenge → resolved identity from challenge record
+├── 2. Verified OTP challenge
+│       identity_verification_challenge token in payload?
+│       → get_verified_challenge() → challenge.status = "Verified"
+│       → return challenge.resolved_identity_type
 │
-├── 3. Registry blocked check → throw if blocked
+├── 3. Nexus Identity Registry lookup  ← NEW (precedes Frappe session)
+│       _find_identity_registry(payload):
+│         a. Verified OTP challenge → registry on challenge doc
+│         b. Frappe session user → registry where user = session_user
+│         c. trust_visitor_email = True + email → registry by email
+│       Registry found + verification_status = "Verified"?
+│       → walk active identity profiles → return first identity_type from mappings
+│       (Works for external websites — not tied to Frappe portal sessions)
 │
-├── 4. Frappe session user type:
+├── 4. Frappe session fallback
+│       frappe.session.user != "Guest"?
+│       Website User → "Customer"
 │       System User + System Manager role → "Admin"
 │       System User → "Internal"
-│       Website User → "Customer"
 │
-├── 5. api_scope → "Partner" or "Prospect"
+├── 5. api_scope field
+│       api_scope = "partner" → "Partner"
+│       api_scope = "prospect" → "Prospect"
 │
-└── 6. Default → "Public"
+└── 6. Default floor: "Public"
+        Always reached when nothing above matched.
+        Public visitors access only Public-tagged knowledge.
 ```
 
+**Public is the floor, never an error.** Unidentified visitors always get Public access.
+
+**Registry-before-Frappe-session** ensures external website visitors (no Frappe session cookie) with a registry entry are correctly identified — not silently resolved as Guest.
+
 If a `Nexus Identity Registry` record exists:
-- `resolve_identity_safeguard_access_categories(payload)` reads from `Nexus Identity Type`
-  (not from the registry — the cap is class-level, not per-person)
+- `resolve_identity_safeguard_access_categories(payload)` reads caps from `Nexus Identity Type`
+  (cap is class-level, not per-person — all holders of a class are uniformly capped)
 - Stored on the conversation as `identity_safeguard_access_json`
 - Restored on each subsequent turn and passed to `resolve_allowed_policies`
+
+### Identity Verification Offer
+
+When `identity_type = "Public"` AND `fallback_used = True` in the AI response:
+- `live_chat_service` replaces the fallback message with `PUBLIC_IDENTITY_FALLBACK` text
+- Publishes `identity_verification_offer: true` in the realtime event
+- Widget (non-desk only) renders an inline email + OTP form
+- On success: `S.identity_verification_challenge` stored; injected into all subsequent message payloads
+- `identity_resolver` Step 2 upgrades identity for those messages
+
+See `docs/identity-resolution.md` for the full OTP API reference.
 
 ---
 

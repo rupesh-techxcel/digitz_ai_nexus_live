@@ -8,6 +8,19 @@ def generate_conversation_id():
     return frappe.generate_hash(length=12).upper()
 
 
+def get_agent_nickname(conversation, fallback_agent=None):
+    """Return the nickname frozen in the conversation snapshot, or fall back to the profile name."""
+    try:
+        snap = json.loads(getattr(conversation, "ai_profile_snapshot_json", None) or "{}")
+        if snap.get("nickname"):
+            return snap["nickname"]
+    except Exception:
+        pass
+    if fallback_agent:
+        return getattr(fallback_agent, "display_name", None) or getattr(fallback_agent, "agent_name", None)
+    return None
+
+
 def get_conversation(conversation_id_or_name):
     if not conversation_id_or_name:
         return None

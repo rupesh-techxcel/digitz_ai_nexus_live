@@ -40,9 +40,13 @@ def resolve_identity_type(payload):
     Priority:
     1. Trusted explicit identity_type in payload (server-side integrations only).
     2. Verified OTP challenge.
-    3. Frappe session user type and roles.
-    4. api_scope field (Partner / Prospect for programmatic API calls).
-    5. Default: Public.
+    3. Nexus Identity Registry lookup — works for any website (Frappe or external).
+       Uses existing security gates: OTP-verified session, Frappe login, or
+       server-asserted trust_visitor_email. Registry takes precedence over
+       Frappe user type so the configured identity model is always authoritative.
+    4. Frappe session fallback — for Frappe portal users with no registry entry.
+    5. api_scope field (Partner / Prospect for programmatic API calls).
+    6. Default: Public.
 
     Blocks if the resolved registry is blocked.
     """
@@ -57,9 +61,18 @@ def resolve_identity_type(payload):
     if verified_challenge_identity:
         return verified_challenge_identity
 
-    # Raise if the registry for this person is blocked
+    # Raise if the resolved registry is blocked
     _assert_registry_not_blocked(payload)
 
+    # Registry-based resolution — authoritative for all website types.
+    # _find_identity_registry uses security-gated lookup (OTP / Frappe session /
+    # trust_visitor_email), so this is safe for external widget deployments.
+    registry_identity = _resolve_identity_type_from_registry(payload)
+    if registry_identity:
+        return registry_identity
+
+    # Frappe session fallback — only meaningful when the widget runs inside a
+    # Frappe portal and the visitor has a Frappe login but no registry entry.
     user = frappe.session.user
     user_type = payload.get("user_type") or "Guest"
 
@@ -347,6 +360,45 @@ def _resolve_verified_challenge_identity(payload):
     )
 
     return resolve_identity_from_verified_challenge(payload)
+
+
+def _resolve_identity_type_from_registry(payload):
+    """
+    Resolve identity type from the visitor's Nexus Identity Registry entry.
+
+    Uses _find_identity_registry which enforces security gates:
+      - Verified OTP challenge token present in this session
+      - Authenticated Frappe session user
+      - Server-asserted trust_visitor_email flag
+
+    Returns the identity_type from the visitor's primary active Identity Profile,
+    or None if no registry found, not verified, or no profile mappings configured.
+    """
+    registry_name = _find_identity_registry(payload)
+    if not registry_name:
+        return None
+
+    registry = frappe.get_doc("Nexus Identity Registry", registry_name)
+    if registry.verification_status != "Verified":
+        return None
+
+    active_profiles = _get_active_registry_identity_profiles(registry)
+    if not active_profiles:
+        return None
+
+    for row in active_profiles:
+        if not row.identity_profile:
+            continue
+        if not frappe.db.exists("Nexus Identity Profile", row.identity_profile):
+            continue
+        ip_doc = frappe.get_doc("Nexus Identity Profile", row.identity_profile)
+        if not ip_doc.enabled:
+            continue
+        for mapping in ip_doc.identity_mappings or []:
+            if mapping.identity_type:
+                return mapping.identity_type
+
+    return None
 
 
 def _get_payload_email(payload):

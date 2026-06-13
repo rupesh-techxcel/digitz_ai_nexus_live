@@ -33,7 +33,7 @@
       "fieldname": "agent",
       "fieldtype": "Link",
       "label": "Agent",
-      "options": "Nexus Live Agent"
+      "options": "Nexus AI Agent Profile"
     },
     {
       "fieldname": "user",

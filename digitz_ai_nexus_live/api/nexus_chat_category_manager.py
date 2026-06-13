@@ -125,8 +125,8 @@ def test_chat_connectivity():
         if behavior and behavior.profile_name:
             try:
                 profile_doc = frappe.get_doc("Nexus AI Agent Profile", behavior.profile_name)
-                if profile_doc.get("agent"):
-                    probe["agent"] = profile_doc.agent
+                if profile_doc.get("agent_name"):
+                    probe["agent"] = profile_doc.agent_name
             except Exception:
                 pass
 
@@ -247,7 +247,7 @@ def get_category_chain(category_code):
         profile = frappe.get_doc("Nexus AI Agent Profile", profile_name)
         entry["profile"] = {
             "name": profile.name,
-            "agent": profile.agent,
+            "agent": profile.agent_name,
             "tone": profile.tone,
             "memory_mode": profile.memory_mode,
             "confidence_threshold": profile.confidence_threshold,

@@ -1,5 +1,3 @@
-import json
-
 import frappe
 
 from digitz_ai_nexus.setup.access_seed import seed_default_access_governance
@@ -39,9 +37,9 @@ DEFAULT_IDENTITY_TYPES = [
 ]
 
 DEFAULT_TENANT = {
-    "tenant_code": "DIGITZ-NEXUS",
-    "tenant_name": "DIGITZ AI Nexus",
-    "description": "Default tenant for Nexus Live chat workflow setup and validation.",
+    "tenant_code": "DEFAULT",
+    "tenant_name": "Default",
+    "description": "Platform default tenant seeded on installation.",
 }
 
 DEFAULT_LIVE_CHANNEL = {
@@ -61,7 +59,7 @@ DEFAULT_QA_CHANNEL = {
 DEFAULT_CHAT_CATEGORY = {
     "category_code": "GENERAL-SUPPORT",
     "category_label": "General Support",
-    "description": "Default public chat category for testing the governed chat workflow.",
+    "description": "Default public chat category for the governed chat workflow.",
 }
 
 DEFAULT_NICKNAME_POOL = (
@@ -76,7 +74,7 @@ DEFAULT_AGENT = {
     "agent_code": "PUBLIC-AI-ASSISTANT",
     "agent_name": "Public AI Assistant",
     "display_name": "Nexus Assistant",
-    "description": "Default public AI agent used by the seeded website chat flow.",
+    "description": "Default public AI agent for the website chat flow.",
 }
 
 DEFAULT_PROFILE = {
@@ -105,12 +103,31 @@ def after_install():
 
 def seed_defaults():
     """
-    Creates platform-level infrastructure only.
-    No tenant, channel, agent, or knowledge records are created here.
-    Those are created on demand via dedicated seed functions in devtools/.
+    Seeds all platform-level infrastructure on a fresh installation.
+    Creates identity types, access governance, and a generic default tenant
+    with its channels, agent profile, identity profile, and routing.
+    No DIGITZ or NEXUS-specific records are created here.
     """
     seed_identity_types()
-    ensure_nexus_live_workspace()
+    seed_default_access_governance(tenant=None)
+
+    tenant           = ensure_default_tenant()
+    channel          = ensure_default_chat_channel(tenant)
+    qa_channel       = ensure_default_qa_channel(tenant)
+    category         = ensure_default_chat_category(channel, tenant)
+    profile          = ensure_default_ai_agent_profile(channel, qa_channel, tenant)
+    identity_profile = ensure_default_identity_profile(tenant)
+
+    public_access_cat = frappe.db.get_value(
+        "Nexus Access Category",
+        {"category_name": "Public Access"},
+        "name",
+    )
+    if public_access_cat:
+        ensure_profile_access_category(profile, public_access_cat)
+
+    ensure_default_category_route(channel, category, profile, identity_profile)
+    ensure_tenant_configuration(tenant, channel, qa_channel)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live platform defaults seeded.")
@@ -123,14 +140,29 @@ def seed_defaults():
 
 def seed_digitz_nexus_live_foundation():
     """
-    Optional manual seed for the default DIGITZ-NEXUS development tenant.
+    Optional manual seed for the DIGITZ-NEXUS development tenant.
 
     NOT called during installation. Run from bench console when needed:
 
         from digitz_ai_nexus_live.setup.install import seed_digitz_nexus_live_foundation
         seed_digitz_nexus_live_foundation()
     """
-    tenant = ensure_default_tenant()
+    DIGITZ_TENANT_CODE = "DIGITZ-NEXUS"
+    DIGITZ_TENANT_NAME = "DIGITZ AI Nexus"
+    DIGITZ_TENANT_DESC = "Default tenant for Nexus Live chat workflow setup and validation."
+
+    existing = frappe.db.get_value("Nexus Tenant", {"tenant_code": DIGITZ_TENANT_CODE}, "name")
+    if existing:
+        tenant_doc = frappe.get_doc("Nexus Tenant", existing)
+    else:
+        tenant_doc = frappe.new_doc("Nexus Tenant")
+        tenant_doc.tenant_code = DIGITZ_TENANT_CODE
+
+    tenant_doc.tenant_name = DIGITZ_TENANT_NAME
+    tenant_doc.description = DIGITZ_TENANT_DESC
+    tenant_doc.disabled    = 0
+    tenant_doc.save(ignore_permissions=True)
+    tenant = tenant_doc.name
 
     core_seed = seed_default_access_governance(tenant=tenant)
 
@@ -341,16 +373,6 @@ def ensure_default_identity_profile(tenant=None):
     doc.enabled     = 1
     doc.description = DEFAULT_IDENTITY_PROFILE["description"]
 
-    has_public = any(
-        row.identity_type == "Public"
-        for row in (doc.identity_mappings or [])
-    )
-    if not has_public:
-        doc.append("identity_mappings", {
-            "identity_type":   "Public",
-            "knowledge_profile": None,
-        })
-
     doc.save(ignore_permissions=True)
     return doc.name
 
@@ -421,10 +443,10 @@ def ensure_tenant_configuration(tenant, channel, qa_channel=None):
         doc = frappe.get_doc("Nexus Tenant Configuration", existing[0])
     else:
         doc = frappe.new_doc("Nexus Tenant Configuration")
-        doc.tenant              = tenant
-        doc.configuration_name  = "Default Live"
+        doc.tenant        = tenant
+        doc.configuration_name = "Default Live"
 
-    doc.ecosystem_type                  = "Sandbox"
+    doc.configuration_type                  = "Sandbox"
     doc.enabled                         = 1
     doc.is_default                      = 1
     doc.activation_status               = "Configured"
@@ -443,120 +465,6 @@ def ensure_tenant_configuration(tenant, channel, qa_channel=None):
     doc.certification_status            = "Not Certified"
     doc.notes                           = "Seeded default ecosystem for Nexus Live setup."
     doc.save(ignore_permissions=True)
-    return doc.name
-
-
-def ensure_nexus_live_workspace():
-    ws_name = "Nexus Live"
-
-    shortcuts = [
-        {"label": "Live Studio",       "link_to": "nexus_live_studio",       "type": "Page",    "color": "Blue"},
-        {"label": "Live Console",      "link_to": "nexus_live_console",      "type": "Page",    "color": "Green"},
-        {"label": "AI Agent Profile",  "link_to": "Nexus AI Agent Profile",  "type": "DocType", "color": "Orange", "doc_view": "List"},
-        {"label": "Live Channel",      "link_to": "Nexus Live Channel",      "type": "DocType", "color": "Teal",   "doc_view": "List"},
-        {"label": "Live Conversation", "link_to": "Nexus Live Conversation", "type": "DocType", "color": "Grey",   "doc_view": "List"},
-        {"label": "Identity Registry", "link_to": "Nexus Identity Registry", "type": "DocType", "color": "Purple", "doc_view": "List"},
-    ]
-
-    links = [
-        {"type": "Card Break", "label": "Administration Tools",   "hidden": 0, "link_count": 9,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Live Studio",                  "link_to": "nexus_live_studio",                   "link_type": "Page",    "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Live Console",                 "link_to": "nexus_live_console",                  "link_type": "Page",    "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Category Manager",             "link_to": "nexus-chat-category-manager",         "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Category Profile Routes",      "link_to": "nexus-category-profile-routes",       "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Knowledge Access Manager",     "link_to": "nexus-profile-access-allocation",     "link_type": "Page",    "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Identity Registry Manager",    "link_to": "nexus-identity-registry-manager",    "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Verification Monitor",         "link_to": "nexus-identity-verification-monitor", "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "User Profile Manager",         "link_to": "nexus-user-profile-manager",          "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Workflow Tester",              "link_to": "nexus-chat-workflow-tester",          "link_type": "Page",    "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "Channels & Categories",  "hidden": 0, "link_count": 4,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Nexus Live Channel",           "link_to": "Nexus Live Channel",            "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Nexus Chat Category",          "link_to": "Nexus Chat Category",           "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Category Identity Route",      "link_to": "Nexus Category Identity Route", "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Nexus Website Widget",         "link_to": "Nexus Website Widget",          "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "AI Agents",              "hidden": 0, "link_count": 4,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "AI Agent Profile",             "link_to": "Nexus AI Agent Profile",           "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Agent Profile Instance",       "link_to": "Nexus AI Agent Profile Instance",  "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "AI Behaviour",                 "link_to": "Nexus AI Behaviour",               "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "Identity & Access",      "hidden": 0, "link_count": 6,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Identity Type",                "link_to": "Nexus Identity Type",              "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Identity Profile",             "link_to": "Nexus Identity Profile",           "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Identity Registry",            "link_to": "Nexus Identity Registry",          "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Knowledge Profile",            "link_to": "Knowledge Profile",                "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Access Category",              "link_to": "Nexus Access Category",            "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "User Profile Assignment",      "link_to": "Nexus User Profile Assignment",    "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "Escalation",             "hidden": 0, "link_count": 3,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Escalation Rule",              "link_to": "Nexus Escalation Rule",            "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Agent Queue",                  "link_to": "Nexus Agent Queue",                "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Queue Assignment",             "link_to": "Nexus Queue Assignment",           "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "Conversations",          "hidden": 0, "link_count": 3,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Live Conversation",            "link_to": "Nexus Live Conversation",          "link_type": "DocType", "hidden": 0, "onboard": 1, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Live Message",                 "link_to": "Nexus Live Message",               "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Live Escalation",              "link_to": "Nexus Live Escalation",            "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-
-        {"type": "Card Break", "label": "Analytics & Audit",      "hidden": 0, "link_count": 5,  "onboard": 0, "is_query_report": 0},
-        {"type": "Link", "label": "Agent Activity Log",           "link_to": "Nexus Agent Activity Log",          "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Performance Snapshot",         "link_to": "Nexus Agent Performance Snapshot",  "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Conversation Outcome",         "link_to": "Nexus Conversation Outcome",        "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Conversation Feedback",        "link_to": "Nexus Conversation Feedback",       "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-        {"type": "Link", "label": "Lead Capture",                 "link_to": "Nexus Lead Capture",                "link_type": "DocType", "hidden": 0, "onboard": 0, "is_query_report": 0, "dependencies": ""},
-    ]
-
-    content = json.dumps([
-        {"id": "nlws-cb",  "type": "custom-block", "data": {"custom_block_name": "nexus-live-workspace-html-block", "col": 12}},
-        {"id": "nlws-sp0", "type": "spacer",   "data": {"col": 12}},
-        {"id": "nlws-h1",  "type": "header",   "data": {"text": "<span class=\"h4\"><b>Quick Access</b></span>", "col": 12}},
-        {"id": "nlws-s1",  "type": "shortcut", "data": {"shortcut_name": "Live Studio",       "col": 3}},
-        {"id": "nlws-s2",  "type": "shortcut", "data": {"shortcut_name": "Live Console",      "col": 3}},
-        {"id": "nlws-s3",  "type": "shortcut", "data": {"shortcut_name": "AI Agent Profile",  "col": 3}},
-        {"id": "nlws-s4",  "type": "shortcut", "data": {"shortcut_name": "Live Channel",      "col": 3}},
-        {"id": "nlws-s5",  "type": "shortcut", "data": {"shortcut_name": "Live Conversation", "col": 3}},
-        {"id": "nlws-s6",  "type": "shortcut", "data": {"shortcut_name": "Identity Registry", "col": 3}},
-        {"id": "nlws-sp1", "type": "spacer",   "data": {"col": 12}},
-        {"id": "nlws-h2",  "type": "header",   "data": {"text": "<span class=\"h4\"><b>Configuration &amp; Setup</b></span>", "col": 12}},
-        {"id": "nlws-c1",  "type": "card",     "data": {"card_name": "Administration Tools",  "col": 4}},
-        {"id": "nlws-c2",  "type": "card",     "data": {"card_name": "Channels & Categories", "col": 4}},
-        {"id": "nlws-c3",  "type": "card",     "data": {"card_name": "AI Agents",             "col": 4}},
-        {"id": "nlws-sp2", "type": "spacer",   "data": {"col": 12}},
-        {"id": "nlws-h3",  "type": "header",   "data": {"text": "<span class=\"h4\"><b>Identity, Access &amp; Escalation</b></span>", "col": 12}},
-        {"id": "nlws-c4",  "type": "card",     "data": {"card_name": "Identity & Access",     "col": 4}},
-        {"id": "nlws-c5",  "type": "card",     "data": {"card_name": "Escalation",            "col": 4}},
-        {"id": "nlws-c6",  "type": "card",     "data": {"card_name": "Conversations",         "col": 4}},
-        {"id": "nlws-sp3", "type": "spacer",   "data": {"col": 12}},
-        {"id": "nlws-h4",  "type": "header",   "data": {"text": "<span class=\"h4\"><b>Analytics &amp; Audit</b></span>", "col": 12}},
-        {"id": "nlws-c7",  "type": "card",     "data": {"card_name": "Analytics & Audit",     "col": 12}},
-    ])
-
-    if frappe.db.exists("Workspace", ws_name):
-        doc = frappe.get_doc("Workspace", ws_name)
-    else:
-        doc = frappe.new_doc("Workspace")
-        doc.name = ws_name
-
-    doc.label   = ws_name
-    doc.module  = "Digitz AI Nexus Live"
-    doc.public  = 1
-    doc.icon    = "message-square"
-    doc.title   = ws_name
-    doc.content = content
-
-    doc.set("shortcuts", shortcuts)
-    doc.set("links", links)
-
-    existing_blocks = {row.custom_block_name for row in (doc.get("custom_blocks") or [])}
-    if "nexus-live-workspace-html-block" not in existing_blocks:
-        doc.append("custom_blocks", {
-            "custom_block_name": "nexus-live-workspace-html-block",
-            "label": "nexus-live-workspace-html-block",
-        })
-
-    doc.save(ignore_permissions=True)
-    frappe.logger().info("Nexus Live workspace seeded.")
     return doc.name
 
 

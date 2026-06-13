@@ -6,6 +6,8 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     });
 
     const state = {
+        tenant: '',
+        tenants: [],
         channels: [],
         profiles: [],
         identityProfiles: [],
@@ -18,7 +20,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     inject_ncpr_css();
     $(page.body).html(buildHTML());
     bindEvents();
-    loadInitialData();
+    loadTenants();
 
     // -------------------------------------------------------------------------
     // HTML
@@ -46,6 +48,14 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             <button class="btn btn-default" data-route-list="Nexus AI Agent Profile">Profiles</button>
             <button class="btn btn-default" data-route-page="nexus-chat-category-manager">Category Manager</button>
         </div>
+    </div>
+
+    <!-- Tenant filter -->
+    <div class="ncpr-tenant-bar">
+        <span class="ncpr-tenant-label">Tenant</span>
+        <select id="ncpr_tenant_select" class="ncpr-tenant-select">
+            <option value="">Loading…</option>
+        </select>
     </div>
 
     <div class="ncpr-layout">
@@ -128,14 +138,41 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         });
         $(page.body).on('click', '#ncpr_add_route_btn', addRoute);
         $(page.body).on('click', '#ncpr_chain_close', () => $('#ncpr_chain_card').hide());
+        $(page.body).on('change', '#ncpr_tenant_select', function () {
+            state.tenant = $(this).val();
+            resetToChannels();
+            loadChannels();
+        });
     }
 
     // -------------------------------------------------------------------------
     // Data loading
     // -------------------------------------------------------------------------
-    function loadInitialData() {
+    function loadTenants() {
+        frappe.call({
+            method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_available_tenants',
+            callback(r) {
+                if (!r.message) return;
+                state.tenants = r.message.tenants || [];
+                const defaultTenant = r.message.default_tenant || '';
+                state.tenant = defaultTenant || (state.tenants[0] && state.tenants[0].name) || '';
+
+                const $sel = $('#ncpr_tenant_select');
+                $sel.html(state.tenants.map(t =>
+                    `<option value="${esc(t.name)}" ${t.name === state.tenant ? 'selected' : ''}>${esc(t.tenant_name || t.name)}</option>`
+                ).join(''));
+
+                loadChannels();
+            },
+        });
+    }
+
+    function loadChannels() {
+        $('#ncpr_channels_loading').show().text('Loading…');
+        $('#ncpr_channel_list').empty();
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_category_profile_router.get_page_data',
+            args: { tenant: state.tenant },
             callback(r) {
                 $('#ncpr_channels_loading').hide();
                 if (!r.message) return;
@@ -178,6 +215,18 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         });
     }
 
+    function resetToChannels() {
+        state.selectedChannel = null;
+        state.selectedCategory = null;
+        state.categories = [];
+        state.routes = [];
+        $('#ncpr_cat_placeholder').show();
+        $('#ncpr_cat_list').hide().empty();
+        $('#ncpr_routes_placeholder').show();
+        $('#ncpr_routes_content').hide();
+        $('#ncpr_chain_card').hide();
+    }
+
     // -------------------------------------------------------------------------
     // Channel list
     // -------------------------------------------------------------------------
@@ -196,7 +245,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                 <b style="color:#214dbb;">›</b>
             </div>`).join(''));
 
-        $list.on('click', '.ncpr-item', function () {
+        $list.off('click', '.ncpr-item').on('click', '.ncpr-item', function () {
             selectChannel($(this).data('key'));
         });
     }
@@ -221,7 +270,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             return;
         }
         $list.html(state.categories.map(cat => `
-            <div class="nexus-kv-row ncpr-item" data-key="${esc(cat.category_code)}" style="margin-bottom:5px; cursor:pointer;">
+            <div class="nexus-kv-row ncpr-item" data-key="${esc(cat.name)}" style="margin-bottom:5px; cursor:pointer;">
                 <div style="overflow:hidden;">
                     <div style="font-size:12px; font-weight:850; color:#173b8c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         ${esc(cat.category_label)}
@@ -236,7 +285,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                 <b style="color:#214dbb; flex-shrink:0;">›</b>
             </div>`).join(''));
 
-        $list.on('click', '.ncpr-item', function () {
+        $list.off('click', '.ncpr-item').on('click', '.ncpr-item', function () {
             selectCategory($(this).data('key'));
         });
     }
@@ -246,7 +295,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         $('#ncpr_cat_list .ncpr-item').removeClass('ncpr-item-active');
         $(`#ncpr_cat_list .ncpr-item[data-key="${CSS.escape(categoryCode)}"]`).addClass('ncpr-item-active');
 
-        const cat = state.categories.find(c => c.category_code === categoryCode);
+        const cat = state.categories.find(c => c.name === categoryCode);
         $('#ncpr_routes_subtitle').text(cat ? cat.category_label : categoryCode);
         $('#ncpr_routes_placeholder').hide();
         $('#ncpr_routes_content').show();
@@ -519,6 +568,10 @@ function inject_ncpr_css() {
         .nexus-admin-table th { color:#173b8c; font-size:12px; font-weight:900; background:#eef6ff; white-space:nowrap; }
         .nexus-admin-table td { color:#27416f; font-size:12px; font-weight:650; vertical-align:middle; }
         .nexus-admin-muted { margin-top:4px; color:#6b7c9b; font-size:11px; font-weight:650; line-height:1.4; }
+
+        .ncpr-tenant-bar { display:flex; align-items:center; gap:12px; padding:12px 16px; margin-bottom:18px; background:#f8fbff; border:1px solid rgba(77,163,255,.2); border-radius:16px; }
+        .ncpr-tenant-label { font-size:12px; font-weight:850; color:#173b8c; white-space:nowrap; }
+        .ncpr-tenant-select { border-radius:999px; border:1.5px solid rgba(33,77,187,.25); padding:6px 14px; font-size:13px; font-weight:750; color:#173b8c; background:#fff; min-width:200px; }
 
         .ncpr-layout { display:grid; grid-template-columns:200px 200px 1fr; gap:18px; align-items:start; }
         .ncpr-col-panel { position:sticky; top:64px; }

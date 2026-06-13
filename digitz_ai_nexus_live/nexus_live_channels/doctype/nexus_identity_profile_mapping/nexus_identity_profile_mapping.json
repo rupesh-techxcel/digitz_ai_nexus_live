@@ -1,43 +1,54 @@
 {
- "actions": [],
- "creation": "2026-06-10 00:00:00",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "identity_type",
-  "knowledge_profile"
- ],
- "fields": [
-  {
-   "fieldname": "identity_type",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Identity Type",
-   "options": "Nexus Identity Type",
-   "reqd": 1
-  },
-  {
-   "fieldname": "knowledge_profile",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Knowledge Profile",
-   "options": "Knowledge Profile",
-   "reqd": 1
-  }
- ],
- "index_web_pages_for_search": 0,
- "istable": 1,
- "links": [],
- "modified": "2026-06-10 00:00:00",
- "modified_by": "Administrator",
- "module": "Nexus Live Channels",
- "name": "Nexus Identity Profile Mapping",
- "owner": "Administrator",
- "permissions": [],
- "row_format": "Dynamic",
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "track_changes": 0
+  "actions": [],
+  "creation": "2026-06-10 00:00:00",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "knowledge_access_rule",
+    "identity_type",
+    "knowledge_profile"
+  ],
+  "fields": [
+    {
+      "fieldname": "knowledge_access_rule",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Identity Knowledge Rule",
+      "options": "Nexus Identity Knowledge Rule",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "knowledge_access_rule.identity_type",
+      "fieldname": "identity_type",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Identity Type",
+      "options": "Nexus Identity Type",
+      "read_only": 1
+    },
+    {
+      "fetch_from": "knowledge_access_rule.knowledge_profile",
+      "fieldname": "knowledge_profile",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Knowledge Profile",
+      "options": "Knowledge Profile",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-13 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Identity Profile Mapping",
+  "owner": "Administrator",
+  "permissions": [],
+  "row_format": "Dynamic",
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
 }

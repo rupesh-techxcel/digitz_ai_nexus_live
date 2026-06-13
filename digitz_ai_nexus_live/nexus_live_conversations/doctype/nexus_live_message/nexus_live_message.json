@@ -35,7 +35,7 @@
       "fieldname": "sender_agent",
       "fieldtype": "Link",
       "label": "Sender Agent",
-      "options": "Nexus Live Agent"
+      "options": "Nexus AI Agent Profile"
     },
     {
       "fieldname": "message",

@@ -7,16 +7,20 @@ from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
 
 @frappe.whitelist()
-def get_page_data():
+def get_page_data(tenant=None):
+    channel_filters = {"enabled": 1}
+    if tenant:
+        channel_filters["tenant"] = tenant
+
     channels = frappe.get_all(
         "Nexus Live Channel",
-        filters={"enabled": 1},
+        filters=channel_filters,
         fields=["name", "channel_code", "channel_name", "channel_type"],
         order_by="channel_name asc",
     )
     profiles = frappe.get_all(
         "Nexus AI Agent Profile",
-        fields=["name", "agent"],
+        fields=["name", "agent_name"],
         order_by="name asc",
     )
     identity_profiles = frappe.get_all(
@@ -46,6 +50,7 @@ def get_channel_categories(channel):
 
 @frappe.whitelist()
 def get_category_routes(channel, category_code):
+    # category_code is actually the chat category doc name (e.g. NEXUS-PLATFORM-KNOW-HOW-DIGITZ-AI-NEXUS)
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"channel": channel, "chat_category": category_code},
@@ -116,7 +121,7 @@ def get_route_chain(channel, category_code, route_name=None, identity_type=None)
     profile = frappe.get_doc("Nexus AI Agent Profile", profile_name)
     result["profile"] = {
         "name": profile.name,
-        "agent": profile.agent,
+        "agent": profile.agent_name,
         "tone": profile.tone,
         "confidence_threshold": profile.confidence_threshold,
         "escalation_enabled": profile.escalation_enabled,
