@@ -28,7 +28,7 @@ Enquiry, or Sales.
 | `category_code` | Stable category identifier |
 | `category_label` | Display label shown to the user |
 | `channel` | Live channel this category belongs to |
-| `requires_authentication` | Hide from guests when enabled |
+| `visibility` | Select: **External** (public widget only) / **Internal** (desk chat only) / **Both** (both interfaces). Controls which interface surfaces this category. `_send_category_picker` filters by this field: public widget shows External + Both; internal desk chat shows Internal + Both. |
 | `identity_verification_mode` | Whether the category needs email OTP before chat starts |
 | `allow_public_fallback` | For Registered Email OTP, allow unregistered verified emails to continue as Public |
 | `enabled` | Controls visibility |
@@ -80,7 +80,6 @@ and a set of **permitted Identity Profiles**.
 | `channel` | Link → Nexus Live Channel |
 | `chat_category` | Link → Nexus Chat Category |
 | `ai_agent_profile` | AI behavior config (tone, fallback, escalation, thresholds) |
-| `is_public_route` | When enabled: serves unregistered public visitors. No profile matching. |
 | `identity_profiles` | Child table of permitted `Nexus Identity Profile` records |
 | `enabled` | Active flag |
 | `priority` | Lower = higher priority when multiple routes match |
@@ -92,10 +91,12 @@ and a set of **permitted Identity Profiles**.
 
 **Two route types:**
 
-| Route type | `is_public_route` | Knowledge |
+| Route type | `open_to_all` | Knowledge |
 |---|---|---|
-| Public route | 1 | Returns `["Public"]` only — no Identity Profile matching performed |
-| Registered route | 0 | Intersects visitor's identity profiles with route's permitted profiles |
+| Public route | `True` (no identity_profiles configured) | Returns `["Public"]` only — no Identity Profile matching performed |
+| Registered route | `False` (identity_profiles present) | Intersects visitor's identity profiles with route's permitted profiles |
+
+`open_to_all` is derived at runtime as `not bool(identity_profiles)` — a route with an empty `identity_profiles` child table is automatically open to all Public visitors. There is no separate boolean field.
 
 The route does not directly own knowledge. Knowledge access is resolved through Identity Profiles
 assigned to the person (see Section 5).
@@ -184,7 +185,7 @@ start_live_chat(payload)
 │   │
 │   ├── resolve_behavior_from_chat_category(category, identity_type, is_authenticated, payload)
 │   │       Public identity:
-│   │         → find route with is_public_route = 1
+│   │         → find route where open_to_all = not bool(identity_profiles)
 │   │         → knowledge_profile_names = []
 │   │       Registered identity:
 │   │         → find person's registry
@@ -338,7 +339,7 @@ For each chat category and route:
 
 ```
 [ ] Nexus Category Identity Route exists for the channel + category combination
-[ ] Public route: is_public_route = 1, ai_agent_profile assigned
+[ ] Public route: identity_profiles left empty (open_to_all = True), ai_agent_profile assigned
 [ ] Registered routes: permitted identity_profiles configured
 [ ] ai_agent_profile has behavior configured (prompt, tone, thresholds)
 [ ] Identity Profiles have identity_mappings rows for all relevant identity types

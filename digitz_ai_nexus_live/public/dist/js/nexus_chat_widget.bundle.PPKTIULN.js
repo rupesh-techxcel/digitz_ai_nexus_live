@@ -8,6 +8,7 @@
       open: false,
       conversation_id: null,
       agent_instance: null,
+      agent_name: null,
       locked: false,
       sending: false,
       tenant: cfg.tenant || null,
@@ -151,6 +152,10 @@
                         </button>
                     </div>
                     <div id="ncw-closed-bar" style="display:none;"></div>
+                    <div id="ncw-brand">
+                        <svg id="ncw-brand-spark" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1l1.2 3.8H11L8 7l1.2 3.8L6 8.6 2.8 10.8 4 7 1 4.8h3.8z" fill="url(#ncw-spark-grad)"/><defs><linearGradient id="ncw-spark-grad" x1="1" y1="1" x2="11" y2="11" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2158c7"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs></svg>
+                        Powered by <span id="ncw-brand-name">Nexus AI</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -215,17 +220,24 @@
           append_error(data.error || "An error occurred.");
           return;
         }
+        var _rt_agent_lbl = data.agent_name || S.agent_name || null;
         if (data.response_type === "category_picker") {
           var _rt_cats = data.categories || [];
-          typewrite_message("agent", data.message || data.answer, null, null, function() {
+          typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
             render_category_picker(_rt_cats);
           });
           return;
         }
         if (data.status === "closed" || data.response_type === "conversation_closed") {
-          typewrite_message("agent", data.message || data.answer, null, null, function() {
+          typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
             lock_input("This conversation is closed. Start a new chat to continue.");
           });
+          return;
+        }
+        if (data.response_type === "visitor_message")
+          return;
+        if (data.response_type === "agent_joined") {
+          append_system_message(data.message || data.answer);
           return;
         }
         if (data.sender_type === "Human Agent") {
@@ -243,7 +255,7 @@
           return;
         }
         var _rt_offer = data.identity_verification_offer;
-        typewrite_message("agent", data.message || data.answer, null, null, function() {
+        typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
           if (_rt_offer && !is_desk())
             render_identity_verification_prompt();
         });
@@ -383,18 +395,20 @@
           _subscribe_to_conversation(data.conversation_id);
         }
         S.agent_instance = data.agent_instance || null;
-        set_header(data.agent_name || "AI Assistant", "");
+        S.agent_name = data.agent_name || null;
+        set_header(S.agent_name || "AI Assistant", "AI Assistant \xB7 Online");
         set_input_placeholder("Type a message\u2026");
         const initial = data.initial_messages || [];
         initial.forEach(function(msg) {
+          var _lbl = msg.agent_name || S.agent_name || null;
           if (msg.response_type === "category_picker") {
             var _i_cats = msg.categories || [];
-            typewrite_message("agent", msg.message || msg.answer, null, null, function() {
+            typewrite_message("agent", msg.message || msg.answer, null, _lbl, function() {
               render_category_picker(_i_cats);
             });
           } else if (msg.message || msg.answer) {
             var _i_offer = msg.identity_verification_offer;
-            typewrite_message("agent", msg.message || msg.answer, null, null, function() {
+            typewrite_message("agent", msg.message || msg.answer, null, _lbl, function() {
               if (_i_offer && !is_desk())
                 render_identity_verification_prompt();
             });
@@ -977,10 +991,13 @@
 .ncw-sender-label {
     font-size: 10px;
     font-weight: 700;
-    color: #276749;
+    color: #2158c7;
     margin-bottom: 2px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
+}
+.ncw-msg-human-agent .ncw-sender-label {
+    color: #276749;
 }
 .ncw-bubble-system {
     background: #fefcbf;
@@ -1213,6 +1230,34 @@
     background: #f7f9fc;
     border-top: 1px solid #edf2ff;
 }
+#ncw-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 12px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.01em;
+    background: #fff;
+    border-top: 1px solid #f1f5f9;
+    user-select: none;
+}
+#ncw-brand-spark {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    margin-top: -1px;
+}
+#ncw-brand-name {
+    font-weight: 800;
+    background: linear-gradient(90deg, #2158c7 0%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    color: transparent;
+}
         `;
       document.head.appendChild(s);
     }
@@ -1234,4 +1279,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.IRMS7Z43.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.PPKTIULN.js.map

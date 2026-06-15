@@ -18,7 +18,7 @@ class NexusLiveConsole {
 		this.refresh_interval = null;
 		this.active_conversation_id = null;
 		this.conversations       = [];
-		this.active_filter       = 'all';
+		this.active_filter       = 'open';
 		this.active_category     = 'all';
 		this.search_query        = '';
 		// Tenant
@@ -29,6 +29,10 @@ class NexusLiveConsole {
 		this.agent_context   = null;  // { agent, nickname, categories[] }
 		this.panel_open      = false;
 		this.panel_conv_id   = null;
+		// Track last known message per conversation to detect new messages after poll
+		this._last_msg_map   = {};
+		// Conversations with unread new messages — blink until user opens them
+		this._pending_attention = new Set();
 	}
 
 	async init() {
@@ -70,7 +74,8 @@ class NexusLiveConsole {
 			if (ctx.is_agent) {
 				this.is_agent_mode  = true;
 				this.agent_context  = ctx;
-				this.active_filter  = 'escalated';
+				// Show Open conversations by default; agents can change the dropdown to see more
+				this.active_filter  = 'open';
 			}
 		} catch(e) {
 			// Non-agents get no context — silent
@@ -135,10 +140,7 @@ class NexusLiveConsole {
 					<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
 				</svg>
 				Agent mode — signed in as <strong>${frappe.utils.escape_html(this.agent_context.nickname)}</strong>
-				&nbsp;·&nbsp; Showing escalated conversations
-				${this.agent_context.categories.length
-					? `for categories: <strong>${this.agent_context.categories.map(c => frappe.utils.escape_html(c)).join(', ')}</strong>`
-					: ''}
+				&nbsp;·&nbsp; Showing all active external conversations
 			</div>` : '';
 
 		this.body.html(`
@@ -208,30 +210,22 @@ class NexusLiveConsole {
 						</div>
 					</div>
 					<div class="nlc-filter-row">
-						${this.is_agent_mode
-							? `<div class="nlc-filter-chips">
-								<span class="nlc-filter-label">Status</span>
-								<span class="nlc-agent-status-lock">
-									<span class="nlc-badge-dot" style="background:#e53e3e;width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;"></span>
-									Escalated (locked)
-								</span>
-							</div>`
-							: `<div class="nlc-filter-chips">
-								<span class="nlc-filter-label">Status</span>
-								<div class="nlc-select-wrap">
-									<select id="nlc-status-select" class="nlc-select">
-										<option value="all">All Statuses</option>
-										<option value="open">Open</option>
-										<option value="responding">Responding</option>
-										<option value="waiting">Waiting</option>
-										<option value="escalated">Escalated</option>
-										<option value="closed">Closed</option>
-									</select>
-									<svg class="nlc-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-										<polyline points="6 9 12 15 18 9"/>
-									</svg>
-								</div>
-							</div>`}
+						<div class="nlc-filter-chips">
+						<span class="nlc-filter-label">Status</span>
+						<div class="nlc-select-wrap">
+							<select id="nlc-status-select" class="nlc-select">
+								<option value="all">All Statuses</option>
+								<option value="open" selected>Open</option>
+								<option value="responding">Responding</option>
+								<option value="waiting">Waiting</option>
+								<option value="escalated">Escalated</option>
+								<option value="closed">Closed</option>
+							</select>
+							<svg class="nlc-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+								<polyline points="6 9 12 15 18 9"/>
+							</svg>
+						</div>
+					</div>
 						<div class="nlc-search-wrap">
 							<svg class="nlc-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -309,10 +303,34 @@ class NexusLiveConsole {
 				method: 'digitz_ai_nexus_live.api.live.get_active_conversations',
 				args: { tenant: this.tenant || '' },
 			});
+			const prev_map = this._last_msg_map;
 			this.conversations = (r.message || {}).conversations || [];
+
+			// Build new snapshot and detect which conversations have new messages
+			const new_map = {};
+			const changed_ids = new Set();
+			this.conversations.forEach(c => {
+				const key = c.last_message || c.last_response || '';
+				new_map[c.conversation_id] = key;
+				if (prev_map[c.conversation_id] !== undefined && prev_map[c.conversation_id] !== key) {
+					changed_ids.add(c.conversation_id);
+				}
+			});
+			this._last_msg_map = new_map;
+
+			// Add newly changed conversations to the attention set,
+			// but skip the one currently open in the panel (user is already watching it)
+			changed_ids.forEach(id => {
+				if (this.panel_open && id === this.panel_conv_id) return;
+				this._pending_attention.add(id);
+			});
+
 			this.rebuild_category_chips();
 			this.render_grid(this.filtered_conversations());
 			this.update_stats(this.filtered_conversations());
+
+			// Re-apply blink to all pending-attention cards (survives re-render)
+			this._apply_attention_blinks();
 		} catch(e) {
 			console.error('Failed to load conversations', e);
 		}
@@ -508,9 +526,16 @@ class NexusLiveConsole {
 	// ─── Routing ───────────────────────────────────────────────────────────────
 
 	_open_conversation(conversation_id) {
-		// Card clicks in the console always open the conversation panel.
-		// The chat widget balloon is the sole entry point for personal knowledge-exploring chat.
+		// Clear blink attention when the user opens the conversation
+		this._pending_attention.delete(conversation_id);
+		this.body.find(`.nlc-card[data-id="${conversation_id}"]`).removeClass('nlc-card-new-msg');
 		this.open_escalation_panel(conversation_id);
+	}
+
+	_apply_attention_blinks() {
+		this._pending_attention.forEach(id => {
+			this.body.find(`.nlc-card[data-id="${id}"]`).addClass('nlc-card-new-msg');
+		});
 	}
 
 	// ─── Escalation Panel ──────────────────────────────────────────────────────
@@ -537,6 +562,9 @@ class NexusLiveConsole {
 			this.body.find('#nep-overlay').html(this._panel_html(detail));
 			this._bind_panel_events(detail);
 			this._subscribe_panel_realtime(conversation_id);
+			// Scroll history to the latest message
+			const $hist = this.body.find('#nep-history');
+			$hist.scrollTop($hist[0].scrollHeight);
 		} catch(e) {
 			this.body.find('#nep-overlay').html(`
 				<div class="nep-panel">
@@ -636,29 +664,38 @@ class NexusLiveConsole {
 			history_html = before + escalation_divider + after;
 		}
 
+		const is_closed = conv.status === 'Closed';
+
 		let claim_section = '';
-		if (!claimed_by) {
-			if (this.is_agent_mode) {
-				claim_section = `
-					<div id="nep-claim-wrap" class="nep-claim-wrap">
-						<button class="nep-claim-btn" id="nep-claim-btn">
-							Take this conversation
-						</button>
-					</div>`;
-			}
-		} else if (is_mine) {
+		if (is_closed) {
 			claim_section = `<div id="nep-claim-wrap" class="nep-claim-wrap">
-				<span class="nep-claimed-mine">You are handling this conversation</span>
+				<div class="nep-closed-banner">&#x1F512; This conversation is closed</div>
 			</div>`;
 		} else {
-			claim_section = `<div id="nep-claim-wrap" class="nep-claim-wrap">
-				<div class="nep-claimed-banner">
-					Taken by <strong>${frappe.utils.escape_html(claimed_nick || claimed_by)}</strong>
-				</div>
-			</div>`;
+			const can_take = this.is_agent_mode || frappe.user.has_role('System Manager');
+			if (!claimed_by) {
+				if (can_take) {
+					claim_section = `
+						<div id="nep-claim-wrap" class="nep-claim-wrap">
+							<button class="nep-claim-btn" id="nep-claim-btn">
+								Take this conversation
+							</button>
+						</div>`;
+				}
+			} else if (is_mine) {
+				claim_section = `<div id="nep-claim-wrap" class="nep-claim-wrap">
+					<span class="nep-claimed-mine">You are handling this conversation</span>
+				</div>`;
+			} else {
+				claim_section = `<div id="nep-claim-wrap" class="nep-claim-wrap">
+					<div class="nep-claimed-banner">
+						Taken by <strong>${frappe.utils.escape_html(claimed_nick || claimed_by)}</strong>
+					</div>
+				</div>`;
+			}
 		}
 
-		const input_disabled = (!this.is_agent_mode && !frappe.user.has_role('System Manager'))
+		const input_disabled = is_closed || (!this.is_agent_mode && !frappe.user.has_role('System Manager'))
 			|| (is_others) ? 'disabled' : '';
 
 		return `
@@ -669,9 +706,10 @@ class NexusLiveConsole {
 						<div class="nep-panel-title">
 							<strong>${frappe.utils.escape_html(visitor)}</strong>
 							${cat ? `<span class="nep-panel-cat">${frappe.utils.escape_html(cat)}</span>` : ''}
+							${is_closed ? `<span class="nep-panel-status-closed">Closed</span>` : ''}
 						</div>
 						<div class="nep-panel-actions">
-							${(this.is_agent_mode || frappe.user.has_role('System Manager'))
+							${!is_closed && (this.is_agent_mode || frappe.user.has_role('System Manager'))
 								? `<button class="nep-action-btn nep-resolve-btn" id="nep-resolve-btn">
 										Resolve (AI resumes)
 									</button>
@@ -688,23 +726,26 @@ class NexusLiveConsole {
 
 					${claim_section}
 
-					<div class="nep-input-wrap" id="nep-input-wrap">
-						<textarea
-							id="nep-input"
-							class="nep-input"
-							placeholder="${is_mine || (!claimed_by && this.is_agent_mode)
-								? `Reply as ${frappe.utils.escape_html(my_nickname || 'Agent')}…`
-								: 'Read-only — another agent is handling this'}"
-							${input_disabled}
-							rows="2"
-						></textarea>
-						<button class="nep-send-btn" id="nep-send-btn" ${input_disabled}>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
-								<line x1="22" y1="2" x2="11" y2="13"/>
-								<polygon points="22 2 15 22 11 13 2 9 22 2"/>
-							</svg>
-						</button>
-					</div>
+					${is_closed
+						? `<div class="nep-input-closed">This conversation is closed — no further replies can be sent.</div>`
+						: `<div class="nep-input-wrap" id="nep-input-wrap">
+							<textarea
+								id="nep-input"
+								class="nep-input"
+								placeholder="${is_mine || (!claimed_by && this.is_agent_mode)
+									? `Reply as ${frappe.utils.escape_html(my_nickname || 'Agent')}…`
+									: 'Read-only — another agent is handling this'}"
+								${input_disabled}
+								rows="2"
+							></textarea>
+							<button class="nep-send-btn" id="nep-send-btn" ${input_disabled}>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
+									<line x1="22" y1="2" x2="11" y2="13"/>
+									<polygon points="22 2 15 22 11 13 2 9 22 2"/>
+								</svg>
+							</button>
+						</div>`
+					}
 				</div>
 			</div>
 		`;
@@ -760,11 +801,28 @@ class NexusLiveConsole {
 			}
 		});
 
-		this.body.on('click', '#nep-close-conv-btn', async () => {
-			const confirmed = await new Promise(res =>
-				frappe.confirm('Close this conversation?', () => res(true), () => res(false))
+		this.body.on('click', '#nep-close-conv-btn', () => {
+			// Replace the button with an inline confirm bar inside the panel header
+			const $actions = me.body.find('.nep-panel-actions');
+			$actions.html(`
+				<span class="nep-confirm-label">Close this conversation?</span>
+				<button class="nep-action-btn nep-confirm-yes-btn" id="nep-confirm-close-yes">Yes, close</button>
+				<button class="nep-action-btn nep-confirm-no-btn"  id="nep-confirm-close-no">Cancel</button>
+			`);
+		});
+
+		this.body.on('click', '#nep-confirm-close-no', () => {
+			// Restore original action buttons
+			const is_agent_or_mgr = me.is_agent_mode || frappe.user.has_role('System Manager');
+			me.body.find('.nep-panel-actions').html(
+				is_agent_or_mgr
+					? `<button class="nep-action-btn nep-resolve-btn" id="nep-resolve-btn">Resolve (AI resumes)</button>
+					   <button class="nep-action-btn nep-close-conv-btn" id="nep-close-conv-btn">Close conversation</button>`
+					: ''
 			);
-			if (!confirmed) return;
+		});
+
+		this.body.on('click', '#nep-confirm-close-yes', async () => {
 			try {
 				await frappe.call({
 					method: 'digitz_ai_nexus_live.api.agent_console.close_conversation_by_agent',
@@ -774,12 +832,19 @@ class NexusLiveConsole {
 				me.close_escalation_panel();
 				me.load_conversations();
 			} catch(e) {
-				frappe.msgprint('Failed to close conversation.');
+				frappe.show_alert({ message: 'Failed to close conversation.', indicator: 'red' });
 			}
 		});
 	}
 
 	_subscribe_panel_realtime(conversation_id) {
+		// Join the conversation's task room so nexus_chat_response events are received
+		if (typeof frappe.realtime.task_subscribe === 'function') {
+			frappe.realtime.task_subscribe(conversation_id);
+		} else {
+			frappe.realtime.emit('task_subscribe', conversation_id);
+		}
+
 		const me = this;
 		frappe.realtime.on('nexus_chat_response', function(data) {
 			if (!me.panel_open || data.conversation_id !== me.panel_conv_id) return;
@@ -807,8 +872,8 @@ class NexusLiveConsole {
 			: 'nep-msg-ai';
 		const sender = frappe.utils.escape_html(msg.sender_name || st);
 		const $hist  = this.body.find('#nep-history');
-		$hist.append(`
-			<div class="nep-msg ${cls}">
+		const $msg   = $(`
+			<div class="nep-msg ${cls} nep-msg-flash">
 				<div class="nep-msg-meta">
 					<span class="nep-msg-sender">${sender}</span>
 					<span class="nep-msg-time">just now</span>
@@ -816,7 +881,12 @@ class NexusLiveConsole {
 				<div class="nep-msg-bubble">${frappe.utils.escape_html(msg.message)}</div>
 			</div>
 		`);
+		$hist.append($msg);
 		$hist.scrollTop($hist[0].scrollHeight);
+		// Remove flash highlight after animation
+		setTimeout(() => $msg.removeClass('nep-msg-flash'), 1500);
+
+		// Do not blink — the panel is already open, the user is watching this conversation
 	}
 
 	async _panel_send() {
@@ -841,6 +911,7 @@ class NexusLiveConsole {
 	}
 
 	close_escalation_panel() {
+		const conv_id = this.panel_conv_id;
 		this.panel_open    = false;
 		this.panel_conv_id = null;
 		this.body.find('#nep-overlay').remove();
@@ -851,6 +922,16 @@ class NexusLiveConsole {
 		this.body.off('keydown', '#nep-input');
 		this.body.off('click', '#nep-resolve-btn');
 		this.body.off('click', '#nep-close-conv-btn');
+		this.body.off('click', '#nep-confirm-close-yes');
+		this.body.off('click', '#nep-confirm-close-no');
+		// Leave the conversation task room
+		if (conv_id) {
+			if (typeof frappe.realtime.task_unsubscribe === 'function') {
+				frappe.realtime.task_unsubscribe(conv_id);
+			} else {
+				frappe.realtime.emit('task_unsubscribe', conv_id);
+			}
+		}
 	}
 
 	// ─── Polling ───────────────────────────────────────────────────────────────
@@ -1693,6 +1774,39 @@ class NexusLiveConsole {
 			color: #718096;
 		}
 
+		.nep-closed-banner {
+			font-size: 13px;
+			font-weight: 600;
+			color: #744210;
+			background: #fefce8;
+			border: 1px solid #f59e0b;
+			border-radius: 6px;
+			padding: 8px 18px;
+		}
+
+		.nep-panel-status-closed {
+			font-size: 11px;
+			font-weight: 700;
+			background: #fed7aa;
+			color: #7c2d12;
+			border-radius: 4px;
+			padding: 2px 8px;
+			margin-left: 8px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+		}
+
+		.nep-input-closed {
+			padding: 14px 20px;
+			background: #fafafa;
+			border-top: 1.5px solid #e2e8f0;
+			font-size: 13px;
+			color: #a0aec0;
+			text-align: center;
+			font-style: italic;
+			flex-shrink: 0;
+		}
+
 		.nep-input-wrap {
 			display: flex;
 			align-items: flex-end;
@@ -1741,6 +1855,44 @@ class NexusLiveConsole {
 			text-align: center;
 			color: #718096;
 			font-size: 14px;
+		}
+
+		/* ── Inline close confirmation (replaces frappe.confirm to stay within overlay z-index) ── */
+		.nep-confirm-label {
+			font-size: 13px;
+			font-weight: 600;
+			color: #c53030;
+			white-space: nowrap;
+		}
+		.nep-confirm-yes-btn {
+			background: #fff5f5;
+			color: #c53030;
+			border-color: #fed7d7;
+		}
+		.nep-confirm-yes-btn:hover { background: #fed7d7; }
+		.nep-confirm-no-btn {
+			background: #f7f9fc;
+			color: #4a5568;
+			border-color: #e2e8f0;
+		}
+		.nep-confirm-no-btn:hover { background: #e2e8f0; }
+
+		/* ── New message flash on panel message ── */
+		.nep-msg-flash .nep-msg-bubble {
+			animation: nep-msg-flash 1.5s ease-out;
+		}
+		@keyframes nep-msg-flash {
+			0%   { box-shadow: 0 0 0 3px rgba(33,88,199,0.5); }
+			100% { box-shadow: none; }
+		}
+
+		/* ── Card blink on new message — continues until user opens the chat ── */
+		.nlc-card-new-msg {
+			animation: nlc-card-blink 0.8s ease-in-out infinite;
+		}
+		@keyframes nlc-card-blink {
+			0%, 100% { border-color: #e8edf4; box-shadow: none; }
+			50%       { border-color: #e53e3e; box-shadow: 0 0 0 3px rgba(229,62,62,0.25); }
 		}
 
 		</style>`);

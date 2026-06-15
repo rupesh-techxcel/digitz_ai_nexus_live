@@ -101,8 +101,9 @@ The single event for all server-to-client chat messages. The `response_type` fie
 |---|---|---|
 | `message` | Normal AI or human agent message | Render bubble; if `sender_type="Human Agent"` render green with agent name |
 | `category_picker` | After greeting when no category selected | Show category selection UI; `categories` array in payload |
-| `message_held` | Visitor sends message while escalated | Show amber system message; input stays disabled |
-| `visitor_message` | Visitor message forwarded to agent panel | Agent panel appends the message |
+| `message_held` | Visitor sends message while escalated and no agent has claimed yet | Show amber system message; input stays disabled |
+| `visitor_message` | Visitor message forwarded to agent panel | Agent panel appends the message; **visitor widget ignores this event** (guard: `if (data.response_type === 'visitor_message') return;`) to prevent double-render |
+| `agent_joined` | Human agent claimed a non-escalated conversation | Rendered as `append_system_message()` in the widget (yellow italic box): "A support agent is joining this conversation to assist you." |
 | `escalation_resolved` | Human agent resolved escalation | Show system message; unlock input |
 | `conversation_closed` | Conversation closed (by agent or idle timeout) | Show farewell; lock input permanently |
 
@@ -122,11 +123,13 @@ The single event for all server-to-client chat messages. The `response_type` fie
     "fallback_used": 0,
     "identity_verification_offer": false,
     "agent_code": "PUBLIC-AI-ASSISTANT",
-    "agent_name": "Public AI Assistant",
+    "agent_name": "Aria",
     "tenant": "DIGITZ-NEXUS",
     "channel": "WEBSITE-CHAT"
 }
 ```
+
+`agent_name` contains the agent's **nickname** (from `get_agent_nickname(conversation)`, which reads from the frozen `ai_profile_snapshot_json`). The widget displays this as the sender label above every AI message bubble. All `publish_chat_response` calls for AI messages — including the initial greeting — include this field.
 
 **`identity_verification_offer: true`** is set when:
 - `identity_type = "Public"` (visitor is unidentified), AND
@@ -154,12 +157,17 @@ When `true`, the `message` field contains the `PUBLIC_IDENTITY_FALLBACK` offer t
     "conversation_id": "ABC123DEF456",
     "status": "await_category",
     "response_type": "category_picker",
-    "message": "To help direct your query, please select a topic from the options below.",
+    "message": "Nice to meet you, Alex! To help direct your query, please select a topic from the options below.",
+    "agent_name": "Aria",
     "categories": [
         { "category_code": "GENERAL-SUPPORT", "category_label": "General Support", "display_order": 1 }
     ]
 }
 ```
+
+`_send_category_picker` accepts an `is_internal` parameter. When `is_internal=True`, it filters categories to `visibility` = Internal or Both; when `is_internal=False` (public widget), it filters to External or Both.
+
+If the filtered list is empty (no categories match the visibility filter for the channel), `_send_category_picker` returns `None` immediately — no message is sent and `await_category` intent is NOT set. The caller handles this by sending a plain "How can I help you today?" message instead.
 
 **Error payload:**
 ```json
@@ -217,6 +225,9 @@ frappe.realtime.on("nexus_chat_response", function(data) {
         return;
     }
 
+    // visitor_message events are for the console panel only — ignore in visitor widget
+    if (data.response_type === 'visitor_message') return;
+
     switch (data.response_type) {
         case "message":
             if (data.sender_type === "Human Agent") {
@@ -230,6 +241,9 @@ frappe.realtime.on("nexus_chat_response", function(data) {
             break;
         case "message_held":
             render_system_message(data.message);  // amber italic
+            break;
+        case "agent_joined":
+            append_system_message(data.message);  // yellow italic box
             break;
         case "escalation_resolved":
             render_system_message(data.message);
@@ -264,7 +278,7 @@ Args   : channel (required), visitor_email (optional)
 ```
 
 Returns the list of chat categories that the current visitor can use on the given channel. Filters by:
-1. `requires_authentication` — hides auth-only categories from guests
+1. `visibility` — public widget shows External + Both; internal desk chat shows Internal + Both
 2. Active route existence — only shows categories that have a `Nexus Category Identity Route` for the visitor's resolved identity type
 
 **Response:**
@@ -391,8 +405,9 @@ Returns live conversations for the console. Behavior depends on the caller's rol
 - Response: `{ conversations: [...], mode: "admin" }`
 
 **Agent mode** (has active `Nexus User Profile Assignment` with `can_handle_escalations=1`, NOT System Manager):
-- Returns only `Escalated` conversations
-- Further filtered to the agent's `escalation_categories` (child table on the assignment)
+- Returns ALL active external conversations: status `IN (Open, Responding, Escalated, Waiting)`
+- Excludes `user_type=Desk User` (same as admin mode)
+- The `assigned_categories` restriction is **not** applied to the query — agents see all categories
 - Response: `{ conversations: [...], mode: "agent", agent, agent_nickname, assigned_categories }`
 
 Both modes include `escalated_at` and `human_agent` fields per conversation.
@@ -430,10 +445,13 @@ Returns `{ is_agent, agent, nickname, categories[] }`. Used by the console on pa
 #### `claim_conversation`
 ```
 Method : POST
-Auth   : can_handle_escalations assignment
+Auth   : can_handle_escalations assignment (or System Manager)
 Args   : conversation_id
 ```
-Claims an `Escalated` conversation. Sets `human_agent=session_user`, `escalation_status=Accepted`. Fires `nexus_escalation_claimed` realtime event so other agents see it as taken.
+Claims any active conversation (Open, Responding, Waiting, or Escalated). Sets `human_agent=session_user`, `escalation_status=Accepted`. Fires `nexus_escalation_claimed` realtime event so other agents see it as taken.
+
+- If the conversation is not already `Escalated`: auto-escalates via `mark_escalated()`, then sends a System message "A support agent is joining this conversation to assist you." to the visitor's widget via `response_type: "agent_joined"` (rendered as a yellow italic system box, not an AI bubble).
+- System Managers can claim without needing `can_handle_escalations` on their profile.
 
 #### `agent_send_message`
 ```
@@ -441,7 +459,7 @@ Method : POST
 Auth   : can_handle_escalations assignment
 Args   : conversation_id, message
 ```
-Stores the message as `sender_type="Human Agent"` and publishes it via `nexus_chat_response` (`sender_type="Human Agent"`, `sender_name=nickname`) so the visitor's widget displays a green agent bubble.
+Stores the message as `sender_type="Human Agent"` and publishes it via `nexus_chat_response` (`sender_type="Human Agent"`, `sender_name=nickname`) so the visitor's widget displays a green agent bubble. `sender_agent` (Link to `Nexus AI Agent Profile`) is left blank — that field is for AI bot records only. Human agent identity is tracked via `conversation.human_agent` (Frappe user ID).
 
 #### `resolve_escalation`
 ```
@@ -493,15 +511,27 @@ start_chat(payload) — DESK USER
 │
 ├── 7. update_conversation_assignment(conversation, agent) → status=Responding
 │
+├── 8. Resolve visitor_name from Frappe User record
+│       frappe.get_value("User", session_user, "first_name") → first_name
+│       conversation.visitor_name = first_name
+│       (No name prompt is shown; name is resolved automatically for desk users)
+│
 ├── If message provided:
 │   ├── add_message(sender_type="User", message)
 │   ├── _enqueue_ai_response(conversation_id, payload)
 │   └── Return: { status: "processing", conversation_id, agent_code, agent_name }
 │
 └── If NO message (widget opened cold):
-    ├── add_message(sender_type="AI Agent", message=greeting)  ← DB only, no realtime
-    └── Return: { status: "ready", greeting: "Hello! I'm your AI assistant. How can I help you today?",
-                  conversation_id, agent_code, agent_name }
+    ├── agent_nick = get_agent_nickname(conversation, agent)
+    ├── If no chat_category:
+    │       greeting = "Hi {first_name}! I'm {agent_nick}, your AI assistant. How can I help you today?"
+    │       add_message(sender_type="AI Agent", message=greeting)  ← DB only, no realtime
+    │       Return: { status: "ready", greeting: greeting, conversation_id, agent_code, agent_name }
+    └── If chat_category selected:
+            greeting = "Hi {first_name}! I'm {agent_nick}, your AI assistant. Please select a topic so I can assist you better."
+            add_message(sender_type="AI Agent", message=greeting)  ← DB only, no realtime
+            _send_category_picker(conversation, is_internal=True)
+            Return: { status: "ready", greeting: greeting, conversation_id, agent_code, agent_name }
 ```
 
 The greeting is returned in the HTTP response (not via realtime) to avoid a race condition
@@ -526,7 +556,7 @@ start_chat(payload) — VISITOR / GUEST
 │   │       Priority: trust_payload_identity → OTP challenge → registry blocked check
 │   │           → Frappe session user type → api_scope → "Public"
 │   ├── resolve_behavior_from_chat_category(category, identity_type, is_authenticated, payload)
-│   │       Public: is_public_route=1 route → knowledge_profile_names = []
+│   │       Public: open_to_all route (empty identity_profiles) → knowledge_profile_names = []
 │   │       Registered: registry → identity profiles ∩ route permitted profiles
 │   │           → knowledge_profile_names (for matching identity_type)
 │   │       Throws if no active route
@@ -546,18 +576,25 @@ start_chat(payload) — VISITOR / GUEST
 ├── 8. If message provided: add_message(sender_type="Visitor", message)
 │
 ├── 9. Send greeting via realtime:
-│       publish_chat_response → response_type="message"
-│       message: "Hello! Welcome. I'm your AI assistant and I'm here to help you today."
+│       agent_nick = get_agent_nickname(conversation, agent)
+│       publish_chat_response → response_type="message", agent_name=agent_nick
+│       message: "Hi! I'm {agent_nick}, your AI assistant. It's great to have you here!"
 │
-├── 10a. If behavior.collect_visitor_name AND no visitor_name:
+├── 10a. If no visitor_name (always true for public visitors who haven't provided a name):
 │           Send name prompt via realtime → response_type="message"
+│           message: "Before we get started, could I get your name please?"
 │           Set conversation.intent = "await_name"
 │           Return: { status: "awaiting_name", conversation_id, ... }
 │
 ├── 10b. Elif no chat_category selected:
-│           _send_category_picker(conversation) → response_type="category_picker"
-│           Set conversation.intent = "await_category"
-│           Return: { status: "await_category", conversation_id, ... }
+│           result = _send_category_picker(conversation, is_internal=False)
+│           If result is None (no External/Both categories configured):
+│               publish "How can I help you today?" → response_type="message"
+│               Return: { status: "ready", conversation_id, ... }
+│           Else:
+│               → response_type="category_picker"
+│               Set conversation.intent = "await_category"
+│               Return: { status: "await_category", conversation_id, ... }
 │
 └── 10c. Elif chat_category already provided:
             If message: _enqueue_ai_response()
@@ -584,8 +621,10 @@ send_chat_message(conversation_id, payload)
 │           add_message(sender_type="Visitor"|"User", message)
 │           publish_chat_response → response_type="visitor_message"
 │               (pushes visitor message to the agent panel)
-│           publish_chat_response → response_type="message_held"
-│               message: "Your message has been received. Our agent will respond shortly."
+│           If conversation.human_agent is NOT set (unclaimed escalation):
+│               publish_chat_response → response_type="message_held"
+│                   message: "Your message has been received. Our agent will respond shortly."
+│           (If human_agent IS set, message is stored and forwarded silently — no acknowledgment)
 │       Return: { status: "escalated", conversation_id }
 │
 ├── 5. enrich_payload_from_conversation(payload, conversation)
@@ -608,8 +647,13 @@ send_chat_message(conversation_id, payload)
 │
 ├── 8. If intent == "await_name":
 │       Set conversation.visitor_name = message (max 100 chars), intent=""
-│       _send_category_picker(conversation, greeting_name=visitor_name)
+│       result = _send_category_picker(conversation, greeting_name=visitor_name)
+│       If result is None (no External/Both categories configured):
+│           publish "Nice to meet you, {name}! How can I help you today?" via realtime
+│               → response_type="message" (sent directly, not via background job)
+│       Else:
 │           → publish_chat_response → response_type="category_picker"
+│           Set conversation.intent = "await_category"
 │       Return: { status: "name_collected", conversation_id }
 │
 ├── 9. If intent == "await_close_confirm":
@@ -636,16 +680,24 @@ send_chat_message(conversation_id, payload)
 When a visitor starts without pre-selecting a category, `continue_live_chat` drives them through an onboarding sequence using `conversation.intent`:
 
 ```
-(start) → greeting sent
+(start) → greeting sent ("Hi! I'm {agent_nick}, your AI assistant. It's great to have you here!")
               │
-              ├── behavior.collect_visitor_name?
-              │       YES → intent="await_name"
-              │               visitor sends name → intent cleared → intent="await_category"
-              │       NO  → intent="await_category"
-              │
-              └── visitor sends "__cat__:CODE" → category_code set, intent cleared
-                          → normal AI flow begins
+              └── visitor_name not set? (always true for new public visitors)
+                      YES → name prompt sent → intent="await_name"
+                              visitor sends name → visitor_name stored
+                                  → _send_category_picker() called
+                                      If categories exist:
+                                          → "Nice to meet you, {name}!..." + category picker shown
+                                          → intent="await_category"
+                                          → visitor sends "__cat__:CODE" → category_code set, intent cleared
+                                          → normal AI flow begins
+                                      If no External/Both categories (returns None):
+                                          → "Nice to meet you, {name}! How can I help you today?" sent directly
+                                          → intent cleared; normal AI flow begins immediately
+                      (NO branch removed — name collection is always on for public visitors)
 ```
+
+**Zero-category configuration:** If no External or Both visibility categories exist for the channel, visitors skip category selection entirely and go straight to AI chat. The system works cleanly with zero category configuration.
 
 Category selection messages use the `__cat__:CATEGORY_CODE` format so the widget can distinguish transparent system messages from real visitor input. They are NOT stored as visitor messages in the conversation history.
 
@@ -1083,6 +1135,26 @@ If the worker is not running, jobs queue in Redis and process when a worker star
 
 ---
 
+## Chat Widget UX
+
+### Default Panel Size
+
+`400px × 580px` (width × height). A maximize button in the header toggles the `.ncw-maximised` class, expanding the panel to `50vw × 80vh`. The icon swaps between expand and collapse states.
+
+### Font Size Cycling
+
+An `A` button in the header cycles through `[13.5, 16, 18, 20]` px. The current size is applied as the CSS custom property `--ncw-fs` on `#ncw-root` so all content text scales uniformly. The selection is persisted in `localStorage` under the key `ncw_fs2`.
+
+### Typewriter Effect
+
+All AI agent messages — including the first greeting — type out word-by-word with a blinking `|` cursor. Base speed adapts to message length (80–140 ms/word) with ±30 ms jitter per word and a +180 ms pause after sentence endings. Markdown is rendered on completion after the last word appears.
+
+### Agent Sender Label
+
+The agent's nickname (`agent_name` from the realtime event) is displayed in blue (`#2158c7`) above each AI message bubble. Human agent messages show the agent's display name in green (`#276749`). The header title shows the agent's nickname and the subtitle reads `"AI Assistant · Online"` when the chat opens.
+
+---
+
 ## Service Layer Map
 
 | Module | Responsibility |
@@ -1110,23 +1182,30 @@ The desk-facing conversation monitor at `/nexus-live-console`.
 
 ### Mode Detection
 
-On `init()`, calls `agent_console.get_agent_context`. If `is_agent=true` the console enters **agent mode**: the status filter is locked to `Escalated`, and an agent banner shows the signed-in agent's nickname and assigned categories. Otherwise, **admin mode** exposes the full status dropdown.
+On `init()`, calls `agent_console.get_agent_context`. If `is_agent=true` the console enters **agent mode**: an agent banner shows the signed-in agent's nickname and assigned categories, and the banner text reads "Showing all active external conversations". Otherwise, **admin mode** is used.
+
+In both modes, the full status dropdown is available (default: "All Statuses"). The status filter is no longer locked to "Escalated" in agent mode.
 
 Agent mode is determined by: active `Nexus User Profile Assignment` with `can_handle_escalations=1` AND NOT `System Manager`.
 
 ### Key Behaviors
 
-- Loads active conversations via `get_active_conversations` (mode-appropriate filter)
-- Opens a conversation → loads full message thread via `get_conversation_detail`
+- Loads active conversations via `get_active_conversations` — all statuses (Open, Responding, Escalated, Waiting) for all users; agent mode no longer restricts by category
+- Opens a conversation → calls `frappe.realtime.task_subscribe(conversation_id)` to join the conversation's Socket.IO task room, then loads the full message thread via `get_conversation_detail`; `task_unsubscribe(conversation_id)` is called when the panel closes
+- `publish_chat_response` publishes to `task_id=conversation_id`; without subscribing, the console would never receive `nexus_chat_response` events for that conversation
 - Subscribes to `nexus_escalation_alert` (new escalation arrives) and `nexus_escalation_claimed` (agent claimed a conversation) globally
-- Each open escalation panel subscribes to `nexus_chat_response` for that conversation (for visitor messages forwarded by `response_type="visitor_message"` and agent messages `sender_type="Human Agent"`)
+- Panel receives `nexus_chat_response` for that conversation — `response_type="visitor_message"` (visitor replies) and `sender_type="Human Agent"` messages (agent replies)
 - Auto-refreshes the conversation list every 15 seconds
-- Clicking a conversation card opens the **escalation panel** (full-screen right drawer) — never the corner chat bubble
-- Claim section in the escalation panel:
+- Clicking a conversation card opens the **conversation panel** (full-screen right drawer) — never the corner chat bubble
+- On panel open: `#nep-history` auto-scrolls to the bottom so the latest message is immediately visible
+- New messages appended via realtime get a brief blue glow flash on the bubble
+- Cards with new unread visitor messages blink continuously (red border pulse, `animation: infinite`) until the desk user opens that conversation; blink is suppressed for the conversation currently open in the panel
+- Blink state (`_pending_attention` Set) persists across 15-second poll re-renders
+- Claim section in the conversation panel:
   - Unclaimed + agent mode → "Take this conversation" button
   - Claimed by self → "You are handling this conversation"
   - Claimed by other → "Taken by [nickname]"; input disabled
-  - Admin (System Manager) → no claim needed; input always enabled
+  - System Manager → no claim needed; input always enabled
 
 ### Idle Timeout
 

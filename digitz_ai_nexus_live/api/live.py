@@ -198,8 +198,8 @@ def _is_human_agent_only():
 def get_active_conversations(limit=50, tenant=None):
     """
     Return conversations for the Live Console.
-    - System Manager: all active (Open, Responding, Escalated, Waiting)
-    - Human agent (can_handle_escalations): Escalated conversations in their assigned categories
+    - System Manager: all conversations including recently Closed ones
+    - Human agent (can_handle_escalations): all active external conversations
     Filtered to channels belonging to the given tenant when provided.
     """
     base_fields = [
@@ -227,16 +227,18 @@ def get_active_conversations(limit=50, tenant=None):
         if assignment:
             assigned_cats = [row.chat_category for row in (assignment.escalation_categories or [])]
 
-        filters = {"status": "Escalated", "user_type": ["!=", "Desk User"]}
+        # Show all external conversations including recently closed ones
+        filters = {
+            "status": ["in", ["Open", "Responding", "Escalated", "Waiting", "Closed"]],
+            "user_type": ["!=", "Desk User"],
+        }
         filters.update(tenant_channel_filter)
-        if assigned_cats:
-            filters["chat_category"] = ["in", assigned_cats]
 
         conversations = frappe.get_all(
             "Nexus Live Conversation",
             filters=filters,
             fields=base_fields,
-            order_by="escalated_at desc",
+            order_by="started_on desc",
             limit_page_length=int(limit),
         )
         nickname = frappe.db.get_value("User", user, "full_name") or user
@@ -249,7 +251,7 @@ def get_active_conversations(limit=50, tenant=None):
         }
 
     filters = {
-        "status": ["in", ["Open", "Responding", "Escalated", "Waiting"]],
+        "status": ["in", ["Open", "Responding", "Escalated", "Waiting", "Closed"]],
         "user_type": ["!=", "Desk User"],
     }
     filters.update(tenant_channel_filter)

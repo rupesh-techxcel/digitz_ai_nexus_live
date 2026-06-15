@@ -4,6 +4,47 @@ Agents are the core execution unit in Nexus Live. Every conversation is assigned
 
 ---
 
+## Nexus Live Console
+
+The desk-facing conversation monitor at `/nexus-live-console`.
+
+### Mode Detection
+
+On `init()`, calls `agent_console.get_agent_context`. If `is_agent=true` the console enters **agent mode**: an agent banner shows the signed-in agent's nickname and assigned categories, with the text "Showing all active external conversations". Otherwise, **admin mode** is used.
+
+The full status dropdown is available in both modes (default: "All Statuses"). The status filter is no longer locked to "Escalated" in agent mode.
+
+Agent mode is determined by: active `Nexus User Profile Assignment` with `can_handle_escalations=1` AND NOT `System Manager`.
+
+### Key Behaviors
+
+- Loads active conversations via `get_active_conversations` — all statuses (Open, Responding, Escalated, Waiting) for all users; agent mode no longer restricts by category
+- Opens a conversation → calls `frappe.realtime.task_subscribe(conversation_id)` to join the conversation's Socket.IO task room, then loads the full message thread via `get_conversation_detail`; `task_unsubscribe(conversation_id)` is called when the panel closes
+- `publish_chat_response` publishes to `task_id=conversation_id`; without subscribing, the console would never receive `nexus_chat_response` events for that conversation
+- Subscribes to `nexus_escalation_alert` (new escalation arrives) and `nexus_escalation_claimed` (agent claimed a conversation) globally
+- Panel receives `nexus_chat_response` for that conversation — `response_type="visitor_message"` (visitor replies) and `sender_type="Human Agent"` messages (agent replies)
+- Auto-refreshes the conversation list every 15 seconds
+- Clicking a conversation card opens the **conversation panel** (full-screen right drawer) — never the corner chat bubble
+- On panel open: `#nep-history` auto-scrolls to the bottom so the latest message is immediately visible
+- New messages appended via realtime get a brief blue glow flash on the bubble
+- Cards with new unread visitor messages blink continuously (red border pulse, `animation: infinite`) until the desk user opens that conversation; blink is suppressed for the conversation currently open in the panel
+- Blink state (`_pending_attention` Set) persists across 15-second poll re-renders
+
+### Claim section in the conversation panel
+
+| Situation | UI |
+|---|---|
+| Unclaimed + agent mode | "Take this conversation" button |
+| Claimed by self | "You are handling this conversation" |
+| Claimed by other | "Taken by [nickname]"; input disabled |
+| System Manager | No claim needed; input always enabled |
+
+### `agent_send_message` — sender fields
+
+`agent_send_message` sets `sender_type = "Human Agent"` on the `Nexus Live Message` record. The `sender_agent` field (Link to `Nexus AI Agent Profile`) is left **blank** for human agent messages — it is for AI bot records only. Human agent identity is tracked via `conversation.human_agent` (Frappe user ID).
+
+---
+
 ## Agent Types
 
 ### AI Agent
@@ -112,6 +153,31 @@ _pick_nickname(profile)
        Kira, Lena, Noel, Pax, Vera
 ```
 
+### Agent Persona and Nickname
+
+The `nickname_pool` field on `Nexus AI Agent Profile` holds one name per line. Each conversation gets one name picked at random from the pool for that session — giving public visitors a varied persona experience across conversations.
+
+**Priority chain in `_pick_nickname(profile)`:**
+1. `nickname_pool` — random name from the pool (if populated)
+2. `display_name` — the profile's visitor-facing display name (non-empty fallback)
+3. Built-in 25-name default pool — used when neither above is set
+
+**Nickname freezing:**
+The chosen nickname is stored in two places at `create_conversation()` time:
+- `Nexus AI Agent Profile Instance.nickname` — the per-session instance record
+- `ai_profile_snapshot_json` on `Nexus Live Conversation` — the frozen behavioral snapshot
+
+`get_agent_nickname(conversation, agent)` always reads from `ai_profile_snapshot_json`, not from the live profile. This means the nickname is immutable for the duration of the conversation even if the profile's `nickname_pool` is changed by an admin mid-session.
+
+**Where the nickname is surfaced:**
+1. **Chat widget header title** — shows the agent's nickname when the chat opens
+2. **Sender label above every AI bubble** — displayed in blue (`#2158c7`) above each AI message; populated via the `agent_name` field in every `nexus_chat_response` event for AI messages
+3. **Initial greeting messages** — e.g. `"Hi! I'm {agent_nick}, your AI assistant. It's great to have you here!"`
+
+**Profile-level guidance:**
+- For **public visitors**: populate `nickname_pool` with persona names to give each conversation a distinct identity. If left empty, `display_name` is used; if that is also empty, a name is drawn from the built-in pool.
+- For **desk users**: `display_name` is the typical fallback — there is no need to populate a nickname pool for internal profiles unless persona variety is desired.
+
 ---
 
 ## Agent Status
@@ -151,7 +217,7 @@ channel + chat_category → Nexus AI Agent Profile (behavior)
                         → permitted Identity Profiles (knowledge access)
 ```
 
-Public visitors: route with `is_public_route = 1` → `force_public_only = True` →
+Public visitors: route where `open_to_all = not bool(identity_profiles)` → `force_public_only = True` →
 `allowed_access_policies = ["Public"]`. This bypass applies even when a named profile is
 configured on the route — the identity type cap always wins for Public.
 

@@ -6,7 +6,7 @@ from digitz_ai_nexus_live.services.chat_realtime import (
     publish_chat_response,
     ESCALATION_CLAIMED_EVENT,
 )
-from digitz_ai_nexus_live.services.conversation_service import add_message
+from digitz_ai_nexus_live.services.conversation_service import add_message, mark_escalated
 
 
 def _get_human_assignment(user=None):
@@ -62,12 +62,15 @@ def get_agent_context():
 @frappe.whitelist()
 def claim_conversation(conversation_id):
     """
-    Claim an escalated conversation. Sets human_agent on the conversation
-    and notifies all other agents watching the same category.
+    Take over a conversation as a human agent. Works for any active conversation:
+    - If already Escalated: claim it directly.
+    - If Open / Responding / Waiting: auto-escalate (manual takeover) then claim.
+    Notifies the visitor and broadcasts the claim to other watching agents.
     """
     user = frappe.session.user
     assignment = _get_human_assignment(user)
-    if not assignment:
+    is_sysmanager = "System Manager" in frappe.get_roles(user)
+    if not assignment and not is_sysmanager:
         frappe.throw("No active escalation-enabled profile found for the current user.")
 
     conv_name = _get_conversation_name(conversation_id)
@@ -75,8 +78,31 @@ def claim_conversation(conversation_id):
         frappe.throw("Conversation not found.")
 
     status = frappe.db.get_value("Nexus Live Conversation", conv_name, "status")
+    if status == "Closed":
+        frappe.throw("Cannot take over a closed conversation.")
+
+    # Manual takeover: escalate the conversation first if not already escalated
     if status != "Escalated":
-        frappe.throw("Conversation is not in Escalated status.")
+        conv = frappe.get_doc("Nexus Live Conversation", conv_name)
+        mark_escalated(conv)
+
+        # Let the visitor know a human is joining
+        joining_msg = "A support agent is joining this conversation to assist you."
+        add_message(
+            conversation=conv,
+            sender_type="System",
+            message=joining_msg,
+            response_mode="chat",
+        )
+        publish_chat_response(conversation_id, {
+            "status": "escalated",
+            "response_type": "agent_joined",
+            "message": joining_msg,
+            "answer": joining_msg,
+            "confidence": 1.0,
+            "access_status": "escalated",
+            "sources": [],
+        })
 
     frappe.db.set_value("Nexus Live Conversation", conv_name, {
         "human_agent": user,
@@ -123,7 +149,6 @@ def agent_send_message(conversation_id, message):
     msg = frappe.new_doc("Nexus Live Message")
     msg.conversation = conv_name
     msg.sender_type = "Human Agent"
-    msg.sender_agent = user
     msg.message = message
     msg.response_mode = "chat"
     msg.message_time = now_datetime()
@@ -161,6 +186,7 @@ def resolve_escalation(conversation_id):
         "status": "Responding",
         "escalation_status": "Resolved",
         "human_agent": None,
+        "intent": "post_escalation",
     })
 
     pending = frappe.get_all(

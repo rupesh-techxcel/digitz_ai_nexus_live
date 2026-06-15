@@ -842,11 +842,11 @@ function inject_nccm_css() {
 
         .nccm-info-box { padding:10px 14px; border-radius:12px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; font-size:11px; font-weight:700; line-height:1.5; }
 
-        .nccm-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; display:flex; align-items:center; justify-content:center; }
-        .nccm-modal { background:#fff; border-radius:22px; width:460px; max-width:95vw; box-shadow:0 24px 60px rgba(0,0,0,.22); overflow:hidden; }
-        .nccm-modal-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 16px; border-bottom:1px solid #e8eef7; }
-        .nccm-modal-body { padding:20px 24px; display:flex; flex-direction:column; gap:14px; }
-        .nccm-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 20px; border-top:1px solid #e8eef7; }
+        .nccm-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px; }
+        .nccm-modal { background:#fff; border-radius:22px; width:460px; max-width:95vw; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(0,0,0,.22); overflow:hidden; }
+        .nccm-modal-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px 16px; border-bottom:1px solid #e8eef7; flex-shrink:0; }
+        .nccm-modal-body { padding:20px 24px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; flex:1 1 auto; }
+        .nccm-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 20px; border-top:1px solid #e8eef7; flex-shrink:0; }
         .nccm-modal-footer .btn { border-radius:999px; font-weight:850; }
         .nccm-field-group { display:flex; flex-direction:column; gap:5px; }
         .nccm-field-group label { font-size:12px; font-weight:900; color:#173b8c; }
@@ -858,8 +858,8 @@ function inject_nccm_css() {
         .nccm-test-btn:hover { opacity:.88; color:#fff; }
 
         /* ── Test modal ────────────────────────────────────────────────────────── */
-        .nccm-test-modal { width:620px; max-width:96vw; }
-        .nccm-test-body { max-height:72vh; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:0; }
+        .nccm-test-modal { width:620px; max-width:96vw; max-height:90vh; }
+        .nccm-test-body { overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:0; flex:1 1 auto; }
         .nccm-test-running { display:flex; align-items:center; gap:14px; padding:24px; color:#53688f; font-weight:800; font-size:13px; }
         .nccm-spinner { width:22px; height:22px; border:3px solid #bfdbfe; border-top-color:#2563eb; border-radius:50%; animation:nccm-spin .7s linear infinite; flex-shrink:0; }
         @keyframes nccm-spin { to { transform:rotate(360deg); } }

@@ -73,7 +73,7 @@ Create Nexus Live Conversation
 Resolve access policies from snapshot
     │
     ▼
-If no initial message: send greeting, set intent = await_category (if no category yet)
+If no initial message: send personalized greeting using agent nickname (e.g. `"Hi! I'm {agent_nick}, your AI assistant. It's great to have you here!"`), then collect visitor name (public) or resolve it from Frappe User (desk), and set intent = await_category (if no category yet)
 If message provided: enqueue background AI response
     │
     ▼
@@ -223,7 +223,9 @@ The conversation identity is NOT changed mid-session — the snapshot is frozen.
 
 The conversation captures visitor metadata at creation time:
 
-- `visitor_name` — provided by the client or defaulted to "Guest"
+- `visitor_name` — resolved differently by path:
+  - **Public visitors**: always collected via the onboarding name-prompt (step 10a in the visitor path). The prompt `"Before we get started, could I get your name please?"` is sent after the initial greeting and `conversation.intent` is set to `await_name`. The name is stored when the visitor replies.
+  - **Desk (internal) users**: resolved automatically from the Frappe `User` record (`frappe.get_value("User", session_user, "first_name")`) immediately after `create_conversation`. No name prompt is shown.
 - `visitor_email` — optional; also stored in widget state (`S.visitor_email`) after identity verification
 - `visitor_phone` — optional
 - `user_type` — Guest / Website User / Desk User

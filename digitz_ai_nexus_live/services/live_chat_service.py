@@ -93,6 +93,52 @@ def _is_no_more_help(message):
     return text in _NO_MORE_HELP_PHRASES
 
 
+def _extract_name_from_input(raw_input):
+    """
+    Use LLM to extract the visitor's name (and optional salutation) from free-form text.
+
+    Examples:
+        "Rupesh here"           → "Rupesh"
+        "I am Rupesh"           → "Rupesh"
+        "I am Mr. John Smith"   → "Mr. John Smith"
+        "Dr. Sarah Connor"      → "Dr. Sarah Connor"
+
+    Falls back to the trimmed raw input if the LLM call fails or returns nothing.
+    """
+    raw = (raw_input or "").strip()
+    if not raw:
+        return raw
+
+    prompt = (
+        'Extract the person\'s name from the message below. '
+        'Also detect their title if explicitly stated (Mr., Mrs., Ms., Miss, Dr., Prof.).\n\n'
+        f'Message: "{raw}"\n\n'
+        'Respond with ONLY a JSON object — no markdown, no code fences, no explanation:\n'
+        '{"name": "extracted name", "salutation": "Mr." or null}\n\n'
+        'Rules:\n'
+        '- Remove filler phrases such as "I am", "my name is", "it\'s", "this is", "here", etc.\n'
+        '- Put only the bare name in "name" (no title).\n'
+        '- Set "salutation" only when a title is explicitly present in the message; otherwise null.\n'
+        '- If you cannot determine a name, return the original text as the name.'
+    )
+
+    try:
+        from digitz_ai_nexus.engine.llm import generate_answer
+        raw_response = (generate_answer(prompt) or "").strip()
+        # Strip markdown code fences the LLM may wrap the JSON in
+        if raw_response.startswith("```"):
+            raw_response = raw_response.strip("`").lstrip("json").strip()
+        result = json.loads(raw_response)
+        name = (result.get("name") or "").strip()
+        salutation = (result.get("salutation") or "").strip() or None
+        if name:
+            return f"{salutation} {name}" if salutation else name
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Nexus Live: Name extraction LLM failed")
+
+    return raw[:100]
+
+
 # ── Category picker ────────────────────────────────────────────────────────────
 
 def _send_category_picker(conversation, greeting_name=None, publish=True, is_internal=False):
@@ -118,6 +164,9 @@ def _send_category_picker(conversation, greeting_name=None, publish=True, is_int
         fields=["name", "category_code", "category_label", "description", "display_order"],
         order_by="display_order asc",
     )
+
+    if not categories:
+        return None
 
     if greeting_name:
         prompt = (
@@ -320,6 +369,16 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
 
     ai_profile = _build_ai_profile_dict(behavior)
 
+    if payload.get("_post_escalation"):
+        post_esc_note = (
+            "\n\nCONTEXT FOR THIS RESPONSE: The visitor has just been handed back to you "
+            "after a human support agent resolved their escalation. Naturally acknowledge "
+            "the transition (e.g. 'I've picked up where the support agent left off…') "
+            "and then address their current question or request."
+        )
+        ai_profile = dict(ai_profile)
+        ai_profile["behavior_prompt"] = (ai_profile.get("behavior_prompt") or "") + post_esc_note
+
     resolved_intents = resolve_intents_for_profile(ai_profile.get("name") if ai_profile else None)
 
     resolved_identity_type = (
@@ -520,6 +579,17 @@ def start_live_chat(payload):
         )
         conversation = update_conversation_assignment(conversation, agent)
 
+        # Resolve internal user's first name and freeze it on the conversation
+        first_name = frappe.db.get_value("User", session_user, "first_name") or ""
+        if first_name and not conversation.visitor_name:
+            frappe.db.set_value(
+                "Nexus Live Conversation", conversation.name,
+                "visitor_name", first_name, update_modified=False,
+            )
+            conversation.visitor_name = first_name
+
+        agent_nick = get_agent_nickname(conversation, agent)
+
         if message:
             add_message(
                 conversation=conversation,
@@ -535,7 +605,7 @@ def start_live_chat(payload):
                 "conversation_id": conversation.conversation_id,
                 "agent": agent.name,
                 "agent_code": agent.agent_code,
-                "agent_name": get_agent_nickname(conversation, agent),
+                "agent_name": agent_nick,
                 "agent_instance": getattr(conversation, "agent_profile_instance", None),
                 "initial_messages": [],
             }
@@ -554,20 +624,46 @@ def start_live_chat(payload):
             },
         )
 
+        name_part = f", {first_name}" if first_name else ""
+
         if has_internal_categories:
+            intro = (
+                f"Hi{name_part}! I'm {agent_nick}, your AI assistant. "
+                "Please select a topic so I can assist you better."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=intro,
+                response_mode="chat",
+            )
+            intro_data = {
+                "status": "success",
+                "response_type": "message",
+                "message": intro,
+                "answer": intro,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+                "conversation_id": conversation.conversation_id,
+            }
             category_data = _send_category_picker(conversation, publish=False, is_internal=True)
+            category_data["agent_name"] = agent_nick
             return {
                 "status": "await_category",
                 "conversation": conversation.name,
                 "conversation_id": conversation.conversation_id,
                 "agent": agent.name,
                 "agent_code": agent.agent_code,
-                "agent_name": get_agent_nickname(conversation, agent),
+                "agent_name": agent_nick,
                 "agent_instance": getattr(conversation, "agent_profile_instance", None),
-                "initial_messages": [category_data],
+                "initial_messages": [intro_data, category_data],
             }
 
-        greeting = "Hello! Welcome. I'm your AI assistant and I'm here to help you today."
+        greeting = (
+            f"Hi{name_part}! I'm {agent_nick}, your AI assistant. How can I help you today?"
+        )
         add_message(
             conversation=conversation,
             sender_type="AI Agent",
@@ -581,13 +677,14 @@ def start_live_chat(payload):
             "conversation_id": conversation.conversation_id,
             "agent": agent.name,
             "agent_code": agent.agent_code,
-            "agent_name": get_agent_nickname(conversation, agent),
+            "agent_name": agent_nick,
             "agent_instance": getattr(conversation, "agent_profile_instance", None),
             "initial_messages": [{
                 "status": "success",
                 "response_type": "message",
                 "message": greeting,
                 "answer": greeting,
+                "agent_name": agent_nick,
                 "confidence": 1.0,
                 "access_status": "conversational",
                 "sources": [],
@@ -670,10 +767,10 @@ def start_live_chat(payload):
     # response, etc.), so we skip realtime here to avoid duplicate display.
     initial_messages = []
 
-    # Send greeting
-    greeting = (
-        "Hello! Welcome. I'm your AI assistant and I'm here to help you today."
-    )
+    agent_nick = get_agent_nickname(conversation, agent)
+
+    # Send greeting with agent's persona name
+    greeting = f"Hi! I'm {agent_nick}, your AI assistant. It's great to have you here!"
     add_message(
         conversation=conversation,
         sender_type="AI Agent",
@@ -685,6 +782,7 @@ def start_live_chat(payload):
         "response_type": "message",
         "message": greeting,
         "answer": greeting,
+        "agent_name": agent_nick,
         "confidence": 1.0,
         "access_status": "conversational",
         "sources": [],
@@ -692,16 +790,14 @@ def start_live_chat(payload):
     }
     initial_messages.append(greeting_data)
 
-    # Determine next step: name collection or category selection
-    behavior = _resolve_behavior(payload, conversation=conversation)
+    # Always ask public visitors for their name to personalise the conversation
     needs_name = (
-        getattr(behavior, "collect_visitor_name", 0)
-        and not conversation.visitor_name
+        not conversation.visitor_name
         and not payload.get("visitor_name")
     )
 
     if needs_name:
-        name_prompt = "Before we begin, could I get your name, please?"
+        name_prompt = "Before we get started, could I get your name please?"
         add_message(
             conversation=conversation,
             sender_type="AI Agent",
@@ -716,6 +812,7 @@ def start_live_chat(payload):
             "response_type": "message",
             "message": name_prompt,
             "answer": name_prompt,
+            "agent_name": agent_nick,
             "confidence": 1.0,
             "access_status": "conversational",
             "sources": [],
@@ -723,13 +820,34 @@ def start_live_chat(payload):
         }
         initial_messages.append(name_data)
     elif not chat_category:
-        # No category selected yet — show category picker.
+        # No category selected yet — show category picker if any exist.
         # Deliver via HTTP response only (publish=False) to avoid duplicate
         # display if the socket also receives the event later.
         category_data = _send_category_picker(conversation, publish=False)
         if category_data:
             category_data["conversation_id"] = conversation.conversation_id
+            category_data["agent_name"] = agent_nick
             initial_messages.append(category_data)
+        else:
+            # No external categories configured — proceed to direct chat
+            ready_prompt = "How can I help you today?"
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=ready_prompt,
+                response_mode="chat",
+            )
+            initial_messages.append({
+                "status": "success",
+                "response_type": "message",
+                "message": ready_prompt,
+                "answer": ready_prompt,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+                "conversation_id": conversation.conversation_id,
+            })
     else:
         # Category already selected (e.g. visitor passed it in) — proceed with AI
         if message:
@@ -747,6 +865,7 @@ def start_live_chat(payload):
                 "response_type": "message",
                 "message": ready_prompt,
                 "answer": ready_prompt,
+                "agent_name": agent_nick,
                 "confidence": 1.0,
                 "access_status": "conversational",
                 "sources": [],
@@ -754,8 +873,18 @@ def start_live_chat(payload):
             }
             initial_messages.append(ready_data)
 
+    # Determine effective status for the widget state machine
+    if needs_name:
+        effective_status = "awaiting_name"
+    elif not chat_category:
+        # Check whether the picker was actually sent (categories existed)
+        picker_sent = any(m.get("response_type") == "category_picker" for m in initial_messages)
+        effective_status = "await_category" if picker_sent else "ready"
+    else:
+        effective_status = "processing"
+
     return {
-        "status": "awaiting_name" if needs_name else ("await_category" if not chat_category else "processing"),
+        "status": effective_status,
         "conversation": conversation.name,
         "conversation_id": conversation.conversation_id,
         "agent": agent.name,
@@ -808,20 +937,22 @@ def continue_live_chat(conversation_id, payload):
                 "access_status": "escalated",
                 "sources": [],
             })
-            # Acknowledge to visitor
-            holding = (
-                "Your message has been received. "
-                "Our agent will respond to you shortly."
-            )
-            publish_chat_response(conversation.conversation_id, {
-                "status": "success",
-                "response_type": "message_held",
-                "message": holding,
-                "answer": holding,
-                "confidence": 1.0,
-                "access_status": "escalated",
-                "sources": [],
-            })
+            # Only show the holding acknowledgment when no agent has claimed yet.
+            # Once a human agent is actively chatting, the visitor's messages flow through silently.
+            if not conversation.human_agent:
+                holding = (
+                    "Your message has been received. "
+                    "Our agent will respond to you shortly."
+                )
+                publish_chat_response(conversation.conversation_id, {
+                    "status": "success",
+                    "response_type": "message_held",
+                    "message": holding,
+                    "answer": holding,
+                    "confidence": 1.0,
+                    "access_status": "escalated",
+                    "sources": [],
+                })
         return {
             "status": "escalated",
             "conversation": conversation.name,
@@ -914,6 +1045,7 @@ def continue_live_chat(conversation_id, payload):
             "response_type": "message",
             "message": ack,
             "answer": ack,
+            "agent_name": get_agent_nickname(conversation),
             "confidence": 1.0,
             "access_status": "conversational",
             "sources": [],
@@ -936,13 +1068,32 @@ def continue_live_chat(conversation_id, payload):
 
     # ── Await name ──────────────────────────────────────────────────────────────
     if intent == "await_name":
-        visitor_name = message.strip()[:100]
+        visitor_name = _extract_name_from_input(message)[:100]
         frappe.db.set_value("Nexus Live Conversation", conversation.name, {
             "visitor_name": visitor_name,
             "intent": "",
         })
         conversation.reload()
-        _send_category_picker(conversation, greeting_name=visitor_name)
+        cat_data = _send_category_picker(conversation, greeting_name=visitor_name)
+        if not cat_data:
+            # No external categories configured — skip picker, send direct greeting
+            ready = f"Nice to meet you, {visitor_name}! How can I help you today?"
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=ready,
+                response_mode="chat",
+            )
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": ready,
+                "answer": ready,
+                "agent_name": get_agent_nickname(conversation),
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+            })
 
         return {
             "status": "name_collected",
@@ -978,6 +1129,11 @@ def continue_live_chat(conversation_id, payload):
                 "conversation_id": conversation_id,
             }
 
+    # ── Post-escalation: first visitor message after human agent resolved ──────
+    if intent == "post_escalation":
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, "intent", "")
+        payload["_post_escalation"] = True
+
     # ── Normal flow: detect closing signals ────────────────────────────────────
     if _is_closing_message(message):
         close_prompt = (
@@ -999,6 +1155,7 @@ def continue_live_chat(conversation_id, payload):
             "response_type": "message",
             "message": close_prompt,
             "answer": close_prompt,
+            "agent_name": get_agent_nickname(conversation),
             "confidence": 1.0,
             "access_status": "conversational",
             "sources": [],
