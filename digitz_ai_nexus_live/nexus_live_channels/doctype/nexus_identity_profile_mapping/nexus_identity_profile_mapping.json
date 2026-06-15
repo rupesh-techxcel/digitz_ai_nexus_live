@@ -5,36 +5,34 @@
   "editable_grid": 1,
   "engine": "InnoDB",
   "field_order": [
-    "knowledge_access_rule",
     "identity_type",
-    "knowledge_profile"
+    "knowledge_profile",
+    "knowledge_access_rule"
   ],
   "fields": [
     {
-      "fieldname": "knowledge_access_rule",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Identity Knowledge Rule",
-      "options": "Nexus Identity Knowledge Rule",
-      "reqd": 1
-    },
-    {
-      "fetch_from": "knowledge_access_rule.identity_type",
       "fieldname": "identity_type",
       "fieldtype": "Link",
       "in_list_view": 1,
       "label": "Identity Type",
       "options": "Nexus Identity Type",
-      "read_only": 1
+      "reqd": 1
     },
     {
-      "fetch_from": "knowledge_access_rule.knowledge_profile",
       "fieldname": "knowledge_profile",
       "fieldtype": "Link",
       "in_list_view": 1,
       "label": "Knowledge Profile",
       "options": "Knowledge Profile",
-      "read_only": 1
+      "reqd": 1
+    },
+    {
+      "fieldname": "knowledge_access_rule",
+      "fieldtype": "Link",
+      "label": "Identity Knowledge Rule",
+      "options": "Nexus Identity Knowledge Rule",
+      "read_only": 1,
+      "description": "Auto-linked reference rule if one exists for this identity type and knowledge profile."
     }
   ],
   "index_web_pages_for_search": 0,

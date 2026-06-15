@@ -233,18 +233,18 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
                 <tr class="${r.ready?'':'nlc-row-warn'}">
                     <td>${esc(r.channel_name)}</td>
                     <td>${esc(r.category_label)}</td>
-                    <td>${r.is_public_route
+                    <td>${r.open_to_all
                         ?'<span class="nlc-chip nlc-chip-blue">Public</span>'
                         :'<span class="nlc-chip nlc-chip-purple">Registered</span>'}</td>
                     <td>${r.ai_agent_profile
                         ?`<a class="nlc-link" onclick="frappe.set_route('Form','Nexus AI Agent Profile','${esc(r.ai_agent_profile)}')">${esc(r.ai_agent_profile)}</a>`
                         :'<span class="nlc-warn-txt">— none —</span>'}</td>
-                    <td>${r.is_public_route
+                    <td>${r.open_to_all
                         ?'<span class="nlc-muted">Open to all</span>'
                         :r.identity_profiles.length
                             ?r.identity_profiles.map(p=>`<span class="nlc-chip">${esc(p)}</span>`).join('')
                             :'<span class="nlc-warn-txt">None assigned</span>'}</td>
-                    <td>${r.is_public_route
+                    <td>${r.open_to_all
                         ?'<span class="nlc-muted">Public bypass</span>'
                         :r.mappings_ok
                             ?'<span class="nlc-ok-txt">✓ Mapped</span>'
@@ -323,7 +323,7 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
         [{ label:'Escalation Profiles', value: d.counts.escalation_profiles },
          { label:'Human Agents', value: d.counts.human_agents },
          { label:'Rules', value: d.counts.rules }],
-        [{ label:'User Profile Manager', page:'nexus-user-profile-manager' },
+        [{ label:'User Profile & Escalation', page:'nexus-user-profile-manager' },
          { label:'Escalation Rules', route:'List/Nexus Escalation Rule' }]
     )}
     ${issues(d.issues)}
@@ -341,7 +341,7 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
             </div>`:`
             <div class="nlc-empty-card">
                 No active human agents.<br>
-                <a class="nlc-link" onclick="frappe.set_route('nexus-user-profile-manager')">Assign via User Profile Manager</a>
+                <a class="nlc-link" onclick="frappe.set_route('nexus-user-profile-manager')">Assign via User Profile &amp; Escalation</a>
             </div>`}
         </div>
         <div>

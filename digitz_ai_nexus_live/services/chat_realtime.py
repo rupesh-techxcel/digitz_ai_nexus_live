@@ -10,7 +10,7 @@ def publish_chat_response(conversation_id, data):
     frappe.publish_realtime(
         event=CHAT_RESPONSE_EVENT,
         message={"conversation_id": conversation_id, **data},
-        after_commit=True,
+        task_id=conversation_id,
     )
 
 
@@ -18,7 +18,7 @@ def publish_chat_typing(conversation_id):
     frappe.publish_realtime(
         event=CHAT_TYPING_EVENT,
         message={"conversation_id": conversation_id},
-        after_commit=True,
+        task_id=conversation_id,
     )
 
 
@@ -30,7 +30,7 @@ def publish_chat_error(conversation_id, error_message):
             "status": "error",
             "error": error_message,
         },
-        after_commit=True,
+        task_id=conversation_id,
     )
 
 

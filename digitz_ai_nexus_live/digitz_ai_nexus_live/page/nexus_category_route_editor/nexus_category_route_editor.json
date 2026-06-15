@@ -1,0 +1,7 @@
+{
+ "doctype": "Page",
+ "name": "nexus-category-route-editor",
+ "title": "Category Route Editor",
+ "module": "Digitz AI Nexus Live",
+ "roles": [{"role": "System Manager"}]
+}

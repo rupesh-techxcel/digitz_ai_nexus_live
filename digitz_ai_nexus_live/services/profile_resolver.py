@@ -47,7 +47,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
     Resolve AI behavior for a visitor-selected chat category.
 
     Route selection:
-    - Public visitors (identity_type == "Public"): find a route where is_public_route = 1.
+    - Public visitors (identity_type == "Public"): find any available enabled route (_find_any_route).
     - Registered visitors: find a route whose permitted Identity Profiles intersect
       with the visitor's assigned Identity Profiles from their registry entry.
 
@@ -71,19 +71,19 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
     if not category.enabled:
         frappe.throw(f"Chat category '{category_code}' is not currently active.")
 
-    if category.requires_authentication and not is_authenticated:
+    if category.visibility == "Internal" and not is_authenticated:
         frappe.throw(
-            "This conversation type requires you to be logged in. "
-            "Please sign in and try again."
+            "This conversation type is only available to internal users. "
+            "Please sign in with a desk account."
         )
 
     channel = category.channel
 
     if identity_type == "Public":
-        route = _find_public_route(channel, category_code)
+        route = _find_any_route(channel, category_code)
         if not route:
             frappe.throw(
-                f"No public route configured for category '{category.category_label}'. "
+                f"No route configured for category '{category.category_label}'. "
                 "Please contact support or try a different option."
             )
         knowledge_profile_names = []
@@ -224,14 +224,14 @@ def resolve_behavior_for_internal_user(user):
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
-def _find_public_route(channel, category_code):
+def _find_any_route(channel, category_code):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={
             "channel": channel,
             "chat_category": category_code,
-            "is_public_route": 1,
             "enabled": 1,
+            "published": 1,
         },
         fields=["name", "ai_agent_profile"],
         order_by="priority asc",
@@ -267,7 +267,7 @@ def _find_registered_route(channel, category_code, identity_type, payload):
 
     all_routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category_code, "enabled": 1},
+        filters={"channel": channel, "chat_category": category_code, "enabled": 1, "published": 1},
         fields=["name", "ai_agent_profile"],
         order_by="priority asc",
     )

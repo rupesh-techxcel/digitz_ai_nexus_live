@@ -1,0 +1,21 @@
+{
+  "content": null,
+  "creation": "2026-06-14 00:00:00.000000",
+  "doctype": "Page",
+  "modified": "2026-06-14 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Digitz AI Nexus Live",
+  "name": "nexus-identity-profile-manager",
+  "owner": "Administrator",
+  "page_name": "nexus-identity-profile-manager",
+  "roles": [
+    {
+      "role": "System Manager"
+    }
+  ],
+  "script": null,
+  "standard": "Yes",
+  "style": null,
+  "system_page": 0,
+  "title": "Nexus Identity Profile Manager"
+}

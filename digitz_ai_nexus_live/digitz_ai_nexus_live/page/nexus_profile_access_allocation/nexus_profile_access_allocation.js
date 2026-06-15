@@ -32,9 +32,14 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     <div>
       <span class="nexus-admin-badge">Knowledge Access Manager</span>
       <h2>Knowledge Access Manager</h2>
-      <p>Configure which Access Categories each Knowledge Profile unlocks.
-         Identity Profiles map visitors to Knowledge Profiles — this is where
-         you decide what knowledge each mapping can reach.</p>
+      <p>
+        Knowledge sources with a <b>Public</b> access policy are automatically
+        available to every visitor — no profile configuration required.
+        This page is only for <b>secured knowledge</b>: use it to control which
+        Access Categories (and the restricted policies inside them) each
+        Knowledge Profile can reach. Identity Profiles then map visitor types
+        to those Knowledge Profiles, completing the access chain.
+      </p>
       <div class="nexus-admin-flow-pill">
         Identity Profile &nbsp;→&nbsp; <b>Knowledge Profile</b> &nbsp;→&nbsp; Access Category &nbsp;→&nbsp; Policy &nbsp;→&nbsp; Knowledge
       </div>
@@ -229,7 +234,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
   </div>
   <div class="kam-public-note">
     <span class="kam-public-note-icon">ℹ</span>
-    Categories whose policies are entirely Public are not shown — public knowledge is served autonomously and does not require allocation.
+    Access Categories whose policies are entirely <b>Public</b> are not listed here — those knowledge sources are served to all visitors automatically and need no profile assignment. Only categories with restricted or internal policies appear below and require explicit allocation.
   </div>
   ${visibleCats.length ? `
   <div class="kam-cat-grid">
@@ -252,10 +257,10 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     <a class="kam-link" onclick="frappe.set_route('Form','Nexus Access Category','new')">Create one</a></div>`}
 </div>
 
-<!-- Effective Policies -->
+<!-- Effective Access Policies -->
 <div class="nexus-admin-card" style="margin-bottom:14px;">
   <div class="nexus-admin-section-head">
-    <div class="nexus-admin-card-title">Effective Policies</div>
+    <div class="nexus-admin-card-title">Effective Access Policies</div>
     <div class="nexus-admin-muted">Policies unlocked by the assigned categories</div>
   </div>
   ${d.effective_policies && d.effective_policies.length ? `
@@ -274,8 +279,8 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 <!-- Identity Allocation -->
 <div class="nexus-admin-card" style="margin-bottom:14px;">
   <div class="nexus-admin-section-head">
-    <div class="nexus-admin-card-title">Identity Allocation</div>
-    <div class="nexus-admin-muted">Identity types allocated to use this Knowledge Profile</div>
+    <div class="nexus-admin-card-title">Identity Allocation <span style="font-size:10px; font-weight:700; color:#6b7c9b; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; padding:2px 8px; margin-left:6px; vertical-align:middle;">via Nexus Identity Knowledge Rule</span></div>
+    <div class="nexus-admin-muted">Reference mapping — identity types associated with this Knowledge Profile</div>
   </div>
   <div id="kam-identity-rules-list">
   ${d.identity_rules && d.identity_rules.length ? `
@@ -341,8 +346,9 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
 <div class="nexus-admin-card">
   <div class="nexus-admin-section-head">
     <div class="nexus-admin-card-title">Referenced by Identity Profiles</div>
-    <div class="nexus-admin-muted">Identity Profiles that map to this Knowledge Profile</div>
+    <a class="kam-nav-link" onclick="frappe.set_route('nexus-identity-profile-manager')">Manage Identity Profiles ↗</a>
   </div>
+  <div class="nexus-admin-muted" style="margin-bottom:12px;">Identity Profiles that map to this Knowledge Profile</div>
   ${d.used_by && d.used_by.length ? `
   <table class="table table-bordered nexus-admin-table">
     <thead><tr><th>Identity Profile</th><th>Identity Type</th><th></th></tr></thead>
@@ -355,7 +361,7 @@ frappe.pages['nexus-profile-access-allocation'].on_page_load = function (wrapper
     </tr>`).join('')}
     </tbody>
   </table>` : `<div class="nexus-empty-state">No Identity Profiles reference this Knowledge Profile yet.
-    <a class="kam-link" onclick="frappe.set_route('List','Nexus Identity Profile')">Manage Identity Profiles</a></div>`}
+    <a class="kam-link" onclick="frappe.set_route('nexus-identity-profile-manager')">Manage Identity Profiles</a></div>`}
 </div>`;
     }
 

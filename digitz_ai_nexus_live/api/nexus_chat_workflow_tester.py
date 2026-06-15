@@ -28,7 +28,7 @@ def get_channel_categories(channel):
             "name",
             "category_code",
             "category_label",
-            "requires_authentication",
+            "visibility",
             "identity_verification_mode",
             "allow_public_fallback",
             "display_order",
@@ -78,7 +78,7 @@ def simulate_workflow(
         "category_code": category.category_code,
         "category_label": category.category_label,
         "channel": category.channel,
-        "requires_authentication": category.requires_authentication,
+        "visibility": category.visibility or "External",
         "identity_verification_mode": category.identity_verification_mode or "None",
         "allow_public_fallback": category.allow_public_fallback,
         "enabled": category.enabled,
@@ -89,9 +89,9 @@ def simulate_workflow(
             f"Selected category belongs to channel '{category.channel}', not '{channel}'."
         )
 
-    if category.requires_authentication and not int(assume_authenticated or 0):
+    if category.visibility == "Internal" and not int(assume_authenticated or 0):
         result["blocked"] = 1
-        result["warnings"].append("Category requires authenticated portal/desk login.")
+        result["warnings"].append("Category is Internal only — not accessible to unauthenticated public visitors.")
         return result
 
     registry_name = _get_registry_for_email(result["input"]["visitor_email"])

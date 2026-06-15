@@ -298,7 +298,7 @@ def ensure_default_chat_category(channel, tenant):
     doc.category_label             = DEFAULT_CHAT_CATEGORY["category_label"]
     doc.channel                    = channel
     doc.enabled                    = 1
-    doc.requires_authentication    = 0
+    doc.visibility                 = "External"
     doc.identity_verification_mode = "None"
     doc.allow_public_fallback      = 0
     doc.display_order              = 10
@@ -401,7 +401,7 @@ def ensure_profile_access_category(profile, access_category):
 def ensure_default_category_route(channel, category, profile, identity_profile=None):
     existing = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category, "is_public_route": 1},
+        filters={"channel": channel, "chat_category": category},
         pluck="name",
         limit_page_length=1,
     )
@@ -413,10 +413,9 @@ def ensure_default_category_route(channel, category, profile, identity_profile=N
         doc.chat_category = category
 
     doc.ai_agent_profile = profile
-    doc.is_public_route  = 1
     doc.enabled          = 1
     doc.priority         = 10
-    doc.description      = "Default public visitor route for website chat."
+    doc.description      = "Default route for website chat."
 
     if identity_profile:
         already_linked = any(

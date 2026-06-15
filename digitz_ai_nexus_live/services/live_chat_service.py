@@ -95,11 +95,26 @@ def _is_no_more_help(message):
 
 # ── Category picker ────────────────────────────────────────────────────────────
 
-def _send_category_picker(conversation, greeting_name=None):
-    """Send an inline category picker message to the visitor via realtime."""
+def _send_category_picker(conversation, greeting_name=None, publish=True, is_internal=False):
+    """Send an inline category picker message to the visitor via realtime.
+
+    Returns the response data dict so callers can include it in the HTTP
+    response body (bypassing realtime race conditions for initial messages).
+    Pass publish=False when the data will be delivered via the HTTP response
+    body instead of (or in addition to) realtime.
+    """
+    visibility_filter = ["Internal", "Both"] if is_internal else ["External", "Both"]
+    cat_filters = {
+        "enabled": 1,
+        "published": 1,
+        "visibility": ["in", visibility_filter],
+    }
+    if conversation.channel:
+        cat_filters["channel"] = conversation.channel
+
     categories = frappe.get_all(
         "Nexus Chat Category",
-        filters={"enabled": 1},
+        filters=cat_filters,
         fields=["name", "category_code", "category_label", "description", "display_order"],
         order_by="display_order asc",
     )
@@ -125,7 +140,7 @@ def _send_category_picker(conversation, greeting_name=None):
         "Nexus Live Conversation", conversation.name, "intent", "await_category"
     )
 
-    publish_chat_response(conversation.conversation_id, {
+    data = {
         "status": "await_category",
         "response_type": "category_picker",
         "message": prompt,
@@ -134,7 +149,10 @@ def _send_category_picker(conversation, greeting_name=None):
         "confidence": 1.0,
         "access_status": "conversational",
         "sources": [],
-    })
+    }
+    if publish:
+        publish_chat_response(conversation.conversation_id, data)
+    return data
 
 
 # ── Graceful close ─────────────────────────────────────────────────────────────
@@ -423,6 +441,14 @@ def start_live_chat(payload):
     session_user = get_authenticated_session_user()
     is_internal = is_internal_session_user(session_user)
 
+    # Widget sends roles=['Guest'] when operating in website-visitor mode.
+    # Honour that even when the HTTP session belongs to a desk user
+    # (e.g. a developer testing the widget while logged in to the desk).
+    if is_internal and "Guest" in (payload.get("roles") or []):
+        payload["user_type"] = "Guest"
+        payload.pop("user", None)
+        is_internal = False
+
     message = (payload.get("message") or "").strip()
 
     # ── Desk / internal user path ──────────────────────────────────────────────
@@ -503,29 +529,70 @@ def start_live_chat(payload):
             )
             _touch_last_message_at(conversation)
             _enqueue_ai_response(conversation.conversation_id, payload)
-            status = "processing"
-        else:
-            # Widget opened with no initial message — send a welcome prompt
-            greeting = "Hello! I'm your AI assistant. How can I help you today?"
-            add_message(
-                conversation=conversation,
-                sender_type="AI Agent",
-                message=greeting,
-                response_mode="chat",
-            )
-            # Return greeting in the HTTP response to avoid a race condition
-            # where the realtime event arrives before S.conversation_id is set.
-            status = "ready"
+            return {
+                "status": "processing",
+                "conversation": conversation.name,
+                "conversation_id": conversation.conversation_id,
+                "agent": agent.name,
+                "agent_code": agent.agent_code,
+                "agent_name": get_agent_nickname(conversation, agent),
+                "agent_instance": getattr(conversation, "agent_profile_instance", None),
+                "initial_messages": [],
+            }
+
+        # Widget opened with no initial message.
+        # If Internal/Both categories exist on this channel, show a category picker
+        # so desk users can route to the right knowledge domain.
+        # Otherwise fall back to a direct greeting.
+        has_internal_categories = frappe.db.exists(
+            "Nexus Chat Category",
+            {
+                "channel": conversation.channel,
+                "enabled": 1,
+                "published": 1,
+                "visibility": ["in", ["Internal", "Both"]],
+            },
+        )
+
+        if has_internal_categories:
+            category_data = _send_category_picker(conversation, publish=False, is_internal=True)
+            return {
+                "status": "await_category",
+                "conversation": conversation.name,
+                "conversation_id": conversation.conversation_id,
+                "agent": agent.name,
+                "agent_code": agent.agent_code,
+                "agent_name": get_agent_nickname(conversation, agent),
+                "agent_instance": getattr(conversation, "agent_profile_instance", None),
+                "initial_messages": [category_data],
+            }
+
+        greeting = "Hello! Welcome. I'm your AI assistant and I'm here to help you today."
+        add_message(
+            conversation=conversation,
+            sender_type="AI Agent",
+            message=greeting,
+            response_mode="chat",
+        )
 
         return {
-            "status": status,
+            "status": "ready",
             "conversation": conversation.name,
             "conversation_id": conversation.conversation_id,
             "agent": agent.name,
             "agent_code": agent.agent_code,
             "agent_name": get_agent_nickname(conversation, agent),
             "agent_instance": getattr(conversation, "agent_profile_instance", None),
-            "greeting": greeting if status == "ready" else None,
+            "initial_messages": [{
+                "status": "success",
+                "response_type": "message",
+                "message": greeting,
+                "answer": greeting,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+                "conversation_id": conversation.conversation_id,
+            }],
         }
 
     # ── Visitor / guest path ───────────────────────────────────────────────────
@@ -595,6 +662,14 @@ def start_live_chat(payload):
         )
         _touch_last_message_at(conversation)
 
+    # Collect initial messages to return in the HTTP response body.
+    # Realtime publish during an HTTP handler is racy: the socket may not have
+    # joined the task room before the event is emitted. Returning them in the
+    # HTTP response guarantees delivery. The live console still learns of the
+    # conversation through subsequent realtime events (category selection, AI
+    # response, etc.), so we skip realtime here to avoid duplicate display.
+    initial_messages = []
+
     # Send greeting
     greeting = (
         "Hello! Welcome. I'm your AI assistant and I'm here to help you today."
@@ -605,7 +680,7 @@ def start_live_chat(payload):
         message=greeting,
         response_mode="chat",
     )
-    publish_chat_response(conversation.conversation_id, {
+    greeting_data = {
         "status": "success",
         "response_type": "message",
         "message": greeting,
@@ -613,7 +688,9 @@ def start_live_chat(payload):
         "confidence": 1.0,
         "access_status": "conversational",
         "sources": [],
-    })
+        "conversation_id": conversation.conversation_id,
+    }
+    initial_messages.append(greeting_data)
 
     # Determine next step: name collection or category selection
     behavior = _resolve_behavior(payload, conversation=conversation)
@@ -634,7 +711,7 @@ def start_live_chat(payload):
         frappe.db.set_value(
             "Nexus Live Conversation", conversation.name, "intent", "await_name"
         )
-        publish_chat_response(conversation.conversation_id, {
+        name_data = {
             "status": "await_name",
             "response_type": "message",
             "message": name_prompt,
@@ -642,10 +719,17 @@ def start_live_chat(payload):
             "confidence": 1.0,
             "access_status": "conversational",
             "sources": [],
-        })
+            "conversation_id": conversation.conversation_id,
+        }
+        initial_messages.append(name_data)
     elif not chat_category:
-        # No category selected yet — show category picker
-        _send_category_picker(conversation)
+        # No category selected yet — show category picker.
+        # Deliver via HTTP response only (publish=False) to avoid duplicate
+        # display if the socket also receives the event later.
+        category_data = _send_category_picker(conversation, publish=False)
+        if category_data:
+            category_data["conversation_id"] = conversation.conversation_id
+            initial_messages.append(category_data)
     else:
         # Category already selected (e.g. visitor passed it in) — proceed with AI
         if message:
@@ -658,7 +742,7 @@ def start_live_chat(payload):
                 message=ready_prompt,
                 response_mode="chat",
             )
-            publish_chat_response(conversation.conversation_id, {
+            ready_data = {
                 "status": "success",
                 "response_type": "message",
                 "message": ready_prompt,
@@ -666,7 +750,9 @@ def start_live_chat(payload):
                 "confidence": 1.0,
                 "access_status": "conversational",
                 "sources": [],
-            })
+                "conversation_id": conversation.conversation_id,
+            }
+            initial_messages.append(ready_data)
 
     return {
         "status": "awaiting_name" if needs_name else ("await_category" if not chat_category else "processing"),
@@ -676,6 +762,7 @@ def start_live_chat(payload):
         "agent_code": agent.agent_code,
         "agent_name": get_agent_nickname(conversation, agent),
         "agent_instance": getattr(conversation, "agent_profile_instance", None),
+        "initial_messages": initial_messages,
     }
 
 
@@ -757,20 +844,43 @@ def continue_live_chat(conversation_id, payload):
     intent = conversation.intent or ""
     sender_type = "Visitor" if payload.get("user_type", "Guest") == "Guest" else "User"
 
+    # ── Category selection gate ────────────────────────────────────────────────
+    # If waiting for a category, any non-category message is rejected and the
+    # picker is re-shown. Users cannot skip the selection by typing.
+    if intent == "await_category" and not message.startswith("__cat__:"):
+        _is_internal_conv = getattr(conversation, "user_type", "") == "Desk User"
+        nudge = "Please select a topic from the options above before sending a message."
+        add_message(
+            conversation=conversation,
+            sender_type="AI Agent",
+            message=nudge,
+            response_mode="chat",
+        )
+        _send_category_picker(conversation, is_internal=_is_internal_conv)
+        return {
+            "status": "await_category",
+            "response_type": "message",
+            "message": nudge,
+            "answer": nudge,
+            "conversation": conversation.name,
+            "conversation_id": conversation_id,
+        }
+
     # ── Category selection (transparent — don't store __cat__ as visitor message) ──
     if intent == "await_category" and message.startswith("__cat__:"):
         category_code = message.split(":", 1)[1].strip()
 
         cat = frappe.db.get_value(
             "Nexus Chat Category",
-            {"category_code": category_code, "enabled": 1},
+            {"category_code": category_code, "enabled": 1, "published": 1},
             ["name", "category_label"],
             as_dict=True,
         )
 
         if not cat:
             # Unknown code — re-show picker
-            _send_category_picker(conversation)
+            _is_internal_conv = getattr(conversation, "user_type", "") == "Desk User"
+            _send_category_picker(conversation, is_internal=_is_internal_conv)
             return {
                 "status": "await_category",
                 "conversation": conversation.name,
@@ -778,9 +888,10 @@ def continue_live_chat(conversation_id, payload):
             }
 
         frappe.db.set_value("Nexus Live Conversation", conversation.name, {
-            "chat_category": category_code,
+            "chat_category": cat.name,
             "intent": "",
         })
+        conversation.reload()
         payload["chat_category"] = category_code
 
         visitor_name = conversation.visitor_name or ""
@@ -830,7 +941,7 @@ def continue_live_chat(conversation_id, payload):
             "visitor_name": visitor_name,
             "intent": "",
         })
-        conversation.visitor_name = visitor_name
+        conversation.reload()
         _send_category_picker(conversation, greeting_name=visitor_name)
 
         return {
@@ -876,6 +987,7 @@ def continue_live_chat(conversation_id, payload):
         frappe.db.set_value(
             "Nexus Live Conversation", conversation.name, "intent", "await_close_confirm"
         )
+        conversation.reload()
         add_message(
             conversation=conversation,
             sender_type="AI Agent",

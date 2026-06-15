@@ -21,6 +21,9 @@ class NexusLiveConsole {
 		this.active_filter       = 'all';
 		this.active_category     = 'all';
 		this.search_query        = '';
+		// Tenant
+		this.tenant  = '';
+		this.tenants = [];
 		// Agent mode
 		this.is_agent_mode   = false;
 		this.agent_context   = null;  // { agent, nickname, categories[] }
@@ -32,9 +35,30 @@ class NexusLiveConsole {
 		this.inject_styles();
 		await this.detect_agent_mode();
 		this.render_layout();
-		await this.load_conversations();
+		await this.load_tenants();
 		this.start_polling();
 		this.subscribe_realtime();
+	}
+
+	async load_tenants() {
+		try {
+			const r = await frappe.call({
+				method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_available_tenants',
+			});
+			if (!r.message) return;
+			this.tenants = r.message.tenants || [];
+			const def = r.message.default_tenant || '';
+			this.tenant = def || (this.tenants[0] && this.tenants[0].name) || '';
+
+			const $sel = this.body.find('#nlc-tenant-select');
+			$sel.html(this.tenants.map(t =>
+				`<option value="${frappe.utils.escape_html(t.name)}" ${t.name === this.tenant ? 'selected' : ''}>${frappe.utils.escape_html(t.tenant_name || t.name)}</option>`
+			).join(''));
+
+			await this.load_conversations();
+		} catch(e) {
+			await this.load_conversations();
+		}
 	}
 
 	async detect_agent_mode() {
@@ -143,6 +167,13 @@ class NexusLiveConsole {
 					</div>
 				</div>
 
+				<div class="nlc-tenant-bar">
+					<span class="nlc-tenant-label">Tenant</span>
+					<select id="nlc-tenant-select" class="nlc-tenant-select">
+						<option value="">Loading…</option>
+					</select>
+				</div>
+
 				<div class="nlc-stats-bar">
 					<div class="nlc-stat" id="nlc-stat-open">
 						<span class="nlc-stat-dot open"></span>
@@ -231,6 +262,12 @@ class NexusLiveConsole {
 
 		const me = this;
 
+		this.body.on('change', '#nlc-tenant-select', function () {
+			me.tenant = $(this).val();
+			me.active_category = 'all';
+			me.load_conversations();
+		});
+
 		this.body.on('change', '#nlc-status-select', function () {
 			me.active_filter = $(this).val();
 			me.render_grid(me.filtered_conversations());
@@ -270,6 +307,7 @@ class NexusLiveConsole {
 		try {
 			const r = await frappe.call({
 				method: 'digitz_ai_nexus_live.api.live.get_active_conversations',
+				args: { tenant: this.tenant || '' },
 			});
 			this.conversations = (r.message || {}).conversations || [];
 			this.rebuild_category_chips();
@@ -1185,6 +1223,36 @@ class NexusLiveConsole {
 		}
 		.nlc-card-open-btn:hover { background: #dce9ff; }
 		.nlc-card-open-btn svg   { width: 14px; height: 14px; }
+
+		/* ── Tenant bar ── */
+
+		.nlc-tenant-bar {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 10px 16px;
+			margin: 0 32px 14px;
+			background: #f8fbff;
+			border: 1px solid rgba(77,163,255,.2);
+			border-radius: 14px;
+		}
+		.nlc-tenant-label {
+			font-size: 12px;
+			font-weight: 850;
+			color: #173b8c;
+			white-space: nowrap;
+		}
+		.nlc-tenant-select {
+			border-radius: 999px;
+			border: 1.5px solid rgba(33,77,187,.25);
+			padding: 6px 14px;
+			font-size: 13px;
+			font-weight: 750;
+			color: #173b8c;
+			background: #fff;
+			min-width: 200px;
+			outline: none;
+		}
 
 		/* ── Filter bar ── */
 

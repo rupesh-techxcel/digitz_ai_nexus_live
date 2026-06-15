@@ -113,7 +113,6 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
             instance = frappe.new_doc("Nexus AI Agent Profile Instance")
             instance.profile_template = profile.name
             instance.nickname = _nickname
-            instance.conversation = conversation.name
             instance.status = "Active"
             instance.created_on = now_datetime()
             instance.insert(ignore_permissions=True)

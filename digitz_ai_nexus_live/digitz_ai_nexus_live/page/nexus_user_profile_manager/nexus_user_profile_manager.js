@@ -1,7 +1,7 @@
 frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
     const page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: 'Nexus User Profile Manager',
+        title: 'User Profile & Escalation',
         single_column: true,
     });
 
@@ -27,7 +27,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
     <div class="nexus-admin-hero">
         <div>
             <div class="nexus-admin-badge">DIGITZ AI Nexus</div>
-            <h2>User Profile Manager</h2>
+            <h2>User Profile &amp; Escalation</h2>
             <p>
                 Configure which internal desk users can handle <b>human escalations</b>.
                 Knowledge access for desk users is governed by their <b>Nexus Identity Registry</b>

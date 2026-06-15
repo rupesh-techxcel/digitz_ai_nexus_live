@@ -12,8 +12,9 @@
     "channel",
     "tenant",
     "enabled",
+    "published",
     "section_visibility",
-    "requires_authentication",
+    "visibility",
     "identity_verification_mode",
     "allow_public_fallback",
     "section_display",
@@ -65,16 +66,27 @@
       "label": "Enabled"
     },
     {
+      "default": "1",
+      "description": "When checked, this category appears in the chat widget picker. Uncheck to hide it from visitors without disabling it entirely.",
+      "fieldname": "published",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Published"
+    },
+    {
       "fieldname": "section_visibility",
       "fieldtype": "Section Break",
       "label": "Visibility"
     },
     {
-      "default": "0",
-      "description": "If checked, this category is only shown to authenticated users (portal login or desk session). Leave unchecked for public/guest visibility.",
-      "fieldname": "requires_authentication",
-      "fieldtype": "Check",
-      "label": "Requires Authentication"
+      "default": "External",
+      "description": "Controls which interface this category appears in. External = public chat widget only. Internal = internal chat only. Both = visible in both interfaces.",
+      "fieldname": "visibility",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Visibility",
+      "options": "External\nInternal\nBoth",
+      "reqd": 1
     },
     {
       "default": "None",
@@ -124,7 +136,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-06-03 00:00:00.000000",
+  "modified": "2026-06-14 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Chat Category",

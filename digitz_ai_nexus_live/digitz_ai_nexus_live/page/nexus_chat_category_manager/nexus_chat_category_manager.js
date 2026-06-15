@@ -7,8 +7,10 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
 
     const state = {
         channels: [],
+        tenants: [],
         categories: [],
         selectedChannel: null,
+        selectedTenant: null,
         editingName: null,
     };
 
@@ -50,6 +52,12 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
         <!-- Left: Channel list -->
         <div class="nexus-admin-card nccm-channel-panel">
             <div class="nexus-admin-card-title">Channels</div>
+            <div class="nccm-tenant-filter-wrap">
+                <label class="nccm-tenant-filter-label">Tenant</label>
+                <select id="nccm_tenant_filter" class="form-control form-control-sm">
+                    <option value="">All Tenants</option>
+                </select>
+            </div>
             <div class="nccm-channel-inner">
                 <div id="nccm_channels_loading" class="nexus-empty-state">Loading…</div>
                 <div id="nccm_channel_list"></div>
@@ -146,11 +154,13 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                         <label>Display Order</label>
                         <input id="nccm_f_order" type="number" class="form-control" value="10" min="1">
                     </div>
-                    <div class="nccm-field-group" style="justify-content:flex-end; padding-top:20px;">
-                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                            <input id="nccm_f_auth" type="checkbox" style="width:14px; height:14px;">
-                            Requires Authentication
-                        </label>
+                    <div class="nccm-field-group">
+                        <label>Visibility</label>
+                        <select id="nccm_f_visibility" class="form-control">
+                            <option value="External">External (Public widget only)</option>
+                            <option value="Internal">Internal (Internal chat only)</option>
+                            <option value="Both">Both (Public widget + Internal chat)</option>
+                        </select>
                     </div>
                 </div>
                 <div class="nccm-field-row">
@@ -174,11 +184,21 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                     <label>Description</label>
                     <textarea id="nccm_f_description" class="form-control" rows="2" placeholder="Optional admin notes"></textarea>
                 </div>
-                <div class="nccm-field-group">
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                        <input id="nccm_f_enabled" type="checkbox" checked style="width:14px; height:14px;">
-                        Enabled (visible in chat window)
-                    </label>
+                <div class="nccm-field-row">
+                    <div class="nccm-field-group">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input id="nccm_f_enabled" type="checkbox" checked style="width:14px; height:14px;">
+                            Enabled
+                        </label>
+                        <div class="nexus-admin-muted">Category is active and functional.</div>
+                    </div>
+                    <div class="nccm-field-group">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input id="nccm_f_published" type="checkbox" checked style="width:14px; height:14px;">
+                            Published
+                        </label>
+                        <div class="nexus-admin-muted">Visible in the chat widget picker.</div>
+                    </div>
                 </div>
                 <div class="nccm-info-box">
                     Profile assignment per identity type is managed in the
@@ -205,6 +225,14 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
         });
         $(page.body).on('click', '[data-route-page]', function () {
             frappe.set_route($(this).data('route-page'));
+        });
+        $(page.body).on('change', '#nccm_tenant_filter', function () {
+            state.selectedTenant = $(this).val() || null;
+            state.selectedChannel = null;
+            $('#nccm_placeholder').show();
+            $('#nccm_channel_content').hide();
+            $('#nccm_chain_card').hide();
+            renderChannelList();
         });
         $(page.body).on('click', '#nccm_add_btn', () => openModal(null));
         $(page.body).on('click', '#nccm_routes_btn', () => frappe.set_route('nexus-category-profile-routes'));
@@ -234,6 +262,21 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                 $('#nccm_channels_loading').hide();
                 if (!r.message) return;
                 state.channels = r.message.channels || [];
+                state.tenants  = r.message.tenants  || [];
+                const defaultTenant = r.message.default_tenant || '';
+
+                // Populate tenant dropdown
+                const $sel = $('#nccm_tenant_filter');
+                $sel.html('<option value="">All Tenants</option>');
+                state.tenants.forEach(t => {
+                    $sel.append(`<option value="${esc(t.name)}">${esc(t.tenant_name || t.name)}</option>`);
+                });
+
+                // Default to admin-selected tenant, fall back to first if only one
+                state.selectedTenant = defaultTenant
+                    || (state.tenants.length === 1 ? state.tenants[0].name : '');
+                if (state.selectedTenant) $sel.val(state.selectedTenant);
+
                 renderChannelList();
             },
         });
@@ -246,7 +289,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
 
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_chat_category_manager.get_channel_categories',
-            args: { channel },
+            args: { channel, tenant: state.selectedTenant || null },
             callback(r) {
                 $('#nccm_cat_loading').hide();
                 state.categories = (r.message && r.message.categories) || [];
@@ -260,11 +303,16 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
     // -------------------------------------------------------------------------
     function renderChannelList() {
         const $list = $('#nccm_channel_list');
-        if (!state.channels.length) {
-            $list.html('<div class="nexus-empty-state">No enabled channels found.</div>');
+        const visible = state.selectedTenant
+            ? state.channels.filter(ch => ch.tenant === state.selectedTenant)
+            : state.channels;
+
+        if (!visible.length) {
+            $list.html('<div class="nexus-empty-state">No channels found' +
+                (state.selectedTenant ? ' for this tenant.' : '.') + '</div>');
             return;
         }
-        $list.html(state.channels.map(ch => `
+        $list.html(visible.map(ch => `
             <div class="nexus-kv-row nccm-channel-item" data-channel="${esc(ch.name)}" style="margin-bottom:6px; cursor:pointer;">
                 <div>
                     <span>${esc(ch.channel_name || ch.name)}</span>
@@ -273,7 +321,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                 <b style="color:#214dbb; font-size:16px;">›</b>
             </div>`).join(''));
 
-        $list.on('click', '.nccm-channel-item', function () {
+        $list.off('click', '.nccm-channel-item').on('click', '.nccm-channel-item', function () {
             selectChannel($(this).data('channel'));
         });
     }
@@ -318,9 +366,11 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                         <div style="display:flex; flex-wrap:wrap; gap:4px;">${identityPills}</div>
                     </td>
                     <td style="text-align:center; vertical-align:middle;">
-                        ${cat.requires_authentication
-                            ? `<span class="nexus-status-pill" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:9px;">Auth</span>`
-                            : `<span class="nexus-status-pill" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:9px;">Public</span>`}
+                        ${cat.visibility === 'Internal'
+                            ? `<span class="nexus-status-pill" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:9px;">Internal</span>`
+                            : cat.visibility === 'Both'
+                            ? `<span class="nexus-status-pill" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; font-size:9px;">Both</span>`
+                            : `<span class="nexus-status-pill" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-size:9px;">External</span>`}
                         ${cat.identity_verification_mode && cat.identity_verification_mode !== 'None'
                             ? `<div style="margin-top:4px;"><span class="nexus-status-pill" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; font-size:9px;">${esc(cat.identity_verification_mode)}</span></div>`
                             : ''}
@@ -328,12 +378,19 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                     <td style="text-align:center; vertical-align:middle;">
                         <span class="nexus-status-pill ${cat.enabled ? 'enabled' : 'disabled'}">${cat.enabled ? 'On' : 'Off'}</span>
                     </td>
+                    <td style="text-align:center; vertical-align:middle;">
+                        <span class="nexus-status-pill ${cat.published ? 'nccm-published' : 'nccm-draft'}">${cat.published ? 'Live' : 'Draft'}</span>
+                    </td>
                     <td style="text-align:right; vertical-align:middle; white-space:nowrap;">
                         <button class="btn btn-xs btn-info nccm-chain-btn" data-code="${esc(cat.category_code)}" data-label="${esc(cat.category_label)}" style="margin-right:3px;">Chain</button>
                         <button class="btn btn-xs btn-default nccm-edit-btn" data-name="${esc(cat.name)}" style="margin-right:3px;">Edit</button>
                         <button class="btn btn-xs ${cat.enabled ? 'btn-warning' : 'btn-success'} nccm-toggle-btn"
                             data-name="${esc(cat.name)}" data-enabled="${cat.enabled ? 0 : 1}">
                             ${cat.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-xs ${cat.published ? 'btn-default' : 'btn-primary'} nccm-publish-btn"
+                            data-name="${esc(cat.name)}" data-published="${cat.published ? 0 : 1}" style="margin-left:3px;">
+                            ${cat.published ? 'Unpublish' : 'Publish'}
                         </button>
                         <button class="btn btn-xs btn-danger nccm-delete-btn" data-name="${esc(cat.name)}" style="margin-left:3px;">✕</button>
                     </td>
@@ -347,6 +404,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                     <th>Configured Identities</th>
                     <th style="width:70px; text-align:center;">Visibility</th>
                     <th style="width:60px; text-align:center;">Status</th>
+                    <th style="width:70px; text-align:center;">Published</th>
                     <th style="width:240px; text-align:right;">Actions</th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
@@ -361,13 +419,16 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
         $list.off('click', '.nccm-toggle-btn').on('click', '.nccm-toggle-btn', function () {
             toggleCategory($(this).data('name'), $(this).data('enabled'));
         });
+        $list.off('click', '.nccm-publish-btn').on('click', '.nccm-publish-btn', function () {
+            togglePublished($(this).data('name'), $(this).data('published'));
+        });
         $list.off('click', '.nccm-delete-btn').on('click', '.nccm-delete-btn', function () {
             deleteCategory($(this).data('name'));
         });
     }
 
     // -------------------------------------------------------------------------
-    // Modal — label, order, auth, description only
+    // Modal — label, order, visibility, description only
     // -------------------------------------------------------------------------
     function openModal(name) {
         state.editingName = name || null;
@@ -379,20 +440,22 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             $('#nccm_modal_title').text('Edit Category');
             $('#nccm_f_label').val(cat.category_label);
             $('#nccm_f_order').val(cat.display_order);
-            $('#nccm_f_auth').prop('checked', !!cat.requires_authentication);
+            $('#nccm_f_visibility').val(cat.visibility || 'External');
             $('#nccm_f_identity_verification_mode').val(cat.identity_verification_mode || 'None');
             $('#nccm_f_public_fallback').prop('checked', !!cat.allow_public_fallback);
             $('#nccm_f_description').val(cat.description || '');
             $('#nccm_f_enabled').prop('checked', !!cat.enabled);
+            $('#nccm_f_published').prop('checked', cat.published !== 0);
         } else {
             $('#nccm_modal_title').text('Add Category');
             $('#nccm_f_label').val('');
             $('#nccm_f_order').val(10);
-            $('#nccm_f_auth').prop('checked', false);
+            $('#nccm_f_visibility').val('External');
             $('#nccm_f_identity_verification_mode').val('None');
             $('#nccm_f_public_fallback').prop('checked', false);
             $('#nccm_f_description').val('');
             $('#nccm_f_enabled').prop('checked', true);
+            $('#nccm_f_published').prop('checked', true);
         }
 
         $('#nccm_modal_overlay').show();
@@ -418,11 +481,13 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             method: 'digitz_ai_nexus_live.api.nexus_chat_category_manager.save_category',
             args: {
                 channel: state.selectedChannel,
+                tenant: state.selectedTenant || null,
                 category_label: label,
                 display_order: $('#nccm_f_order').val() || 10,
                 description: $('#nccm_f_description').val().trim(),
                 enabled: $('#nccm_f_enabled').is(':checked') ? 1 : 0,
-                requires_authentication: $('#nccm_f_auth').is(':checked') ? 1 : 0,
+                published: $('#nccm_f_published').is(':checked') ? 1 : 0,
+                visibility: $('#nccm_f_visibility').val() || 'External',
                 identity_verification_mode: $('#nccm_f_identity_verification_mode').val() || 'None',
                 allow_public_fallback: $('#nccm_f_public_fallback').is(':checked') ? 1 : 0,
                 name: state.editingName || null,
@@ -448,6 +513,19 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
             callback(r) {
                 if (r.message && r.message.status === 'success') {
                     frappe.show_alert({ message: enabled ? 'Enabled.' : 'Disabled.', indicator: enabled ? 'green' : 'orange' });
+                    loadChannelCategories(state.selectedChannel);
+                }
+            },
+        });
+    }
+
+    function togglePublished(name, published) {
+        frappe.call({
+            method: 'digitz_ai_nexus_live.api.nexus_chat_category_manager.toggle_published',
+            args: { name, published },
+            callback(r) {
+                if (r.message && r.message.status === 'success') {
+                    frappe.show_alert({ message: published ? 'Published — visible in chat widget.' : 'Unpublished — hidden from chat widget.', indicator: published ? 'green' : 'orange' });
                     loadChannelCategories(state.selectedChannel);
                 }
             },
@@ -722,11 +800,15 @@ function inject_nccm_css() {
         .nexus-status-pill { display:inline-flex; padding:5px 9px; border-radius:999px; font-size:10px; font-weight:900; white-space:nowrap; }
         .nexus-status-pill.enabled { background:#ecfdf3; color:#16794c; border:1px solid #bdebd2; }
         .nexus-status-pill.disabled { background:#fff0f0; color:#b42318; border:1px solid #ffd1d1; }
+        .nexus-status-pill.nccm-published { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+        .nexus-status-pill.nccm-draft { background:#f9fafb; color:#6b7280; border:1px solid #e5e7eb; }
         .nexus-admin-table { margin-bottom:0; background:#fff; }
         .nexus-admin-table th { color:#173b8c; font-size:12px; font-weight:900; background:#eef6ff; white-space:nowrap; }
         .nexus-admin-table td { color:#27416f; font-size:12px; font-weight:650; vertical-align:middle; }
         .nexus-admin-muted { margin-top:4px; color:#6b7c9b; font-size:11px; font-weight:650; line-height:1.4; }
 
+        .nccm-tenant-filter-wrap { margin-bottom:12px; }
+        .nccm-tenant-filter-label { font-size:11px; font-weight:900; color:#6b7c9b; text-transform:uppercase; letter-spacing:.05em; display:block; margin-bottom:4px; }
         .nccm-layout { display:grid; grid-template-columns:220px 1fr; gap:18px; align-items:start; }
         .nccm-channel-panel { position:sticky; top:64px; }
         .nccm-channel-inner { max-height:540px; overflow-y:auto; }

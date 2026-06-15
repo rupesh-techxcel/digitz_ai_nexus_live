@@ -11,7 +11,7 @@
     "column_break_1",
     "ai_agent_profile",
     "enabled",
-    "is_public_route",
+    "published",
     "section_identity_profiles",
     "identity_profiles",
     "section_meta",
@@ -56,12 +56,12 @@
       "label": "Enabled"
     },
     {
-      "default": "0",
-      "description": "When enabled, this route serves unregistered public visitors. Knowledge access is automatically restricted to Public policy only — no Identity Profile matching is performed.",
-      "fieldname": "is_public_route",
+      "default": "1",
+      "description": "When checked, this route is active for identity-based routing. Uncheck to draft or suspend a route without deleting it.",
+      "fieldname": "published",
       "fieldtype": "Check",
       "in_list_view": 1,
-      "label": "Is Public Route"
+      "label": "Published"
     },
     {
       "fieldname": "section_identity_profiles",
@@ -69,7 +69,7 @@
       "label": "Permitted Identity Profiles"
     },
     {
-      "description": "Identity Profiles permitted to use this route. At runtime the visitor's assigned profiles are intersected against this list. Leave empty only if this is a public route.",
+      "description": "Identity Profiles permitted to use this route. At runtime the visitor's assigned profiles are intersected against this list.",
       "fieldname": "identity_profiles",
       "fieldtype": "Table",
       "label": "Permitted Identity Profiles",
@@ -95,7 +95,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-06-10 00:00:00",
+  "modified": "2026-06-14 00:00:00",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Category Identity Route",

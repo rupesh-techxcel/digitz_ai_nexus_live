@@ -178,50 +178,39 @@ def _check_routes():
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"enabled": 1},
-        fields=["name", "channel", "chat_category", "ai_agent_profile",
-                "is_public_route", "priority"],
+        fields=["name", "channel", "chat_category", "ai_agent_profile", "priority"],
     )
 
     for r in routes:
         route_issues = []
         has_profile  = bool(r.ai_agent_profile)
-        is_public    = bool(r.is_public_route)
 
-        identity_profiles = []
-        mappings_ok = True  # public routes need no identity profiles
-        if not is_public:
-            identity_profiles = frappe.get_all(
-                "Nexus Route Identity Profile",
-                filters={"parent": r.name},
-                pluck="identity_profile",
-            )
-            if not identity_profiles:
+        identity_profiles = frappe.get_all(
+            "Nexus Route Identity Profile",
+            filters={"parent": r.name},
+            pluck="identity_profile",
+        )
+        open_to_all = not bool(identity_profiles)  # no profiles = open to all visitors
+
+        mappings_ok = True
+        if not open_to_all:
+            # At least one attached identity profile must have a usable mapping
+            has_any_mapping = False
+            for ip_name in identity_profiles:
+                if frappe.db.count("Nexus Identity Profile Mapping", {"parent": ip_name}):
+                    has_any_mapping = True
+                    break
+            if not has_any_mapping:
                 route_issues.append(
-                    "Registered route has no identity profiles — no visitor can match it."
+                    "No identity profile attached to this route has identity mappings — "
+                    "registered visitors will be denied all knowledge access."
                 )
                 mappings_ok = False
-            else:
-                # At least one attached identity profile must have a usable mapping
-                has_any_mapping = False
-                for ip_name in identity_profiles:
-                    mapping_count = frappe.db.count(
-                        "Nexus Identity Profile Mapping",
-                        {"parent": ip_name},
-                    )
-                    if mapping_count:
-                        has_any_mapping = True
-                        break
-                if not has_any_mapping:
-                    route_issues.append(
-                        "No identity profile attached to this route has identity mappings — "
-                        "registered visitors will be denied all knowledge access."
-                    )
-                    mappings_ok = False
 
         if not has_profile:
             route_issues.append("No AI Agent Profile assigned.")
 
-        ready = has_profile and mappings_ok and (is_public or bool(identity_profiles))
+        ready = has_profile and mappings_ok
         if not ready:
             issues.extend([f"Route {r.name}: {x}" for x in route_issues])
 
@@ -235,7 +224,7 @@ def _check_routes():
             "chat_category":      r.chat_category,
             "category_label":     cat_label,
             "ai_agent_profile":   r.ai_agent_profile,
-            "is_public_route":    is_public,
+            "open_to_all":        open_to_all,
             "identity_profiles":  identity_profiles,
             "mappings_ok":        mappings_ok,
             "priority":           r.priority or 0,
@@ -254,9 +243,9 @@ def _check_routes():
         "status":  _status(score),
         "counts": {
             "routes":     len(routes),
-            "public":     sum(1 for i in items if i["is_public_route"]),
-            "registered": sum(1 for i in items if not i["is_public_route"]),
-            "ready":      sum(1 for i in items if i["ready"]),
+            "open_to_all": sum(1 for i in items if i["open_to_all"]),
+            "restricted":  sum(1 for i in items if not i["open_to_all"]),
+            "ready":       sum(1 for i in items if i["ready"]),
         },
         "items":  items,
         "issues": issues,

@@ -467,7 +467,7 @@ def _get_chat_routes_for_kp(profile_name):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"name": ["in", route_names], "enabled": 1},
-        fields=["name", "chat_category", "ai_agent_profile", "is_public_route"],
+        fields=["name", "chat_category", "ai_agent_profile"],
     )
     if not routes:
         return []
@@ -503,7 +503,7 @@ def _get_chat_routes_for_kp(profile_name):
             "enabled":            bool(cc.enabled),
             "route":              route.name,
             "ai_agent_profile":   route.ai_agent_profile or "",
-            "is_public_route":    bool(route.is_public_route),
+            "open_to_all":        not bool(route_ip_map.get(route.name)),
             "via":                bridging,
         })
 

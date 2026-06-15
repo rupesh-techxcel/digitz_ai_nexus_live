@@ -279,7 +279,11 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
                         <span class="nexus-status-pill ${cat.enabled ? 'enabled' : 'disabled'}" style="font-size:9px; padding:2px 7px;">
                             ${cat.enabled ? 'On' : 'Off'}
                         </span>
-                        ${cat.requires_authentication ? `<span class="nexus-status-pill" style="font-size:9px; padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Auth</span>` : ''}
+                        ${cat.visibility === 'Internal'
+                            ? `<span class="nexus-status-pill" style="font-size:9px; padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Internal</span>`
+                            : cat.visibility === 'Both'
+                            ? `<span class="nexus-status-pill" style="font-size:9px; padding:2px 7px; background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;">Both</span>`
+                            : ''}
                     </div>
                 </div>
                 <b style="color:#214dbb; flex-shrink:0;">›</b>
@@ -316,19 +320,12 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         $('#ncpr_no_routes').hide();
 
         const rows = state.routes.map(r => {
-            const routeTypeBadge = r.is_public_route
-                ? `<span class="ncpr-route-pill ncpr-public">Public</span>`
-                : `<span class="ncpr-route-pill ncpr-registered">Registered</span>`;
-
-            const profilesHtml = r.is_public_route
-                ? '<span class="nexus-admin-muted">Open to all visitors</span>'
-                : (r.identity_profiles && r.identity_profiles.length
-                    ? r.identity_profiles.map(p => `<span class="ncpr-ip-chip">${esc(p)}</span>`).join('')
-                    : '<span class="nexus-admin-muted" style="color:#b42318;">No Identity Profiles</span>');
+            const profilesHtml = r.identity_profiles && r.identity_profiles.length
+                ? r.identity_profiles.map(p => `<span class="ncpr-ip-chip">${esc(p)}</span>`).join('')
+                : '<span class="nexus-admin-muted">Open to all</span>';
 
             return `
                 <tr>
-                    <td>${routeTypeBadge}</td>
                     <td>
                         <b style="color:#173b8c; font-size:12px;">${esc(r.ai_agent_profile)}</b>
                         ${r.description ? `<div class="nexus-admin-muted">${esc(r.description)}</div>` : ''}
@@ -353,7 +350,6 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         $table.html(`
             <table class="table table-bordered nexus-admin-table" style="margin-bottom:0;">
                 <thead><tr>
-                    <th style="width:100px;">Type</th>
                     <th style="width:180px;">AI Agent Profile</th>
                     <th>Identity Profiles</th>
                     <th style="width:70px; text-align:center;">Priority</th>
@@ -367,7 +363,8 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             loadChain($(this).data('name'));
         });
         $table.off('click', '.ncpr-edit-btn').on('click', '.ncpr-edit-btn', function () {
-            frappe.set_route('Form', 'Nexus Category Identity Route', $(this).data('name'));
+            frappe._ncre_context = { route: $(this).data('name') };
+            frappe.set_route('nexus-category-route-editor');
         });
         $table.off('click', '.ncpr-toggle-btn').on('click', '.ncpr-toggle-btn', function () {
             toggleRoute($(this).data('name'), $(this).data('enabled'));
@@ -378,13 +375,18 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
     }
 
     // -------------------------------------------------------------------------
-    // Add route — opens standard Frappe form with channel + category pre-filled
+    // Add route — opens custom editor page with channel + category pre-filled
     // -------------------------------------------------------------------------
     function addRoute() {
-        frappe.new_doc('Nexus Category Identity Route', {
+        const cat = state.categories.find(c => c.name === state.selectedCategory);
+        const ch = state.channels.find(c => c.name === state.selectedChannel);
+        frappe._ncre_context = {
             channel: state.selectedChannel,
-            chat_category: state.selectedCategory,
-        });
+            channel_label: ch ? (ch.channel_name || ch.name) : state.selectedChannel,
+            category: state.selectedCategory,
+            category_label: cat ? cat.category_label : state.selectedCategory,
+        };
+        frappe.set_route('nexus-category-route-editor');
     }
 
     function toggleRoute(name, enabled) {

@@ -205,7 +205,7 @@ def get_category_chain(category_code):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"chat_category": category_code, "enabled": 1},
-        fields=["name", "identity_type", "ai_agent_profile", "priority"],
+        fields=["name", "ai_agent_profile", "priority"],
         order_by="priority asc",
     )
 
@@ -213,7 +213,7 @@ def get_category_chain(category_code):
             "category": {
                 "code": cat.category_code,
                 "label": cat.category_label,
-                "requires_authentication": cat.requires_authentication,
+                "visibility": cat.visibility,
                 "identity_verification_mode": cat.identity_verification_mode,
                 "allow_public_fallback": cat.allow_public_fallback,
                 "enabled": cat.enabled,
@@ -230,8 +230,17 @@ def get_category_chain(category_code):
         return result
 
     for route in routes:
+        permitted = frappe.get_all(
+            "Nexus Route Identity Profile",
+            filters={"parent": route.name},
+            pluck="identity_profile",
+        )
+        open_to_all = not bool(permitted)
+        route_identity_label = "Open to all" if open_to_all else ", ".join(permitted)
+
         entry = {
-            "identity_type": route.identity_type,
+            "identity_type": route_identity_label,
+            "open_to_all": open_to_all,
             "profile": None,
             "access_categories": [],
             "policies": [],
@@ -291,36 +300,58 @@ def get_category_chain(category_code):
 
 @frappe.whitelist()
 def get_page_data():
+    from digitz_ai_nexus_live.api.nexus_profile_access_allocation import get_available_tenants
+
     channels = frappe.get_all(
         "Nexus Live Channel",
         filters={"enabled": 1},
-        fields=["name", "channel_code", "channel_name", "channel_type"],
+        fields=["name", "channel_code", "channel_name", "channel_type", "tenant"],
         order_by="channel_name asc",
     )
-    return {"channels": channels}
+    tenant_data = get_available_tenants()
+    return {
+        "channels": channels,
+        "tenants": tenant_data.get("tenants") or [],
+        "default_tenant": tenant_data.get("default_tenant") or "",
+    }
 
 
 @frappe.whitelist()
-def get_channel_categories(channel):
+def get_channel_categories(channel, tenant=None):
+    filters = {"channel": channel}
+    if tenant:
+        filters["tenant"] = tenant
     categories = frappe.get_all(
         "Nexus Chat Category",
-        filters={"channel": channel},
+        filters=filters,
         fields=[
             "name", "category_code", "category_label",
-            "requires_authentication", "identity_verification_mode",
-            "allow_public_fallback", "display_order", "enabled", "description",
+            "visibility", "identity_verification_mode",
+            "allow_public_fallback", "display_order", "enabled", "published", "description",
         ],
         order_by="display_order asc",
     )
 
-    # Annotate each category with its configured identity types (from routes)
+    # Annotate each category with its configured identity profiles
     for cat in categories:
-        cat["configured_identities"] = frappe.get_all(
+        routes = frappe.get_all(
             "Nexus Category Identity Route",
             filters={"chat_category": cat.category_code, "enabled": 1},
-            pluck="identity_type",
+            fields=["name"],
             order_by="priority asc",
         )
+        labels = []
+        for r in routes:
+            permitted = frappe.get_all(
+                "Nexus Route Identity Profile",
+                filters={"parent": r.name},
+                pluck="identity_profile",
+            )
+            if not permitted:
+                labels.append("Open to all")
+            else:
+                labels.extend(permitted)
+        cat["configured_identities"] = list(dict.fromkeys(labels))  # deduplicate, preserve order
 
     return {"categories": categories}
 
@@ -332,9 +363,11 @@ def save_category(
     display_order,
     description,
     enabled,
-    requires_authentication=0,
+    visibility="External",
     identity_verification_mode="None",
     allow_public_fallback=0,
+    published=1,
+    tenant=None,
     name=None,
     category_code=None,
 ):
@@ -354,13 +387,16 @@ def save_category(
                 counter += 1
 
     doc.channel = channel
+    if tenant:
+        doc.tenant = tenant
     doc.category_label = category_label
-    doc.requires_authentication = int(requires_authentication or 0)
+    doc.visibility = visibility or "External"
     doc.identity_verification_mode = identity_verification_mode or "None"
     doc.allow_public_fallback = int(allow_public_fallback or 0)
     doc.display_order = int(display_order or 10)
     doc.description = description or ""
     doc.enabled = int(enabled)
+    doc.published = int(published)
 
     doc.save(ignore_permissions=True)
     frappe.db.commit()
@@ -394,5 +430,14 @@ def toggle_category(name, enabled):
     if not frappe.db.exists("Nexus Chat Category", name):
         frappe.throw("Category not found.")
     frappe.db.set_value("Nexus Chat Category", name, "enabled", int(enabled))
+    frappe.db.commit()
+    return {"status": "success"}
+
+
+@frappe.whitelist()
+def toggle_published(name, published):
+    if not frappe.db.exists("Nexus Chat Category", name):
+        frappe.throw("Category not found.")
+    frappe.db.set_value("Nexus Chat Category", name, "published", int(published))
     frappe.db.commit()
     return {"status": "success"}

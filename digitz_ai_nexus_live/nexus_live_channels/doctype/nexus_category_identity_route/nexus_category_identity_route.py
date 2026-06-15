@@ -20,14 +20,7 @@ class NexusCategoryIdentityRoute(Document):
             )
 
     def _warn_if_profile_missing_access(self):
-        if self.is_public_route:
-            return
-
-        if not self.identity_profiles:
-            frappe.msgprint(
-                "This route has no Identity Profiles configured. "
-                "Registered visitors will not be matched to this route until "
-                "at least one Identity Profile is assigned.",
-                title="Identity Profile Missing",
-                indicator="orange",
-            )
+        # No identity profiles = open to all visitors (valid — no warning needed).
+        # The warning only fires when profiles ARE assigned but none have identity mappings,
+        # which is caught by the route health check in nexus_live_config.
+        pass

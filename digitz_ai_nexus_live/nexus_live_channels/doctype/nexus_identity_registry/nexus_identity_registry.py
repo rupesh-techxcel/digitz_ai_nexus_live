@@ -10,7 +10,6 @@ class NexusIdentityRegistry(Document):
         self._set_verified_on()
         self._validate_unique_active_keys()
         self._validate_identity_rows()
-        self._validate_safe_guard_rows()
 
     def _normalize_email(self):
         if self.email:
@@ -60,36 +59,23 @@ class NexusIdentityRegistry(Document):
         seen = set()
         primary_count = 0
 
-        for row in self.identities or []:
-            if not row.identity_type:
+        for row in self.identity_profiles or []:
+            if not row.identity_profile:
                 continue
 
-            if row.identity_type in seen:
+            if row.identity_profile in seen:
                 frappe.throw(
-                    f"Identity Type '{row.identity_type}' is duplicated in the identity rows.",
-                    title="Duplicate Identity Type",
+                    f"Identity Profile '{row.identity_profile}' is duplicated.",
+                    title="Duplicate Identity Profile",
                 )
-            seen.add(row.identity_type)
+            seen.add(row.identity_profile)
 
-            if row.enabled and row.is_primary:
+            if row.is_primary:
                 primary_count += 1
 
         if primary_count > 1:
             frappe.throw(
-                "Only one enabled identity row can be marked as primary.",
+                "Only one identity profile row can be marked as primary.",
                 title="Multiple Primary Identities",
             )
 
-    def _validate_safe_guard_rows(self):
-        seen = set()
-
-        for row in self.safe_guard_access_categories or []:
-            if not row.access_category:
-                continue
-
-            if row.access_category in seen:
-                frappe.throw(
-                    f"Access Category '{row.access_category}' is duplicated in Safe Guard.",
-                    title="Duplicate Safe Guard Access Category",
-                )
-            seen.add(row.access_category)

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acme Corp — Chat Widget Test</title>
+
+    <!--
+        ════════════════════════════════════════════════════════
+        NEXUS CHAT WIDGET EMBED — Same-Origin Test Page
+        Served at: http://127.0.0.1:8512/test-embed
+        ════════════════════════════════════════════════════════
+        This page lives on the Nexus server itself, so all script
+        and API requests are same-origin — no CORS setup needed.
+
+        To test from an external origin instead, use the standalone
+        /home/rupesh/nexus-embed-test/index.html (see README there).
+    -->
+
+    <!-- no-cache -->
+
+    <!--
+        Frappe replaces the comment below with:
+            <script>frappe.csrf_token = "actual_session_token";</script>
+        This is needed so frappe.call() can pass CSRF validation for logged-in
+        sessions (e.g. developer testing). For pure guest visitors the session
+        has no CSRF token and validation is skipped automatically by Frappe.
+    -->
+    <!-- csrf_token -->
+
+    <script>
+        /* ── Widget configuration (set BEFORE bundle loads) ── */
+        window.NexusChatConfig = {
+            /* tenant and channel are auto-resolved by the server.
+               Uncomment to pin them explicitly:
+               tenant:  'DIGITZ-AI-NEXUS',
+               channel: 'NEXUS-WEBSITE-CHAT-DIGITZ-AI-NEXUS', */
+        };
+
+        /* ── Frappe environment bootstrap ── */
+        window.dev_server    = 1;
+        window.socketio_port = 9512;
+
+        window.frappe = window.frappe || {};
+        frappe.boot   = {
+            sitename      : 'digitz_ai_nexus_live_test.site',
+            socketio_port : 9512,
+        };
+
+        /*
+         * frappe-web.bundle calls frappe.ready(fn) to queue callbacks until
+         * Frappe is fully initialised. On a real Frappe page the base template
+         * sets this up; here we do it ourselves so the bundle doesn't crash.
+         * frappe.trigger_ready() is already defined in the bundle and calls
+         * frappe.ready_events.forEach(fn => fn()), which fires realtime.init().
+         */
+        frappe.ready_events = [];
+        frappe.ready = function (fn) { frappe.ready_events.push(fn); };
+    </script>
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f8f9fa;
+            color: #1a1a2e;
+            min-height: 100vh;
+        }
+        .ts-nav {
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .ts-logo { font-weight: 700; font-size: 1.15rem; color: #1a1a2e; letter-spacing: -.5px; }
+        .ts-logo span { color: #6366f1; }
+        .ts-nav-links { display: flex; gap: 28px; list-style: none; }
+        .ts-nav-links a { text-decoration: none; color: #4b5563; font-size: .9rem; font-weight: 500; }
+        .ts-nav-links a:hover { color: #6366f1; }
+        .ts-hero {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #3730a3 100%);
+            color: #fff;
+            padding: 80px 32px 96px;
+            text-align: center;
+        }
+        .ts-hero h1 { font-size: 2.6rem; font-weight: 800; margin-bottom: 20px; line-height: 1.2; }
+        .ts-hero p  { font-size: 1.1rem; opacity: .85; max-width: 560px; margin: 0 auto 36px; line-height: 1.65; }
+        .ts-cta {
+            display: inline-block; background: #fff; color: #4f46e5;
+            padding: 14px 36px; border-radius: 8px; font-weight: 700;
+            text-decoration: none; font-size: 1rem; box-shadow: 0 4px 16px rgba(0,0,0,.2);
+        }
+        .ts-cta:hover { background: #f5f3ff; }
+        .ts-features {
+            max-width: 960px; margin: 64px auto; padding: 0 32px;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px;
+        }
+        .ts-card {
+            background: #fff; border-radius: 12px; padding: 32px 28px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.06); border: 1px solid #e5e7eb;
+        }
+        .ts-card-icon {
+            width: 44px; height: 44px; border-radius: 10px; background: #ede9fe;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 16px; font-size: 1.4rem;
+        }
+        .ts-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 10px; color: #111827; }
+        .ts-card p  { font-size: .875rem; color: #6b7280; line-height: 1.6; }
+        .ts-footer {
+            background: #1a1a2e; color: #9ca3af;
+            text-align: center; padding: 32px; font-size: .8rem;
+        }
+        .ts-note-wrap { padding: 24px 32px 0; }
+        .ts-note {
+            background: #fefce8; border: 1px solid #fde047; border-radius: 8px;
+            padding: 14px 20px; max-width: 960px; margin: 0 auto;
+            font-size: .82rem; color: #713f12;
+            display: flex; align-items: flex-start; gap: 10px; line-height: 1.55;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="ts-nav">
+    <div class="ts-logo">Acme <span>Corp</span></div>
+    <ul class="ts-nav-links">
+        <li><a href="#">Home</a></li>
+        <li><a href="#">Products</a></li>
+        <li><a href="#">Solutions</a></li>
+        <li><a href="#">Support</a></li>
+    </ul>
+</nav>
+
+<div class="ts-note-wrap">
+    <div class="ts-note" id="ncw-debug-banner">
+        <span>🧪</span>
+        <div id="ncw-debug-text">Loading diagnostics…</div>
+    </div>
+</div>
+<script>
+(function () {
+    function dbg() {
+        var el = document.getElementById('ncw-debug-text');
+        if (!el) return;
+        var token = (window.frappe && frappe.csrf_token) ? frappe.csrf_token : '(not set)';
+        var call  = (window.frappe && typeof frappe.call === 'function') ? 'yes' : 'no';
+        var $ = (typeof jQuery !== 'undefined') ? 'yes' : 'no';
+        el.innerHTML =
+            '<strong>Diagnostics</strong> &mdash; ' +
+            'csrf_token: <code>' + token + '</code> &nbsp;|&nbsp; ' +
+            'frappe.call: <code>' + call + '</code> &nbsp;|&nbsp; ' +
+            'jQuery: <code>' + $ + '</code>';
+    }
+    /* run once now (before bundles load) and again after everything settles */
+    window.addEventListener('load', dbg);
+    setTimeout(dbg, 2000);
+})();
+</script>
+
+<section class="ts-hero">
+    <h1>Welcome to Acme Corp</h1>
+    <p>We help businesses move faster with intelligent tools and expert support.
+       Got a question? Our AI assistant is ready — right now.</p>
+    <a href="#" class="ts-cta">Talk to an Expert</a>
+</section>
+
+<div class="ts-features">
+    <div class="ts-card">
+        <div class="ts-card-icon">⚡</div>
+        <h3>Instant Answers</h3>
+        <p>Get answers to product and support questions in seconds — no waiting for a human agent.</p>
+    </div>
+    <div class="ts-card">
+        <div class="ts-card-icon">🔒</div>
+        <h3>Secure by Default</h3>
+        <p>Your conversations are private and protected. We never share your data with third parties.</p>
+    </div>
+    <div class="ts-card">
+        <div class="ts-card-icon">🤝</div>
+        <h3>Human Escalation</h3>
+        <p>When you need a human, we connect you with a real agent — no dead ends, no runarounds.</p>
+    </div>
+</div>
+
+<footer class="ts-footer">
+    &copy; 2025 Acme Corp &nbsp;·&nbsp; Powered by <strong style="color:#a5b4fc">DIGITZ AI Nexus</strong>
+</footer>
+
+
+<!-- ══ Widget Scripts — loaded at end of body ══ -->
+
+<!-- Frappe web client: frappe.call(), frappe.realtime, jQuery -->
+<script src="/assets/frappe/dist/js/frappe-web.bundle.RGYFHIMP.js"></script>
+
+<!-- Nexus chat widget -->
+<script src="/assets/digitz_ai_nexus_live/dist/js/nexus_chat_widget.bundle.IRMS7Z43.js"></script>
+
+</body>
+</html>

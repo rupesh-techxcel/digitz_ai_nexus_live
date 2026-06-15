@@ -32,9 +32,18 @@ def get_page_data(search=None):
     identity_profiles = frappe.get_all(
         "Nexus Identity Profile",
         filters={"enabled": 1},
-        fields=["name", "profile_name", "title"],
+        fields=["name", "profile_name", "title", "description"],
         order_by="profile_name asc",
     )
+
+    # Enrich each profile with its identity types so the picker shows what each profile covers
+    for p in identity_profiles:
+        p["identity_types"] = frappe.get_all(
+            "Nexus Identity Profile Mapping",
+            filters={"parent": p.name},
+            pluck="identity_type",
+        )
+        p["identity_types"] = list(dict.fromkeys(p["identity_types"]))  # deduplicate, preserve order
 
     return {
         "registries": registries,

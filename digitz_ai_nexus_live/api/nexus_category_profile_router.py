@@ -42,7 +42,7 @@ def get_channel_categories(channel):
     categories = frappe.get_all(
         "Nexus Chat Category",
         filters={"channel": channel},
-        fields=["name", "category_code", "category_label", "requires_authentication", "enabled", "display_order"],
+        fields=["name", "category_code", "category_label", "visibility", "enabled", "display_order"],
         order_by="display_order asc",
     )
     return {"categories": categories}
@@ -54,7 +54,7 @@ def get_category_routes(channel, category_code):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={"channel": channel, "chat_category": category_code},
-        fields=["name", "ai_agent_profile", "is_public_route", "enabled", "priority", "description"],
+        fields=["name", "ai_agent_profile", "enabled", "priority", "description"],
         order_by="priority asc",
     )
 
@@ -66,6 +66,68 @@ def get_category_routes(channel, category_code):
         )
 
     return {"routes": routes}
+
+
+@frappe.whitelist()
+def create_identity_profile(profile_name, title=None, tenant=None, enabled=1):
+    if not profile_name:
+        frappe.throw("Profile Name is required.")
+    if frappe.db.exists("Nexus Identity Profile", {"profile_name": profile_name}):
+        frappe.throw(f"An Identity Profile named '{profile_name}' already exists.")
+    doc = frappe.new_doc("Nexus Identity Profile")
+    doc.profile_name = profile_name
+    doc.title = title or profile_name
+    doc.tenant = tenant or None
+    doc.enabled = int(enabled)
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "success", "name": doc.name, "profile_name": doc.profile_name}
+
+
+@frappe.whitelist()
+def get_route(name):
+    doc = frappe.get_doc("Nexus Category Identity Route", name)
+    return {
+        "name": doc.name,
+        "channel": doc.channel,
+        "chat_category": doc.chat_category,
+        "ai_agent_profile": doc.ai_agent_profile,
+        "enabled": doc.enabled,
+        "published": doc.published,
+        "priority": doc.priority or 10,
+        "description": doc.description or "",
+        "identity_profiles": [row.identity_profile for row in doc.identity_profiles or []],
+    }
+
+
+@frappe.whitelist()
+def save_route(data):
+    import json as _json
+    if isinstance(data, str):
+        data = _json.loads(data)
+
+    name = data.get("name")
+    if name and frappe.db.exists("Nexus Category Identity Route", name):
+        doc = frappe.get_doc("Nexus Category Identity Route", name)
+    else:
+        doc = frappe.new_doc("Nexus Category Identity Route")
+        doc.channel = data["channel"]
+        doc.chat_category = data["chat_category"]
+
+    doc.ai_agent_profile = data.get("ai_agent_profile")
+    doc.enabled = int(data.get("enabled", 1))
+    doc.published = int(data.get("published", 1))
+    doc.priority = int(data.get("priority") or 10)
+    doc.description = data.get("description") or ""
+
+    doc.set("identity_profiles", [])
+    for ip in data.get("identity_profiles") or []:
+        if ip:
+            doc.append("identity_profiles", {"identity_profile": ip})
+
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "success", "name": doc.name}
 
 
 @frappe.whitelist()
@@ -95,7 +157,7 @@ def get_route_chain(channel, category_code, route_name=None, identity_type=None)
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters=filters,
-        fields=["name", "ai_agent_profile", "is_public_route"],
+        fields=["name", "ai_agent_profile"],
         order_by="priority asc",
         limit_page_length=1,
     )
@@ -126,16 +188,6 @@ def get_route_chain(channel, category_code, route_name=None, identity_type=None)
         "confidence_threshold": profile.confidence_threshold,
         "escalation_enabled": profile.escalation_enabled,
     }
-
-    if route.is_public_route:
-        result["warnings"].append("This is a public route — knowledge access is Public only.")
-        access_resolution = resolve_allowed_policies({
-            "force_public_only": True,
-            "ai_profile": {"name": profile_name},
-        })
-        result["access_resolution"] = access_resolution
-        result["policies"] = [{"policy_name": "Public"}]
-        return result
 
     route_profile_names = frappe.get_all(
         "Nexus Route Identity Profile",

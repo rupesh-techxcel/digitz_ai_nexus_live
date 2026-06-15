@@ -40,6 +40,27 @@
                   frappe.boot.user.name !== 'Guest');
     }
 
+    function _generate_conversation_id() {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        var id = '';
+        for (var i = 0; i < 12; i++) {
+            id += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return id;
+    }
+
+    function _subscribe_to_conversation(conversation_id) {
+        try {
+            if (frappe && frappe.realtime) {
+                if (typeof frappe.realtime.task_subscribe === 'function') {
+                    frappe.realtime.task_subscribe(conversation_id);
+                } else {
+                    frappe.realtime.emit('task_subscribe', conversation_id);
+                }
+            }
+        } catch (_) {}
+    }
+
     // ── DOM helpers ────────────────────────────────────────────────────────────
 
     function el(id)         { return document.getElementById(id); }
@@ -86,6 +107,11 @@
     function build_dom() {
         if (el('ncw-root')) return;
 
+        // Don't render on the desk login page or any unauthenticated desk path
+        const desk_path = window.location.pathname === '/login' ||
+                          window.location.pathname.startsWith('/app');
+        if (desk_path && !is_desk()) return;
+
         const root = document.createElement('div');
         root.id = 'ncw-root';
         root.innerHTML = `
@@ -103,6 +129,13 @@
                         <div id="ncw-htitle">AI Assistant</div>
                         <div id="ncw-hsub"></div>
                     </div>
+                    <button id="ncw-font-btn" aria-label="Increase font size" title="Text size">A</button>
+                    <button id="ncw-max-btn" aria-label="Maximise">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                            <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                        </svg>
+                    </button>
                     <button id="ncw-min-btn" aria-label="Minimise">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <line x1="5" y1="12" x2="19" y2="12"/>
@@ -149,41 +182,42 @@
     function _ensure_realtime_bound() {
         if (S._realtime_bound) return;
 
-        if (frappe && frappe.realtime && frappe.realtime.socket) {
-            S._realtime_bound = true;
-            bind_realtime();
-            return;
+        var _try_bind = function () {
+            if (S._realtime_bound) return false;
+            if (frappe && frappe.realtime && frappe.realtime.socket) {
+                S._realtime_bound = true;
+                bind_realtime();
+                return true;
+            }
+            return false;
+        };
+
+        if (_try_bind()) return;
+
+        // Desk: fire when the desk app finishes initialising all modules.
+        if (typeof $ !== 'undefined') {
+            $(document).on('app_ready', function () { _try_bind(); });
         }
 
-        // Socket not initialised yet (desk startup still running).
-        // Wait for app_ready then bind.
-        var _on_app_ready = function () {
-            if (S._realtime_bound) return;
-            S._realtime_bound = true;
-            bind_realtime();
-            if (typeof $ !== 'undefined') {
-                $(document).off('app_ready', _on_app_ready);
+        // Universal polling fallback — covers website pages where app_ready
+        // never fires and handles cases where socket init is slightly delayed.
+        var polls = 0;
+        var poll_id = setInterval(function () {
+            polls++;
+            if (_try_bind() || polls >= 20) {
+                clearInterval(poll_id);
             }
-        };
-        if (typeof $ !== 'undefined') {
-            $(document).on('app_ready', _on_app_ready);
-        } else {
-            // Non-desk / website context: socket should already be ready via website.js.
-            // Retry after a short delay.
-            setTimeout(function () {
-                if (!S._realtime_bound && frappe && frappe.realtime && frappe.realtime.socket) {
-                    S._realtime_bound = true;
-                    bind_realtime();
-                }
-            }, 500);
-        }
+        }, 250);
     }
 
     // ── UI events ──────────────────────────────────────────────────────────────
 
     function bind_ui_events() {
         el('ncw-bubble').addEventListener('click', toggle_panel);
+        el('ncw-font-btn').addEventListener('click', cycle_font_size);
+        el('ncw-max-btn').addEventListener('click', toggle_maximise);
         el('ncw-min-btn').addEventListener('click', close_panel);
+        _apply_font_size(_load_font_size());
         el('ncw-send-btn').addEventListener('click', send_message);
 
         const input = el('ncw-input');
@@ -213,21 +247,24 @@
             }
 
             if (data.response_type === 'category_picker') {
-                append_message('agent', data.message || data.answer);
-                render_category_picker(data.categories || []);
+                var _rt_cats = data.categories || [];
+                typewrite_message('agent', data.message || data.answer, null, null, function () {
+                    render_category_picker(_rt_cats);
+                });
                 return;
             }
 
             if (data.status === 'closed' || data.response_type === 'conversation_closed') {
-                append_message('agent', data.message || data.answer);
-                lock_input('This conversation is closed. Start a new chat to continue.');
+                typewrite_message('agent', data.message || data.answer, null, null, function () {
+                    lock_input('This conversation is closed. Start a new chat to continue.');
+                });
                 return;
             }
 
             // Human agent took over
             if (data.sender_type === 'Human Agent') {
-                const nickname = data.sender_name || 'Support Agent';
-                append_message('human-agent', data.message || data.answer, null, nickname);
+                var _nickname = data.sender_name || 'Support Agent';
+                typewrite_message('human-agent', data.message || data.answer, null, _nickname);
                 return;
             }
 
@@ -244,10 +281,10 @@
                 return;
             }
 
-            append_message('agent', data.message || data.answer);
-            if (data.identity_verification_offer && !is_desk()) {
-                render_identity_verification_prompt();
-            }
+            var _rt_offer = data.identity_verification_offer;
+            typewrite_message('agent', data.message || data.answer, null, null, function () {
+                if (_rt_offer && !is_desk()) render_identity_verification_prompt();
+            });
         });
 
         frappe.realtime.on('nexus_chat_typing', function (data) {
@@ -277,8 +314,62 @@
 
     function close_panel() {
         S.open = false;
+        el('ncw-panel').classList.remove('ncw-maximised');
         el('ncw-panel').style.display = 'none';
         el('ncw-bubble').style.display = 'flex';
+        _update_max_icon();
+    }
+
+    function toggle_maximise() {
+        el('ncw-panel').classList.toggle('ncw-maximised');
+        _update_max_icon();
+        scroll_bottom();
+    }
+
+    var NCW_FONT_STEPS = [13.5, 16, 18, 20];
+    var NCW_FONT_LABELS = ['A', 'A', 'A', 'A'];  // visual sizing done via CSS font-size on the button
+
+    function _load_font_size() {
+        try { return parseFloat(localStorage.getItem('ncw_fs2') || '13.5') || 13.5; } catch (_) { return 13.5; }
+    }
+
+    function _save_font_size(px) {
+        try { localStorage.setItem('ncw_fs2', String(px)); } catch (_) {}
+    }
+
+    function _apply_font_size(px) {
+        var root = el('ncw-root');
+        if (!root) return;
+        var valid = NCW_FONT_STEPS.indexOf(px) !== -1 ? px : 13.5;
+        root.style.setProperty('--ncw-fs', valid + 'px');
+        var btn = el('ncw-font-btn');
+        if (btn) {
+            btn.style.fontSize = Math.max(valid - 2, 10) + 'px';
+            btn.title = 'Text size: ' + valid + 'px (click to increase)';
+        }
+    }
+
+    function cycle_font_size() {
+        var cur = _load_font_size();
+        var idx = NCW_FONT_STEPS.indexOf(cur);
+        var next = NCW_FONT_STEPS[(idx + 1) % NCW_FONT_STEPS.length];
+        _save_font_size(next);
+        _apply_font_size(next);
+        scroll_bottom();
+    }
+
+    function _update_max_icon() {
+        const is_max = el('ncw-panel').classList.contains('ncw-maximised');
+        el('ncw-max-btn').setAttribute('aria-label', is_max ? 'Restore' : 'Maximise');
+        el('ncw-max-btn').innerHTML = is_max
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/>
+                <line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/>
+               </svg>`
+            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+               </svg>`;
     }
 
     // ── Public API (used by nexus_live_console) ────────────────────────────────
@@ -295,6 +386,7 @@
             S.locked = false;
             reset_messages();
             set_header('Loading…', '');
+            _subscribe_to_conversation(conversation_id);
             load_conversation(conversation_id);
         }
 
@@ -320,8 +412,17 @@
 
         if (!S.tenant) { await resolve_tenant(); }
 
+        // Generate conversation_id client-side and subscribe to its realtime task room
+        // BEFORE calling the API so the server's sync messages (greeting, category picker)
+        // arrive via the already-established subscription instead of being lost.
+        const pending_id = _generate_conversation_id();
+        S.conversation_id = pending_id;
+        _subscribe_to_conversation(pending_id);
+
+        show_typing();
+
         try {
-            const base = { tenant: S.tenant, channel: S.channel };
+            const base = { tenant: S.tenant, channel: S.channel, conversation_id: pending_id };
             if (is_desk()) {
                 // Desk users — no guest role, channel optional (resolved server-side)
                 delete base.channel;
@@ -334,21 +435,46 @@
 
             const data = r.message || {};
 
+            hide_typing();
+
             if (!data.conversation_id) {
+                S.conversation_id = null;
                 append_error('Could not start chat. Please try again.');
                 return;
             }
 
-            S.conversation_id = data.conversation_id;
+            // Server may have used a different id — re-subscribe if so
+            if (data.conversation_id !== pending_id) {
+                S.conversation_id = data.conversation_id;
+                _subscribe_to_conversation(data.conversation_id);
+            }
+
             S.agent_instance = data.agent_instance || null;
             set_header(data.agent_name || 'AI Assistant', '');
             set_input_placeholder('Type a message…');
-            // Show greeting immediately from HTTP response (avoids race with realtime)
-            if (data.greeting) {
-                append_message('agent', data.greeting);
-            }
+
+            // Display initial messages returned in HTTP response body.
+            // This is the primary delivery path for greeting/category-picker:
+            // realtime publishing during the HTTP handler is racy (socket may not
+            // have joined the task room yet), so the server also returns them here.
+            const initial = data.initial_messages || [];
+            initial.forEach(function (msg) {
+                if (msg.response_type === 'category_picker') {
+                    var _i_cats = msg.categories || [];
+                    typewrite_message('agent', msg.message || msg.answer, null, null, function () {
+                        render_category_picker(_i_cats);
+                    });
+                } else if (msg.message || msg.answer) {
+                    var _i_offer = msg.identity_verification_offer;
+                    typewrite_message('agent', msg.message || msg.answer, null, null, function () {
+                        if (_i_offer && !is_desk()) render_identity_verification_prompt();
+                    });
+                }
+            });
 
         } catch (_) {
+            hide_typing();
+            S.conversation_id = null;
             append_error('Could not connect. Please refresh and try again.');
         }
     }
@@ -404,7 +530,7 @@
     async function resolve_tenant() {
         try {
             const r = await api(
-                'digitz_ai_nexus.api.nexus_administration.get_administration_snapshot', {}
+                'digitz_ai_nexus_live.api.live.get_widget_tenant', {}
             );
             S.tenant = (((r.message || {}).tenant) || {}).name || null;
         } catch (_) {}
@@ -427,6 +553,10 @@
         show_typing();
         S.sending = true;
 
+        // Re-subscribe before sending in case the socket reconnected and lost
+        // its room membership.
+        _subscribe_to_conversation(S.conversation_id);
+
         try {
             const msg_payload = { message, tenant: S.tenant };
             if (S.visitor_email) msg_payload.visitor_email = S.visitor_email;
@@ -435,7 +565,7 @@
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(msg_payload),
             });
-            // AI reply comes via realtime
+            // AI reply comes via realtime (nexus_chat_response event)
         } catch (_) {
             hide_typing();
             append_error('Failed to send. Please try again.');
@@ -684,6 +814,77 @@
         el('ncw-typing').style.display = 'none';
     }
 
+    // ── Typewriter ─────────────────────────────────────────────────────────────
+
+    var _tw_queue   = [];
+    var _tw_running = false;
+
+    function typewrite_message(side, text, time, sender_label, on_done) {
+        var is_agent_side = side === 'agent' || side === 'human-agent';
+        if (!is_agent_side) {
+            append_message(side, text, time, sender_label);
+            if (on_done) on_done();
+            return;
+        }
+        _tw_queue.push({ side: side, text: text || '', time: time, sender_label: sender_label, on_done: on_done });
+        if (!_tw_running) _tw_drain();
+    }
+
+    function _tw_drain() {
+        if (!_tw_queue.length) { _tw_running = false; return; }
+        _tw_running = true;
+        var job = _tw_queue.shift();
+        _tw_run(job, _tw_drain);
+    }
+
+    function _tw_run(job, next) {
+        var msgs = el('ncw-messages');
+        var div  = document.createElement('div');
+        div.className = 'ncw-msg ncw-msg-' + job.side;
+
+        var label_html = job.sender_label
+            ? '<div class="ncw-sender-label">' + escape_html(job.sender_label) + '</div>'
+            : '';
+
+        div.innerHTML =
+            label_html +
+            '<div class="ncw-bubble ncw-tw"></div>' +
+            (job.time ? '<div class="ncw-time">' + fmt_time(job.time) + '</div>' : '');
+
+        msgs.appendChild(div);
+        scroll_bottom();
+
+        var bubble   = div.querySelector('.ncw-bubble');
+        var raw      = job.text.trim();
+        var words    = raw.split(/\s+/).filter(Boolean);
+        var is_agent = job.side === 'agent' || job.side === 'human-agent';
+        var base_ms  = Math.max(80, Math.min(140, 3500 / Math.max(words.length, 1)));
+        var idx      = 0;
+        var built    = '';
+
+        function tick() {
+            if (idx >= words.length) {
+                bubble.classList.remove('ncw-tw');
+                bubble.innerHTML = format_message(raw, is_agent);
+                scroll_bottom();
+                if (job.on_done) job.on_done();
+                next();
+                return;
+            }
+            built += (built ? ' ' : '') + words[idx];
+            bubble.textContent = built;
+            var word = words[idx];
+            idx++;
+            scroll_bottom();
+            // natural variance: ±30 ms, plus a breath after sentence endings
+            var jitter = Math.floor(Math.random() * 60) - 15;
+            var pause  = /[.!?]$/.test(word) ? 180 : /[,;:]$/.test(word) ? 80 : 0;
+            setTimeout(tick, base_ms + jitter + pause);
+        }
+
+        tick();
+    }
+
     // ── Input state ────────────────────────────────────────────────────────────
 
     function lock_input(reason) {
@@ -740,7 +941,8 @@
     right: 24px;
     z-index: 99999;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
+    --ncw-fs: 13.5px;
+    font-size: var(--ncw-fs);
     line-height: 1.4;
     display: flex;
     flex-direction: column;
@@ -793,8 +995,8 @@
 
 /* ── Panel ── */
 #ncw-panel {
-    width: 360px;
-    height: 520px;
+    width: 400px;
+    height: 580px;
     background: #fff;
     border-radius: 18px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.18);
@@ -840,20 +1042,20 @@
 #ncw-htitle {
     color: #fff;
     font-weight: 700;
-    font-size: 14px;
+    font-size: var(--ncw-fs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 #ncw-hsub {
     color: rgba(255,255,255,0.75);
-    font-size: 11.5px;
+    font-size: calc(var(--ncw-fs) - 2.5px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     margin-top: 1px;
 }
-#ncw-min-btn {
+#ncw-font-btn, #ncw-max-btn, #ncw-min-btn {
     width: 28px;
     height: 28px;
     border: none;
@@ -866,11 +1068,35 @@
     flex-shrink: 0;
     transition: background 0.15s;
 }
-#ncw-min-btn:hover { background: rgba(255,255,255,0.28); }
-#ncw-min-btn svg {
+#ncw-font-btn:hover, #ncw-max-btn:hover, #ncw-min-btn:hover { background: rgba(255,255,255,0.28); }
+#ncw-max-btn svg, #ncw-min-btn svg {
     width: 14px;
     height: 14px;
     stroke: #fff;
+}
+#ncw-font-btn {
+    color: #fff;
+    font-weight: 800;
+    font-size: 12px;
+    line-height: 1;
+    letter-spacing: -0.5px;
+    transition: background 0.15s, font-size 0.15s;
+}
+
+/* ── Maximised panel ── */
+#ncw-panel.ncw-maximised {
+    width: 50vw;
+    height: 80vh;
+    bottom: 24px;
+    right: 24px;
+    border-radius: 14px;
+    transition: width 0.22s ease, height 0.22s ease;
+}
+@media (max-width: 768px) {
+    #ncw-panel.ncw-maximised {
+        width: calc(100vw - 24px);
+        height: 80vh;
+    }
 }
 
 /* ── Messages ── */
@@ -904,7 +1130,7 @@
 .ncw-bubble {
     padding: 9px 13px;
     border-radius: 16px;
-    font-size: 13.5px;
+    font-size: var(--ncw-fs);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
@@ -948,7 +1174,7 @@
     color: #744210;
     border-radius: 8px;
     padding: 7px 12px;
-    font-size: 12px;
+    font-size: calc(var(--ncw-fs) - 2px);
     font-style: italic;
     text-align: center;
 }
@@ -957,12 +1183,12 @@
     color: #c53030;
     border: 1px solid #fed7d7;
     border-radius: 8px;
-    font-size: 12.5px;
+    font-size: calc(var(--ncw-fs) - 1.5px);
 }
 .ncw-bubble-category {
     background: rgba(255,255,255,0.2);
     border: 1px solid rgba(255,255,255,0.4);
-    font-size: 12.5px;
+    font-size: calc(var(--ncw-fs) - 1.5px);
     font-style: italic;
 }
 .ncw-time {
@@ -1004,6 +1230,17 @@
     30%            { transform: translateY(-5px); opacity: 1;    }
 }
 
+/* ── Typewriter cursor ── */
+.ncw-bubble.ncw-tw::after {
+    content: '|';
+    display: inline;
+    animation: ncw-cursor-blink 0.65s step-end infinite;
+}
+@keyframes ncw-cursor-blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+}
+
 /* ── Category picker ── */
 .ncw-category-picker {
     display: flex;
@@ -1030,11 +1267,11 @@
 }
 .ncw-cat-label {
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--ncw-fs);
     color: #1a2942;
 }
 .ncw-cat-desc {
-    font-size: 11.5px;
+    font-size: calc(var(--ncw-fs) - 2.5px);
     color: #718096;
     line-height: 1.35;
 }
@@ -1053,7 +1290,7 @@
     align-self: flex-start;
 }
 .ncw-verify-label {
-    font-size: 12px;
+    font-size: calc(var(--ncw-fs) - 2px);
     color: #4a6085;
     font-weight: 500;
     line-height: 1.4;
@@ -1069,7 +1306,7 @@
     border: 1.5px solid #c7d9f5;
     border-radius: 9px;
     padding: 6px 10px;
-    font-size: 13px;
+    font-size: calc(var(--ncw-fs) - 1px);
     outline: none;
     font-family: inherit;
     background: #fff;
@@ -1083,7 +1320,7 @@
     color: #fff;
     border: none;
     border-radius: 9px;
-    font-size: 12.5px;
+    font-size: calc(var(--ncw-fs) - 1.5px);
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s;
@@ -1093,7 +1330,7 @@
 .ncw-verify-btn:hover    { background: #1a47aa; }
 .ncw-verify-btn:disabled { background: #c0cde0; cursor: not-allowed; }
 .ncw-verify-msg {
-    font-size: 12px;
+    font-size: calc(var(--ncw-fs) - 2px);
     line-height: 1.35;
     margin-top: 2px;
 }
@@ -1118,7 +1355,7 @@
     border: 1.5px solid #d1dce8;
     border-radius: 12px;
     padding: 8px 12px;
-    font-size: 13.5px;
+    font-size: var(--ncw-fs);
     resize: none;
     outline: none;
     font-family: inherit;
@@ -1156,7 +1393,7 @@
 }
 
 #ncw-closed-bar {
-    font-size: 11.5px;
+    font-size: calc(var(--ncw-fs) - 2.5px);
     color: #718096;
     text-align: center;
     padding: 6px 14px 10px;

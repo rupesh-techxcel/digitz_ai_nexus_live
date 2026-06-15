@@ -9,14 +9,11 @@ class NexusChatCategory(Document):
         self._warn_if_no_routes()
 
     def _warn_if_multiple_identity_gates(self):
-        if self.requires_authentication and self.identity_verification_mode in (
-            "Email OTP",
-            "Registered Email OTP",
-        ):
+        if self.visibility == "Internal" and self.identity_verification_mode not in (None, "", "None"):
             frappe.msgprint(
-                "This category requires login and also has email verification enabled. "
-                "Login remains the stronger gate; OTP can still be used as an additional check.",
-                title="Multiple Identity Gates",
+                "This category is set to Internal only. Email OTP verification is designed "
+                "for external/public visitors and has no effect for internal users.",
+                title="Verification Mode Has No Effect",
                 indicator="orange",
             )
 

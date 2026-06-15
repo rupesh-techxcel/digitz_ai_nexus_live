@@ -214,7 +214,7 @@ def resolve_registry_knowledge_profiles(payload, identity_type, route_name=None)
        identity_type == session identity_type.
     5. Return deduplicated list (union).
 
-    Returns [] for Public (caller uses force_public_only bypass instead).
+    Returns [] for Public (no registry; access policy cap handles restriction).
     Returns [] if no registry or no matching mappings.
     """
     if identity_type == "Public":

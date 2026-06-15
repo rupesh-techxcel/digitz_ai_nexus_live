@@ -44,7 +44,7 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
     Return chat categories the current visitor may actually use.
 
     Two filters applied:
-    1. requires_authentication — hide auth-only categories from guests
+    1. visibility — only External and Both categories appear in the public widget
     2. Route existence — only show categories that have an active route
        configured for the visitor's resolved identity type. A category with
        no route would cause a hard error when selected.
@@ -59,9 +59,7 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
         "visitor_email": visitor_email or email,
     })
 
-    auth_filters = {"channel": channel, "enabled": 1}
-    if not is_authenticated:
-        auth_filters["requires_authentication"] = 0
+    auth_filters = {"channel": channel, "enabled": 1, "visibility": ["in", ["External", "Both"]]}
 
     candidates = frappe.get_all(
         "Nexus Chat Category",
@@ -119,6 +117,17 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
         "identity_type": identity_type,
         "categories": categories,
     }
+
+
+@frappe.whitelist(allow_guest=True)
+def get_widget_tenant():
+    """
+    Minimal guest-accessible endpoint so the public chat widget can resolve
+    the active tenant without requiring a login.
+    Returns only the first enabled tenant name.
+    """
+    tenant = frappe.db.get_value("Nexus Tenant", {"disabled": 0}, "name", order_by="creation asc")
+    return {"tenant": {"name": tenant} if tenant else None}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -186,11 +195,12 @@ def _is_human_agent_only():
 
 
 @frappe.whitelist()
-def get_active_conversations(limit=50):
+def get_active_conversations(limit=50, tenant=None):
     """
     Return conversations for the Live Console.
     - System Manager: all active (Open, Responding, Escalated, Waiting)
     - Human agent (can_handle_escalations): Escalated conversations in their assigned categories
+    Filtered to channels belonging to the given tenant when provided.
     """
     base_fields = [
         "name", "conversation_id", "conversation_type",
@@ -201,6 +211,15 @@ def get_active_conversations(limit=50):
         "last_message", "last_response", "confidence", "started_on",
     ]
 
+    tenant_channel_filter = {}
+    if tenant:
+        tenant_channels = frappe.get_all(
+            "Nexus Live Channel",
+            filters={"tenant": tenant},
+            pluck="name",
+        )
+        tenant_channel_filter = {"channel": ["in", tenant_channels]} if tenant_channels else {"channel": ["in", ["__none__"]]}
+
     if _is_human_agent_only():
         user = frappe.session.user
         assignment = _get_human_assignment(user)
@@ -209,6 +228,7 @@ def get_active_conversations(limit=50):
             assigned_cats = [row.chat_category for row in (assignment.escalation_categories or [])]
 
         filters = {"status": "Escalated", "user_type": ["!=", "Desk User"]}
+        filters.update(tenant_channel_filter)
         if assigned_cats:
             filters["chat_category"] = ["in", assigned_cats]
 
@@ -228,12 +248,15 @@ def get_active_conversations(limit=50):
             "assigned_categories": assigned_cats,
         }
 
+    filters = {
+        "status": ["in", ["Open", "Responding", "Escalated", "Waiting"]],
+        "user_type": ["!=", "Desk User"],
+    }
+    filters.update(tenant_channel_filter)
+
     conversations = frappe.get_all(
         "Nexus Live Conversation",
-        filters={
-            "status": ["in", ["Open", "Responding", "Escalated", "Waiting"]],
-            "user_type": ["!=", "Desk User"],
-        },
+        filters=filters,
         fields=base_fields,
         order_by="started_on desc",
         limit_page_length=int(limit),
