@@ -246,15 +246,23 @@ def _resolve_optional_registered_identity(channel, chat_category, email):
 
 
 def _send_otp_email(email, otp, category_label):
-    frappe.sendmail(
-        recipients=[email],
-        subject="Your Nexus chat verification code",
-        message=(
-            f"Your verification code for {escape(category_label or 'chat')} is "
-            f"<b>{otp}</b>. This code expires in {DEFAULT_OTP_VALIDITY_MINUTES} minutes."
-        ),
-        delayed=False,
-    )
+    try:
+        frappe.sendmail(
+            recipients=[email],
+            subject="Your Nexus chat verification code",
+            message=(
+                f"Your verification code for {escape(category_label or 'chat')} is "
+                f"<b>{otp}</b>. This code expires in {DEFAULT_OTP_VALIDITY_MINUTES} minutes."
+            ),
+            delayed=False,
+        )
+    except Exception:
+        # Log OTP in dev/test environments where outgoing email is not configured.
+        # Remove this fallback once a real SMTP account is set up.
+        frappe.log_error(
+            title="Nexus OTP (email not configured)",
+            message=f"OTP for {email}: {otp}",
+        )
 
 
 def _expire_if_needed(doc):

@@ -18,7 +18,7 @@ class NexusLiveConsole {
 		this.refresh_interval = null;
 		this.active_conversation_id = null;
 		this.conversations       = [];
-		this.active_filter       = 'open';
+		this.active_filter       = 'active';
 		this.active_category     = 'all';
 		this.search_query        = '';
 		// Tenant
@@ -74,8 +74,7 @@ class NexusLiveConsole {
 			if (ctx.is_agent) {
 				this.is_agent_mode  = true;
 				this.agent_context  = ctx;
-				// Show Open conversations by default; agents can change the dropdown to see more
-				this.active_filter  = 'open';
+				this.active_filter  = 'active';
 			}
 		} catch(e) {
 			// Non-agents get no context — silent
@@ -99,7 +98,7 @@ class NexusLiveConsole {
 		// Browser notification
 		const title = `Escalation — ${data.visitor_name || 'Visitor'}`;
 		const body  = data.chat_category
-			? `Category: ${data.chat_category}`
+			? `Category: ${data.category_label || data.chat_category}`
 			: 'A conversation needs your attention.';
 
 		if (window.Notification && Notification.permission === 'granted') {
@@ -177,16 +176,10 @@ class NexusLiveConsole {
 				</div>
 
 				<div class="nlc-stats-bar">
-					<div class="nlc-stat" id="nlc-stat-open">
+					<div class="nlc-stat" id="nlc-stat-active">
 						<span class="nlc-stat-dot open"></span>
-						<span class="nlc-stat-label">Open</span>
-						<span class="nlc-stat-count" id="nlc-count-open">0</span>
-					</div>
-					<div class="nlc-stat-sep"></div>
-					<div class="nlc-stat" id="nlc-stat-responding">
-						<span class="nlc-stat-dot responding"></span>
-						<span class="nlc-stat-label">Responding</span>
-						<span class="nlc-stat-count" id="nlc-count-responding">0</span>
+						<span class="nlc-stat-label">Active</span>
+						<span class="nlc-stat-count" id="nlc-count-active">0</span>
 					</div>
 					<div class="nlc-stat-sep"></div>
 					<div class="nlc-stat" id="nlc-stat-escalated">
@@ -214,12 +207,10 @@ class NexusLiveConsole {
 						<span class="nlc-filter-label">Status</span>
 						<div class="nlc-select-wrap">
 							<select id="nlc-status-select" class="nlc-select">
-								<option value="all">All Statuses</option>
-								<option value="open" selected>Open</option>
-								<option value="responding">Responding</option>
-								<option value="waiting">Waiting</option>
+								<option value="active" selected>Active</option>
 								<option value="escalated">Escalated</option>
 								<option value="closed">Closed</option>
+								<option value="all">All</option>
 							</select>
 							<svg class="nlc-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
 								<polyline points="6 9 12 15 18 9"/>
@@ -337,11 +328,16 @@ class NexusLiveConsole {
 	}
 
 	rebuild_category_chips() {
-		const cats = [...new Set(
-			this.conversations
-				.map(c => c.chat_category || '')
-				.filter(Boolean)
-		)].sort();
+		// Build a map of doc name → display label from current conversations
+		const cat_label_map = {};
+		this.conversations.forEach(c => {
+			if (c.chat_category) {
+				cat_label_map[c.chat_category] = c.category_label || c.chat_category;
+			}
+		});
+		const cats = Object.keys(cat_label_map).sort((a, b) =>
+			cat_label_map[a].localeCompare(cat_label_map[b])
+		);
 
 		const $chips = this.body.find('#nlc-category-chips');
 		const row    = this.body.find('#nlc-category-filter-row');
@@ -360,9 +356,10 @@ class NexusLiveConsole {
 
 		const chips_html = cats.map(cat => {
 			const is_active = cat === this.active_category ? 'nlc-cat-chip-active' : '';
+			const display   = cat_label_map[cat];
 			return `<button class="nlc-cat-chip ${is_active}"
 						data-cat="${frappe.utils.escape_html(cat)}">
-						${frappe.utils.escape_html(cat)}
+						${frappe.utils.escape_html(display)}
 					</button>`;
 		}).join('');
 
@@ -376,8 +373,11 @@ class NexusLiveConsole {
 
 	filtered_conversations() {
 		return this.conversations.filter(c => {
+			const s = (c.status || '').toLowerCase();
 			const status_match = this.active_filter === 'all' ||
-				(c.status || '').toLowerCase() === this.active_filter;
+				(this.active_filter === 'active'
+					? ['open', 'responding', 'waiting'].includes(s)
+					: s === this.active_filter);
 
 			const cat_match = this.active_category === 'all' ||
 				(c.chat_category || '') === this.active_category;
@@ -394,15 +394,13 @@ class NexusLiveConsole {
 	}
 
 	update_stats(conversations) {
-		const counts = { open: 0, responding: 0, escalated: 0 };
+		const counts = { active: 0, escalated: 0 };
 		conversations.forEach(c => {
 			const s = (c.status || '').toLowerCase();
-			if (s === 'open')        counts.open++;
-			if (s === 'responding')  counts.responding++;
-			if (s === 'escalated')   counts.escalated++;
+			if (['open', 'responding', 'waiting'].includes(s)) counts.active++;
+			if (s === 'escalated') counts.escalated++;
 		});
-		$('#nlc-count-open').text(counts.open);
-		$('#nlc-count-responding').text(counts.responding);
+		$('#nlc-count-active').text(counts.active);
 		$('#nlc-count-escalated').text(counts.escalated);
 		$('#nlc-count-total').text(conversations.length);
 	}
@@ -436,8 +434,16 @@ class NexusLiveConsole {
 			return a.localeCompare(b);
 		});
 
+		// Build label map for group headers
+		const group_label_map = {};
+		conversations.forEach(c => {
+			if (c.chat_category) {
+				group_label_map[c.chat_category] = c.category_label || c.chat_category;
+			}
+		});
+
 		const html = sorted_keys.map(key => {
-			const label = key === '__none__' ? 'Uncategorised' : key;
+			const label = key === '__none__' ? 'Uncategorised' : (group_label_map[key] || key);
 			const items = groups[key];
 			return `
 				<div class="nlc-group">
@@ -471,7 +477,7 @@ class NexusLiveConsole {
 				: 'No messages yet'
 		);
 		const time        = c.started_on ? frappe.datetime.prettyDate(c.started_on) : '';
-		const category    = frappe.utils.escape_html(c.chat_category || '');
+		const category    = frappe.utils.escape_html(c.category_label || c.chat_category || '');
 		const channel     = frappe.utils.escape_html(c.channel || '');
 		const conv_id     = frappe.utils.escape_html(c.conversation_id || '');
 		const is_active   = c.conversation_id === this.active_conversation_id;
@@ -582,7 +588,7 @@ class NexusLiveConsole {
 		const conv    = detail.conversation || {};
 		const msgs    = detail.messages     || [];
 		const visitor = conv.visitor_name || conv.visitor_email || 'Visitor';
-		const cat     = conv.chat_category || '';
+		const cat     = conv.category_label || conv.chat_category || '';
 		const agent_name   = this.agent_context ? this.agent_context.agent : null;
 		const my_nickname  = this.agent_context ? this.agent_context.nickname : null;
 		const claimed_by   = conv.human_agent;

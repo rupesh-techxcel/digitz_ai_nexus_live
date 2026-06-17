@@ -21,7 +21,9 @@
     "display_order",
     "description",
     "section_escalation",
-    "enable_escalation"
+    "enable_escalation",
+    "section_faq",
+    "faq_questions"
   ],
   "fields": [
     {
@@ -132,11 +134,22 @@
       "fieldname": "enable_escalation",
       "fieldtype": "Check",
       "label": "Enable Human Escalation"
+    },
+    {
+      "fieldname": "section_faq",
+      "fieldtype": "Section Break",
+      "label": "Quick Questions (FAQ)"
+    },
+    {
+      "fieldname": "faq_questions",
+      "fieldtype": "Table",
+      "label": "FAQ Questions",
+      "options": "Nexus Chat Category FAQ"
     }
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-06-14 00:00:00.000000",
+  "modified": "2026-06-16 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Chat Category",

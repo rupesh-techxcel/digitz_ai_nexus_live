@@ -241,6 +241,7 @@ def get_active_conversations(limit=50, tenant=None):
             order_by="started_on desc",
             limit_page_length=int(limit),
         )
+        _attach_category_labels(conversations)
         nickname = frappe.db.get_value("User", user, "full_name") or user
         return {
             "conversations": conversations,
@@ -263,6 +264,7 @@ def get_active_conversations(limit=50, tenant=None):
         order_by="started_on desc",
         limit_page_length=int(limit),
     )
+    _attach_category_labels(conversations)
     return {"conversations": conversations, "mode": "admin"}
 
 
@@ -319,3 +321,18 @@ def get_conversation_detail(conversation_id=None):
             for m in messages
         ],
     }
+
+
+def _attach_category_labels(conversations):
+    """Add category_label to each conversation dict via a single batch query."""
+    cat_names = list({c.get("chat_category") for c in conversations if c.get("chat_category")})
+    if not cat_names:
+        return
+    rows = frappe.get_all(
+        "Nexus Chat Category",
+        filters={"name": ["in", cat_names]},
+        fields=["name", "category_label"],
+    )
+    label_map = {r["name"]: r["category_label"] for r in rows}
+    for c in conversations:
+        c["category_label"] = label_map.get(c.get("chat_category"), "")

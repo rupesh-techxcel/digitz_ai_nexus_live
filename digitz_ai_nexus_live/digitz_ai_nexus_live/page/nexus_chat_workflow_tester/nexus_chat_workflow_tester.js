@@ -6,6 +6,8 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
     });
 
     const state = {
+        tenant: null,
+        tenants: [],
         channels: [],
         categories: [],
         result: null,
@@ -21,14 +23,20 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
 <div class="ncwt-wrap">
     <div class="ncwt-hero">
         <div>
-            <div class="ncwt-badge">DIGITZ AI Nexus</div>
+            <div class="ncwt-badge">Nexus AI</div>
             <h2>Chat Workflow Tester</h2>
             <p>Preview how channel, category, email verification, identity registry, profile routing, and access policies resolve before a chat starts.</p>
         </div>
-        <div class="ncwt-actions">
-            <button class="btn btn-default" data-page="nexus-chat-category-manager">Categories</button>
-            <button class="btn btn-default" data-page="nexus-identity-registry-manager">Identity Registry</button>
-            <button class="btn btn-default" data-page="nexus-category-profile-routes">Routes</button>
+        <div class="ncwt-hero-right">
+            <div class="ncwt-tenant-wrap">
+                <span class="ncwt-tenant-label">Tenant</span>
+                <select id="ncwt_tenant" class="ncwt-tenant-select"></select>
+            </div>
+            <div class="ncwt-actions">
+                <button class="btn btn-default" data-page="nexus-chat-category-manager">Categories</button>
+                <button class="btn btn-default" data-page="nexus-identity-registry-manager">Identity Registry</button>
+                <button class="btn btn-default" data-page="nexus-category-profile-routes">Routes</button>
+            </div>
         </div>
     </div>
 
@@ -71,6 +79,10 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
         $(page.body).on('click', '[data-page]', function () {
             frappe.set_route($(this).data('page'));
         });
+        $(page.body).on('change', '#ncwt_tenant', function () {
+            state.tenant = $(this).val();
+            loadChannels();
+        });
         $(page.body).on('change', '#ncwt_channel', function () {
             loadCategories($(this).val());
         });
@@ -78,8 +90,51 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
     }
 
     function loadInitialData() {
+        // Resolve default tenant from the same admin snapshot used by Studio
+        frappe.call({
+            method: 'digitz_ai_nexus.api.nexus_administration.get_administration_snapshot',
+            callback(snap_r) {
+                const snap = snap_r.message || {};
+                const admin_tenant = (snap.resolved_context || {}).tenant || null;
+
+                frappe.call({
+                    method: 'digitz_ai_nexus_live.api.nexus_chat_workflow_tester.get_page_data',
+                    callback(r) {
+                        if (!r.message) return;
+                        state.tenants = r.message.tenants || [];
+                        const names = state.tenants.map(t => t.name);
+
+                        if (admin_tenant && names.includes(admin_tenant)) {
+                            state.tenant = admin_tenant;
+                        } else if (state.tenants.length) {
+                            state.tenant = state.tenants[0].name;
+                        }
+
+                        renderTenantSelect();
+                        // Load channels for the resolved tenant
+                        loadChannels();
+                    },
+                });
+            },
+        });
+    }
+
+    function renderTenantSelect() {
+        const options = state.tenants.map(t =>
+            `<option value="${esc(t.name)}" ${t.name === state.tenant ? 'selected' : ''}>${esc(t.tenant_name || t.name)}</option>`
+        ).join('');
+        $('#ncwt_tenant').html(options);
+    }
+
+    function loadChannels() {
+        $('#ncwt_channel').html('<option value=""></option>');
+        $('#ncwt_category').html('<option value=""></option>');
+        state.result = null;
+        $('#ncwt_result').html('<div class="ncwt-empty">Select a scenario and run the test.</div>');
+
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_chat_workflow_tester.get_page_data',
+            args: { tenant: state.tenant },
             callback(r) {
                 if (!r.message) return;
                 state.channels = r.message.channels || [];
@@ -104,7 +159,7 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
             callback(r) {
                 state.categories = (r.message && r.message.categories) || [];
                 $('#ncwt_category').html(['<option value=""></option>'].concat(
-                    state.categories.map(cat => `<option value="${esc(cat.category_code)}">${esc(cat.category_label)}</option>`)
+                    state.categories.map(cat => `<option value="${esc(cat.name)}">${esc(cat.category_label)}</option>`)
                 ).join(''));
             },
         });
@@ -201,6 +256,11 @@ frappe.pages['nexus-chat-workflow-tester'].on_page_load = function (wrapper) {
             .ncwt-badge { color:#214dbb; font-size:11px; font-weight:800; letter-spacing:.04em; }
             .ncwt-hero h2 { margin:4px 0 6px; font-weight:900; color:#102b67; }
             .ncwt-hero p { max-width:760px; color:#53688f; margin:0; }
+            .ncwt-hero-right { display:flex; flex-direction:column; align-items:flex-end; gap:10px; flex-shrink:0; }
+            .ncwt-tenant-wrap { display:flex; align-items:center; gap:7px; }
+            .ncwt-tenant-label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#8fa3bf; white-space:nowrap; }
+            .ncwt-tenant-select { border:1.5px solid #d9e2f2; border-radius:8px; padding:5px 28px 5px 10px; font-size:13px; font-weight:600; color:#102b67; background:#f8fafd; cursor:pointer; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238fa3bf' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 9px center; }
+            .ncwt-tenant-select:focus { border-color:#214dbb; }
             .ncwt-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
             .ncwt-grid { display:grid; grid-template-columns:320px minmax(0,1fr); gap:16px; }
             .ncwt-panel { border:1px solid #d9e2f2; border-radius:8px; background:#fff; padding:14px; }

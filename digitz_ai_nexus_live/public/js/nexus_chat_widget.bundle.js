@@ -50,6 +50,55 @@
         return id;
     }
 
+    // ── Conversation persistence (localStorage, 1-hour idle TTL) ──────────────
+
+    var _CONV_KEY = 'ncw_session';
+    var _CONV_TTL = 60 * 60 * 1000; // 1 hour in ms
+
+    function _conv_save() {
+        if (is_desk() || !S.conversation_id) return;
+        try {
+            localStorage.setItem(_CONV_KEY, JSON.stringify({
+                id:     S.conversation_id,
+                ts:     Date.now(),
+                status: 'open',
+                tenant:  S.tenant  || null,
+                channel: S.channel || null,
+            }));
+        } catch (_) {}
+    }
+
+    function _conv_touch() {
+        if (is_desk() || !S.conversation_id) return;
+        try {
+            var raw = localStorage.getItem(_CONV_KEY);
+            if (!raw) return;
+            var stored = JSON.parse(raw);
+            if (stored && stored.id === S.conversation_id) {
+                stored.ts = Date.now();
+                localStorage.setItem(_CONV_KEY, JSON.stringify(stored));
+            }
+        } catch (_) {}
+    }
+
+    function _conv_close() {
+        try { localStorage.removeItem(_CONV_KEY); } catch (_) {}
+    }
+
+    function _conv_resume() {
+        // Returns a resumable conversation_id or null.
+        if (is_desk()) return null;
+        try {
+            var stored = JSON.parse(localStorage.getItem(_CONV_KEY) || 'null');
+            if (!stored || !stored.id) return null;
+            if (stored.status === 'closed') { localStorage.removeItem(_CONV_KEY); return null; }
+            if (Date.now() - stored.ts > _CONV_TTL) { localStorage.removeItem(_CONV_KEY); return null; }
+            return stored;
+        } catch (_) { return null; }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+
     function _subscribe_to_conversation(conversation_id) {
         try {
             if (frappe && frappe.realtime) {
@@ -144,6 +193,24 @@
                     </button>
                 </div>
 
+                <div id="ncw-wa-strip">
+                    <svg id="ncw-wa-icon" viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                        <path d="M12 0C5.373 0 0 5.373 0 12c0 2.118.554 4.107 1.523 5.834L.057 23.882l6.239-1.637A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.007-1.375l-.36-.214-3.702.971.988-3.61-.235-.372A9.794 9.794 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/>
+                    </svg>
+                    <span id="ncw-wa-text">Continue this conversation on WhatsApp</span>
+                    <span id="ncw-wa-arrow">→</span>
+                    <button id="ncw-wa-dismiss" aria-label="Dismiss WhatsApp prompt">×</button>
+                </div>
+
+                <div id="ncw-wa-info" style="display:none;">
+                    <svg viewBox="0 0 16 16" fill="none" width="14" height="14" style="flex-shrink:0;color:#25D366;" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 7v4M8 5.5v.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    </svg>
+                    <span><strong>Coming soon!</strong> WhatsApp sync is an upcoming feature — we're currently awaiting workflow approval from Meta to bring it live.</span>
+                </div>
+
                 <div id="ncw-messages"></div>
 
                 <div id="ncw-typing" style="display:none;">
@@ -223,6 +290,31 @@
         el('ncw-max-btn').addEventListener('click', toggle_maximise);
         el('ncw-min-btn').addEventListener('click', close_panel);
         _apply_font_size(_load_font_size());
+
+        // WhatsApp strip — hide if already dismissed this session
+        if (sessionStorage.getItem('ncw_wa_dismissed')) {
+            el('ncw-wa-strip').style.display = 'none';
+        }
+        el('ncw-wa-dismiss').addEventListener('click', function (e) {
+            e.stopPropagation();
+            sessionStorage.setItem('ncw_wa_dismissed', '1');
+            el('ncw-wa-strip').style.display = 'none';
+            el('ncw-wa-info').style.display = 'none';
+        });
+
+        var _wa_info_timer = null;
+        el('ncw-wa-strip').addEventListener('click', function (e) {
+            if (e.target === el('ncw-wa-dismiss')) return;
+            var info = el('ncw-wa-info');
+            var visible = info.style.display !== 'none';
+            info.style.display = visible ? 'none' : 'flex';
+            if (!visible) {
+                clearTimeout(_wa_info_timer);
+                _wa_info_timer = setTimeout(function () {
+                    el('ncw-wa-info').style.display = 'none';
+                }, 6000);
+            }
+        });
         el('ncw-send-btn').addEventListener('click', send_message);
 
         const input = el('ncw-input');
@@ -297,9 +389,23 @@
                 return;
             }
 
+            // FAQ answer — show as agent message, then re-render remaining chips
+            if (data.response_type === 'faq_answer') {
+                typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
+                    var _rem = data.faq_questions || [];
+                    if (_rem.length && !is_desk()) render_faq_chips(_rem);
+                });
+                return;
+            }
+
             var _rt_offer = data.identity_verification_offer;
+            var _rt_faq   = data.faq_questions || [];
             typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
-                if (_rt_offer && !is_desk()) render_identity_verification_prompt();
+                if (_rt_offer && !is_desk()) {
+                    render_identity_verification_prompt();
+                } else if (_rt_faq.length && !is_desk()) {
+                    render_faq_chips(_rt_faq);
+                }
             });
         });
 
@@ -322,7 +428,18 @@
         el('ncw-bubble').style.display = 'none';
 
         if (!S.conversation_id) {
-            start_new_chat();
+            var session = _conv_resume();
+            if (session) {
+                // Restore tenant/channel from stored session so the widget
+                // behaves correctly even if NexusChatConfig wasn't set yet.
+                if (!S.tenant  && session.tenant)  S.tenant  = session.tenant;
+                if (!S.channel && session.channel) S.channel = session.channel;
+                S.conversation_id = session.id;
+                _subscribe_to_conversation(session.id);
+                resume_visitor_conversation(session.id);
+            } else {
+                start_new_chat();
+            }
         } else {
             el('ncw-input').focus();
         }
@@ -469,6 +586,7 @@
             S.agent_name     = data.agent_name || null;
             set_header(S.agent_name || 'AI Assistant', 'AI Assistant · Online');
             set_input_placeholder('Type a message…');
+            _conv_save();
 
             // Display initial messages returned in HTTP response body.
             // This is the primary delivery path for greeting/category-picker:
@@ -543,6 +661,64 @@
         }
     }
 
+    // ── Resume visitor conversation from localStorage ──────────────────────────
+
+    async function resume_visitor_conversation(conversation_id) {
+        reset_messages();
+        set_header('Reconnecting…', '');
+        set_input_placeholder('Please wait…');
+        try {
+            const r = await api('digitz_ai_nexus_live.api.live.get_conversation_detail', {
+                conversation_id,
+            });
+            const data         = r.message || {};
+            const conversation = data.conversation || {};
+            const messages     = data.messages    || [];
+
+            if (!conversation.name) {
+                // Conversation not found on server — clear and start fresh
+                _conv_close();
+                S.conversation_id = null;
+                start_new_chat();
+                return;
+            }
+
+            if (conversation.status === 'Closed') {
+                _conv_close();
+                S.conversation_id = null;
+                start_new_chat();
+                return;
+            }
+
+            const agent_name = conversation.agent_name || S.agent_name || 'AI Assistant';
+            set_header(agent_name, 'AI Assistant · Online');
+            set_input_placeholder('Type a message…');
+
+            reset_messages();
+            messages.forEach(function (m) {
+                const side = (m.sender_type === 'Visitor' || m.sender_type === 'User')
+                    ? 'visitor'
+                    : m.sender_type === 'Human Agent'
+                    ? 'human-agent'
+                    : m.sender_type === 'System'
+                    ? 'system'
+                    : 'agent';
+                append_message(side, m.message, m.message_time);
+            });
+
+            unlock_input();
+            el('ncw-input').focus();
+            // Refresh the TTL so the resumed session counts as active now
+            _conv_touch();
+
+        } catch (_) {
+            // Network error — clear stored session, start fresh
+            _conv_close();
+            S.conversation_id = null;
+            start_new_chat();
+        }
+    }
+
     // ── Resolve tenant ─────────────────────────────────────────────────────────
 
     async function resolve_tenant() {
@@ -584,6 +760,7 @@
                 payload: JSON.stringify(msg_payload),
             });
             // AI reply comes via realtime (nexus_chat_response event)
+            _conv_touch();
         } catch (_) {
             hide_typing();
             append_error('Failed to send. Please try again.');
@@ -643,9 +820,73 @@
                     tenant:  S.tenant,
                 }),
             });
+            _conv_touch();
         } catch (_) {
             hide_typing();
             append_error('Could not select category. Please try again.');
+        } finally {
+            S.sending = false;
+        }
+    }
+
+    // ── FAQ quick-question chips ───────────────────────────────────────────────
+
+    function render_faq_chips(faqs) {
+        if (!faqs || !faqs.length) return;
+        const msgs = el('ncw-messages');
+
+        // Remove any previous FAQ chip strip
+        msgs.querySelectorAll('.ncw-faq-strip').forEach(function (s) { s.remove(); });
+
+        const strip = document.createElement('div');
+        strip.className = 'ncw-faq-strip';
+
+        const lbl = document.createElement('div');
+        lbl.className = 'ncw-faq-label';
+        lbl.textContent = 'Quick questions:';
+        strip.appendChild(lbl);
+
+        const chips = document.createElement('div');
+        chips.className = 'ncw-faq-chips';
+
+        faqs.forEach(function (faq) {
+            const btn = document.createElement('button');
+            btn.className = 'ncw-faq-chip';
+            btn.textContent = faq.question;
+            btn.addEventListener('click', function () {
+                strip.remove();
+                select_faq(faq.name, faq.question);
+            });
+            chips.appendChild(btn);
+        });
+
+        strip.appendChild(chips);
+        msgs.appendChild(strip);
+        scroll_bottom();
+    }
+
+    async function select_faq(faq_name, question) {
+        // Show visitor's question as a chat bubble
+        const bubble = document.createElement('div');
+        bubble.className = 'ncw-msg ncw-msg-visitor';
+        bubble.innerHTML = '<div class="ncw-bubble">' + escape_html(question) + '</div>';
+        el('ncw-messages').appendChild(bubble);
+        scroll_bottom();
+
+        show_typing();
+        S.sending = true;
+
+        try {
+            await api('digitz_ai_nexus_live.api.live.send_chat_message', {
+                conversation_id: S.conversation_id,
+                payload: JSON.stringify({
+                    message: '__faq__:' + faq_name,
+                    tenant:  S.tenant,
+                }),
+            });
+        } catch (_) {
+            hide_typing();
+            append_error('Could not load answer. Please try again.');
         } finally {
             S.sending = false;
         }
@@ -714,6 +955,7 @@
             const challenge_token = data.challenge_token;
             prompt_el.innerHTML =
                 '<div class="ncw-verify-label">A code was sent to <strong>' + escape_html(email) + '</strong>. Enter it below:</div>' +
+                '<div class="ncw-verify-spam-note">Didn\'t receive it? Check your <strong>spam or junk</strong> folder.</div>' +
                 '<div class="ncw-verify-row">' +
                     '<input type="text" class="ncw-verify-input" id="ncw-verify-otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">' +
                     '<button class="ncw-verify-btn" id="ncw-verify-otp-btn">Verify</button>' +
@@ -907,6 +1149,7 @@
 
     function lock_input(reason) {
         S.locked = true;
+        _conv_close();
         const input = el('ncw-input');
         input.disabled    = true;
         input.placeholder = reason || 'Conversation closed';
@@ -1099,6 +1342,72 @@
     line-height: 1;
     letter-spacing: -0.5px;
     transition: background 0.15s, font-size 0.15s;
+}
+
+/* ── WhatsApp connect strip ── */
+#ncw-wa-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    background: linear-gradient(90deg, #1a9e4a 0%, #22c35e 60%, #1db954 100%);
+    flex-shrink: 0;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0,0,0,.10);
+    transition: filter .15s;
+}
+#ncw-wa-strip:hover { filter: brightness(1.06); }
+#ncw-wa-icon {
+    flex-shrink: 0;
+    color: #fff;
+    opacity: .92;
+}
+#ncw-wa-text {
+    flex: 1;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: .01em;
+}
+#ncw-wa-arrow {
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255,255,255,.80);
+    flex-shrink: 0;
+}
+#ncw-wa-dismiss {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0,0,0,.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background .15s;
+}
+#ncw-wa-dismiss:hover { background: rgba(0,0,0,.28); }
+#ncw-wa-info {
+    display: none;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px 14px;
+    background: #f0fdf4;
+    border-bottom: 1px solid #bbf7d0;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: #166534;
+    font-weight: 500;
+    flex-shrink: 0;
 }
 
 /* ── Maximised panel ── */
@@ -1297,6 +1606,40 @@
     line-height: 1.35;
 }
 
+/* ── FAQ quick-question chips ── */
+.ncw-faq-strip {
+    padding: 4px 10px 8px;
+}
+.ncw-faq-label {
+    font-size: calc(var(--ncw-fs) - 3px);
+    color: #8fa3bf;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+.ncw-faq-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.ncw-faq-chip {
+    background: #f0f4fa;
+    border: 1px solid #c8d8ee;
+    border-radius: 16px;
+    padding: 5px 12px;
+    font-size: calc(var(--ncw-fs) - 1.5px);
+    color: #2a4a7f;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    text-align: left;
+    line-height: 1.35;
+}
+.ncw-faq-chip:hover {
+    background: #ddeaf8;
+    border-color: #a0bcdf;
+}
+
 /* ── Identity verification prompt ── */
 .ncw-verify-prompt {
     display: flex;
@@ -1317,6 +1660,14 @@
     line-height: 1.4;
 }
 .ncw-verify-label strong { color: #1a2942; }
+.ncw-verify-spam-note {
+    font-size: calc(var(--ncw-fs) - 3px);
+    color: #7a8fa8;
+    margin-top: 4px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+.ncw-verify-spam-note strong { color: #4a6085; }
 .ncw-verify-row {
     display: flex;
     gap: 7px;

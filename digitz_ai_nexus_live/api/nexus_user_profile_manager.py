@@ -36,6 +36,38 @@ def get_user_data(user):
         order_by="assigned_on desc",
     )
 
+    if assignments:
+        assignment_names = [a["name"] for a in assignments]
+
+        cat_rows = frappe.get_all(
+            "Nexus Chat Category Link",
+            filters={"parent": ["in", assignment_names], "parenttype": "Nexus User Profile Assignment"},
+            fields=["parent", "chat_category"],
+            order_by="idx asc",
+        )
+
+        cat_names = list({r["chat_category"] for r in cat_rows if r.get("chat_category")})
+        cat_labels = {}
+        if cat_names:
+            for row in frappe.get_all(
+                "Nexus Chat Category",
+                filters={"name": ["in", cat_names]},
+                fields=["name", "category_label"],
+            ):
+                cat_labels[row["name"]] = row.get("category_label") or row["name"]
+
+        from collections import defaultdict
+        cats_by_assignment = defaultdict(list)
+        for r in cat_rows:
+            if r.get("chat_category"):
+                cats_by_assignment[r["parent"]].append({
+                    "name": r["chat_category"],
+                    "label": cat_labels.get(r["chat_category"], r["chat_category"]),
+                })
+
+        for a in assignments:
+            a["escalation_categories"] = cats_by_assignment.get(a["name"], [])
+
     return {
         "assignments": assignments,
     }

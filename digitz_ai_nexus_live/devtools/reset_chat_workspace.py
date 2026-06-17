@@ -41,7 +41,6 @@ RESET_GROUPS = [
             "Nexus Registered Identity",
             "Nexus Identity Registry",
             "Nexus Identity Type",
-            "Nexus AI Agent Profile Access Category",
             "Nexus User Profile Assignment",
             "Nexus AI Agent Profile",
             "Nexus AI Behaviour",

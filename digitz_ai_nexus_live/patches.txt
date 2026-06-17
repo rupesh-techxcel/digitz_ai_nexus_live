@@ -6,3 +6,4 @@ digitz_ai_nexus_live.patches.remove_old_identity_registry_page
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 digitz_ai_nexus_live.patches.ensure_live_custom_pages
+digitz_ai_nexus_live.patches.drop_nexus_ai_agent_profile_access_category

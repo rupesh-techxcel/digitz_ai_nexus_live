@@ -247,6 +247,11 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             return;
         }
 
+        const cats = active.escalation_categories || [];
+        const catChips = cats.length
+            ? cats.map(c => `<span class="nupm-cat-chip">${esc(c.label || c.name)}</span>`).join('')
+            : `<span class="nupm-cat-none">All categories (no restriction set)</span>`;
+
         $('#nupm_escalation_area').html(`
             <div style="display:flex; flex-wrap:wrap; gap:10px; padding:8px 0;">
                 <div class="nexus-kv-row" style="flex:1; min-width:200px;">
@@ -258,7 +263,12 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                     <b style="color:#214dbb;">${active.max_escalation_sessions || '—'}</b>
                 </div>
             </div>
-            <div class="nexus-admin-muted" style="margin-top:4px; padding:0 0 4px;">
+            <div class="nupm-cat-section">
+                <div class="nupm-cat-label">Escalation Categories</div>
+                <div class="nupm-cat-desc">Chat categories this user will receive escalation alerts for and can claim.</div>
+                <div class="nupm-cat-chips">${catChips}</div>
+            </div>
+            <div class="nexus-admin-muted" style="margin-top:12px;">
                 Assigned ${active.assigned_on ? frappe.datetime.str_to_user(active.assigned_on) : '—'}
                 &nbsp;·&nbsp;
                 <a href="#Form/Nexus User Profile Assignment/${esc(active.name)}" onclick="frappe.set_route('Form','Nexus User Profile Assignment','${esc(active.name)}'); return false;">Open Doc</a>
@@ -275,7 +285,12 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
             return;
         }
 
-        const rows = assignments.map(a => `
+        const rows = assignments.map(a => {
+            const cats = a.escalation_categories || [];
+            const catCells = cats.length
+                ? cats.map(c => `<span class="nupm-cat-chip nupm-cat-chip-sm">${esc(c.label || c.name)}</span>`).join(' ')
+                : `<span style="color:#8a9bb5; font-style:italic; font-size:11px;">All</span>`;
+            return `
             <tr>
                 <td style="text-align:center;">
                     <span class="nexus-status-pill ${a.active ? 'enabled' : 'disabled'}">${a.active ? 'Active' : 'Inactive'}</span>
@@ -284,6 +299,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                     <span class="nexus-status-pill ${a.can_handle_escalations ? 'enabled' : 'disabled'}">${a.can_handle_escalations ? 'Yes' : 'No'}</span>
                 </td>
                 <td style="text-align:center; color:#214dbb; font-weight:900;">${a.max_escalation_sessions || '—'}</td>
+                <td>${catCells}</td>
                 <td>${esc(a.assigned_by || '—')}</td>
                 <td>${a.assigned_on ? frappe.datetime.str_to_user(a.assigned_on) : '—'}</td>
                 <td>${esc(a.notes || '—')}</td>
@@ -292,7 +308,8 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                         ? `<button class="btn btn-xs btn-danger nupm-deactivate-btn" data-name="${esc(a.name)}">Deactivate</button>`
                         : ''}
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
 
         $('#nupm_history_area').html(`
             <table class="table table-bordered nexus-admin-table" style="margin-bottom:0;">
@@ -300,6 +317,7 @@ frappe.pages['nexus-user-profile-manager'].on_page_load = function (wrapper) {
                     <th style="width:80px; text-align:center;">Status</th>
                     <th style="width:100px; text-align:center;">Escalations</th>
                     <th style="width:80px; text-align:center;">Max Sessions</th>
+                    <th>Categories</th>
                     <th>Assigned By</th>
                     <th>Assigned On</th>
                     <th>Notes</th>
@@ -376,6 +394,18 @@ function inject_nupm_css() {
         .nupm-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex-shrink:0; }
         .nupm-dot-active { background:#16a34a; }
         .nupm-dot-none { background:#d1d5db; }
+
+        .nupm-cat-section { margin-top:14px; padding:14px 16px; border-radius:14px;
+            background:#f8fbff; border:1px solid rgba(33,77,187,.15); }
+        .nupm-cat-label { font-size:11px; font-weight:900; color:#173b8c;
+            text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+        .nupm-cat-desc { font-size:11px; color:#6b7c9b; margin-bottom:10px; font-weight:600; }
+        .nupm-cat-chips { display:flex; flex-wrap:wrap; gap:6px; }
+        .nupm-cat-chip { display:inline-flex; padding:5px 12px; border-radius:999px;
+            background:#eef6ff; border:1px solid rgba(33,77,187,.22);
+            color:#173b8c; font-size:12px; font-weight:800; }
+        .nupm-cat-chip-sm { font-size:11px; padding:3px 9px; }
+        .nupm-cat-none { font-size:12px; color:#6b7c9b; font-style:italic; font-weight:600; }
 
         @media (max-width:900px) { .nupm-layout { grid-template-columns:1fr; } .nupm-user-panel { position:static; } }
         @media (max-width:760px) { .nexus-admin-hero { flex-direction:column; } }

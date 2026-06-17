@@ -1,0 +1,17 @@
+{
+  "content": null,
+  "creation": "2026-06-15 00:00:00.000000",
+  "doctype": "Page",
+  "modified": "2026-06-15 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Digitz AI Nexus Live",
+  "name": "nexus-channel-setup-wizard",
+  "owner": "Administrator",
+  "page_name": "nexus-channel-setup-wizard",
+  "roles": [{"role": "System Manager"}],
+  "script": null,
+  "standard": "Yes",
+  "style": null,
+  "system_page": 0,
+  "title": "Nexus Channel Setup Wizard"
+}

@@ -8,15 +8,26 @@ from digitz_ai_nexus_live.services.identity_resolver import (
 
 
 @frappe.whitelist()
-def get_page_data():
+def get_page_data(tenant=None):
+    filters = {"enabled": 1}
+    if tenant:
+        filters["tenant"] = tenant
+
     channels = frappe.get_all(
         "Nexus Live Channel",
-        filters={"enabled": 1},
-        fields=["name", "channel_code", "channel_name", "channel_type", "requires_visitor_email"],
+        filters=filters,
+        fields=["name", "channel_code", "channel_name", "channel_type", "tenant", "requires_visitor_email"],
         order_by="channel_name asc",
     )
 
-    return {"channels": channels}
+    tenants = frappe.get_all(
+        "Nexus Tenant",
+        filters={"disabled": 0},
+        fields=["name", "tenant_name", "tenant_code"],
+        order_by="tenant_name asc",
+    )
+
+    return {"channels": channels, "tenants": tenants}
 
 
 @frappe.whitelist()

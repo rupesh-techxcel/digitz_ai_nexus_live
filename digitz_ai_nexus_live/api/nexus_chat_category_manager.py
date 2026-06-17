@@ -264,34 +264,12 @@ def get_category_chain(category_code):
             "fallback_message": profile.fallback_message,
         }
 
-        cat_names = frappe.get_all(
-            "Nexus AI Agent Profile Access Category",
-            filters={"ai_agent_profile": profile.name, "enabled": 1},
-            pluck="access_category",
-        )
-
-        if not cat_names:
-            entry["warnings"].append(f"Profile '{profile.name}' has no Access Category. Retrieval will be denied.")
-            result["routes"].append(entry)
-            continue
-
-        entry["access_categories"] = cat_names
-
-        policy_names = frappe.get_all(
-            "Nexus Access Category Policy",
-            filters={"parent": ["in", cat_names], "parentfield": "allowed_policies"},
-            pluck="access_policy",
-        )
-
-        if policy_names:
-            entry["policies"] = frappe.get_all(
-                "Nexus Access Policy",
-                filters={"policy_name": ["in", list(set(policy_names))], "disabled": 0},
-                fields=["policy_name", "access_level", "sensitivity", "is_primitive"],
-                order_by="policy_name asc",
-            )
+        # Knowledge access is governed by Identity Profile → Knowledge Profile → Access Categories.
+        # Display the permitted identity profiles for this route as the access context.
+        if permitted:
+            entry["identity_profiles"] = list(permitted)
         else:
-            entry["warnings"].append("Access categories exist but contain no policies.")
+            entry["identity_profiles"] = []
 
         result["routes"].append(entry)
 

@@ -45,11 +45,16 @@ def publish_escalation_alert(conversation):
 
     agent_users = _get_agent_users_for_category(chat_category)
 
+    category_label = None
+    if chat_category:
+        category_label = frappe.db.get_value("Nexus Chat Category", chat_category, "category_label")
+
     alert_data = {
         "conversation_id": conversation_id,
         "conversation_name": conversation.name,
         "visitor_name": visitor_name,
         "chat_category": chat_category,
+        "category_label": category_label or chat_category,
         "escalated_at": str(conversation.escalated_at) if getattr(conversation, "escalated_at", None) else None,
     }
 

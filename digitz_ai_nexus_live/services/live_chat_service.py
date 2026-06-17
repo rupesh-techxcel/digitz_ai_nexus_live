@@ -28,6 +28,7 @@ from digitz_ai_nexus_live.services.conversation_service import (
 )
 from digitz_ai_nexus_live.services.escalation_service import (
     create_escalation,
+    should_escalate,
 )
 from digitz_ai_nexus_live.services.intent_handler_service import (
     resolve_intents_for_profile,
@@ -1004,7 +1005,7 @@ def continue_live_chat(conversation_id, payload):
         cat = frappe.db.get_value(
             "Nexus Chat Category",
             {"category_code": category_code, "enabled": 1, "published": 1},
-            ["name", "category_label"],
+            ["name", "category_label", "identity_verification_mode"],
             as_dict=True,
         )
 
@@ -1018,19 +1019,35 @@ def continue_live_chat(conversation_id, payload):
                 "conversation_id": conversation_id,
             }
 
+        verification_mode = cat.get("identity_verification_mode") or "None"
+        requires_verification = (
+            verification_mode != "None"
+            and getattr(conversation, "user_type", "Guest") == "Guest"
+        )
+
+        new_intent = "await_verification" if requires_verification else ""
         frappe.db.set_value("Nexus Live Conversation", conversation.name, {
             "chat_category": cat.name,
-            "intent": "",
+            "intent": new_intent,
         })
         conversation.reload()
         payload["chat_category"] = category_code
 
         visitor_name = conversation.visitor_name or ""
         name_part = f", {visitor_name}" if visitor_name else ""
-        ack = (
-            f"Perfect{name_part}! I'll be assisting you with {cat.category_label}. "
-            "What would you like to know?"
-        )
+
+        if requires_verification:
+            ack = (
+                f"To get started with **{cat.category_label}**, we need to verify your identity. "
+                "Please enter your email address below."
+            )
+        else:
+            ack = (
+                f"Perfect{name_part}! I'll be assisting you with {cat.category_label}. "
+                "What would you like to know?"
+            )
+
+        faq_questions = _get_faq_questions(cat.name) if not requires_verification else []
 
         add_message(
             conversation=conversation,
@@ -1049,6 +1066,8 @@ def continue_live_chat(conversation_id, payload):
             "confidence": 1.0,
             "access_status": "conversational",
             "sources": [],
+            "identity_verification_offer": requires_verification,
+            "faq_questions": faq_questions,
         })
 
         return {
@@ -1056,6 +1075,113 @@ def continue_live_chat(conversation_id, payload):
             "conversation": conversation.name,
             "conversation_id": conversation_id,
         }
+
+    # ── FAQ selection (direct answer — no LLM) ────────────────────────────────
+    if message.startswith("__faq__:"):
+        faq_row_name = message.split(":", 1)[1].strip()
+
+        faq_row = frappe.db.get_value(
+            "Nexus Chat Category FAQ",
+            faq_row_name,
+            ["question", "answer", "parent", "enabled"],
+            as_dict=True,
+        )
+        if faq_row and not faq_row.get("enabled"):
+            faq_row = None
+
+        if not faq_row:
+            return {
+                "status": "faq_not_found",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
+        # Store question as visitor message, answer as agent message
+        add_message(
+            conversation=conversation,
+            sender_type=sender_type,
+            message=faq_row.question,
+            response_mode="chat",
+        )
+        add_message(
+            conversation=conversation,
+            sender_type="AI Agent",
+            message=faq_row.answer,
+            response_mode="chat",
+        )
+        _touch_last_message_at(conversation)
+
+        # Reload remaining FAQ chips for this category
+        remaining_faq = _get_faq_questions(faq_row.parent, exclude_name=faq_row_name)
+
+        publish_chat_response(conversation.conversation_id, {
+            "status": "success",
+            "response_type": "faq_answer",
+            "faq_question": faq_row.question,
+            "message": faq_row.answer,
+            "answer": faq_row.answer,
+            "agent_name": get_agent_nickname(conversation),
+            "confidence": 1.0,
+            "access_status": "conversational",
+            "sources": [],
+            "faq_questions": remaining_faq,
+        })
+
+        return {
+            "status": "faq_answered",
+            "conversation": conversation.name,
+            "conversation_id": conversation_id,
+        }
+
+    # ── Identity verification gate ─────────────────────────────────────────────
+    # When the category requires OTP verification the conversation is put into
+    # "await_verification" until the visitor supplies a valid challenge token.
+    # Once verified the intent is cleared and message processing continues.
+    if intent == "await_verification":
+        from digitz_ai_nexus_live.services.identity_verification import (
+            get_category_verification_mode,
+            get_verified_challenge,
+        )
+        _vcat = payload.get("chat_category") or getattr(conversation, "chat_category", None)
+        _vmode = get_category_verification_mode(_vcat) if _vcat else "None"
+
+        _challenge = None
+        if _vmode != "None":
+            _challenge = get_verified_challenge(
+                challenge_token=payload.get("identity_verification_challenge"),
+                chat_category=_vcat,
+            )
+
+        if _vmode != "None" and not _challenge:
+            _cat_label = frappe.db.get_value("Nexus Chat Category", _vcat, "category_label") or _vcat
+            nudge = f"Please verify your identity before continuing with {_cat_label}."
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=nudge,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "await_verification",
+                "response_type": "message",
+                "message": nudge,
+                "answer": nudge,
+                "confidence": 1.0,
+                "access_status": "awaiting_verification",
+                "sources": [],
+                "identity_verification_offer": True,
+            })
+            return {
+                "status": "await_verification",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
+        # Challenge present — clear intent so subsequent messages flow normally
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, "intent", "")
+        conversation.intent = ""
+        intent = ""
 
     # Store visitor message for all non-category-click cases
     add_message(
@@ -1258,6 +1384,27 @@ def _process_ai_response(conversation_id, payload_json):
         if identity_verification_offer:
             answer = PUBLIC_IDENTITY_FALLBACK
 
+        threshold = (
+            behavior.confidence_threshold
+            if behavior and behavior.confidence_threshold is not None
+            else 0.65
+        )
+
+        # Low-confidence wrap: real RAG answer but below the confidence threshold.
+        # Ask the LLM to reframe it with an honest preamble and an invitation to
+        # refine the query, rather than presenting a shaky answer with full confidence.
+        is_real_answer = (
+            not is_fallback
+            and not identity_verification_offer
+            and core_response.get("access_status") == "allowed"
+        )
+        if is_real_answer and confidence is not None and confidence < threshold:
+            answer = _wrap_low_confidence_answer(
+                visitor_message=payload.get("message") or payload.get("query") or "",
+                raw_answer=answer,
+                confidence=confidence,
+            )
+
         add_message(
             conversation=conversation,
             sender_type="AI Agent",
@@ -1274,12 +1421,6 @@ def _process_ai_response(conversation_id, payload_json):
             "Waiting",
             conversation=conversation.name,
             remarks="Waiting for next visitor message.",
-        )
-
-        threshold = (
-            behavior.confidence_threshold
-            if behavior and behavior.confidence_threshold is not None
-            else 0.65
         )
 
         escalation_enabled = (
@@ -1302,13 +1443,32 @@ def _process_ai_response(conversation_id, payload_json):
             )
 
         user_requested_human = bool(core_response.get("user_requested_human"))
-        if user_requested_human and escalation_enabled and category_allows_escalation:
+        no_knowledge = bool(core_response.get("fallback_used") and not core_response.get("answer"))
+
+        if escalation_enabled and category_allows_escalation and should_escalate(
+            confidence=confidence,
+            no_knowledge=no_knowledge,
+            user_requested_human=user_requested_human,
+            threshold=threshold,
+        ):
+            if user_requested_human:
+                escalation_reason = "User Requested Human"
+                escalation_remarks = "User explicitly requested escalation to a human agent."
+            elif no_knowledge:
+                escalation_reason = "No Approved Knowledge"
+                escalation_remarks = "No knowledge found for the visitor query."
+            else:
+                escalation_reason = "Low Confidence"
+                escalation_remarks = (
+                    f"AI confidence ({confidence:.2f}) below threshold ({threshold:.2f})."
+                )
+
             escalation_created = create_escalation(
                 conversation=conversation,
-                reason="User Requested Human",
+                reason=escalation_reason,
                 from_agent=agent,
                 confidence=confidence,
-                remarks="User explicitly requested escalation to a human agent.",
+                remarks=escalation_remarks,
             )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
@@ -1368,6 +1528,20 @@ def _touch_last_message_at(conversation):
     )
 
 
+def _get_faq_questions(category_name, exclude_name=None):
+    """Return enabled FAQ rows for a category ordered by display_order."""
+    filters = {"parent": category_name, "parenttype": "Nexus Chat Category", "enabled": 1}
+    rows = frappe.get_all(
+        "Nexus Chat Category FAQ",
+        filters=filters,
+        fields=["name", "question", "display_order"],
+        order_by="display_order asc, idx asc",
+    )
+    if exclude_name:
+        rows = [r for r in rows if r["name"] != exclude_name]
+    return [{"name": r["name"], "question": r["question"]} for r in rows]
+
+
 # ── Idle timeout scheduler ─────────────────────────────────────────────────────
 
 def close_idle_conversations():
@@ -1419,3 +1593,42 @@ def close_idle_conversations():
             })
 
     frappe.db.commit()
+
+
+# ── Low-confidence answer wrapper ──────────────────────────────────────────────
+
+def _wrap_low_confidence_answer(visitor_message, raw_answer, confidence):
+    """
+    When the RAG pipeline returns a real answer but below the confidence threshold,
+    ask the LLM to reframe it with an honest preamble and an invitation to refine
+    the query. Falls back to the raw answer if the LLM call fails.
+    """
+    from digitz_ai_nexus.engine.llm import generate_answer
+
+    prompt = (
+        "You are a helpful enterprise AI assistant.\n\n"
+        "The knowledge retrieval system found relevant information for the user's question, "
+        "but the match confidence is moderate — meaning this may not be a perfect answer.\n\n"
+        f"User's question: {visitor_message}\n\n"
+        f"Retrieved answer:\n{raw_answer}\n\n"
+        "Your task:\n"
+        "1. Briefly and naturally acknowledge that you're not entirely certain this is exactly "
+        "what they're looking for — keep this to one short sentence.\n"
+        "2. Present the retrieved information clearly and helpfully.\n"
+        "3. Close with a short, conversational invitation for the user to confirm whether "
+        "it helps or to guide you with more detail.\n\n"
+        "Important rules:\n"
+        "- Do NOT mention confidence scores, percentages, or any technical terms.\n"
+        "- Do NOT start with the word 'I'.\n"
+        "- Keep a warm, professional tone throughout.\n"
+        "- Do not invent or add any information beyond what is in the retrieved answer.\n"
+        "- Keep the response concise."
+    )
+
+    try:
+        wrapped = (generate_answer(prompt) or "").strip()
+        return wrapped if wrapped else raw_answer
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Nexus Low Confidence Wrap Failed")
+        return raw_answer
+
