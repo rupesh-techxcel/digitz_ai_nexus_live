@@ -268,11 +268,11 @@ def get_active_conversations(limit=50, tenant=None):
     return {"conversations": conversations, "mode": "admin"}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_conversation_detail(conversation_id=None):
     """
-    Return full conversation metadata + messages for the Live Console.
-    Desk users only.
+    Return full conversation metadata + messages.
+    Called by both the Live Console (desk) and the website widget (guest resume).
     """
     if not conversation_id:
         frappe.throw("Conversation ID is required.")

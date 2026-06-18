@@ -28,7 +28,8 @@
       }
       return id;
     }
-    var _CONV_KEY = "ncw_session";
+    var _CONV_SCOPE = cfg.storage_key || cfg.widget_code || cfg.channel || cfg.tenant || "default";
+    var _CONV_KEY = "ncw_session:" + _CONV_SCOPE;
     var _CONV_TTL = 60 * 60 * 1e3;
     function _conv_save() {
       if (is_desk() || !S.conversation_id)
@@ -1604,4 +1605,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.DN5UMGH2.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.65KPD3GR.js.map

@@ -2,7 +2,7 @@
  * Nexus Chat Widget — shared component for website visitors and Frappe desk.
  *
  * Website usage (set before this script loads):
- *   window.NexusChatConfig = { channel: "WEBSITE-CHAT", tenant: "DIGITZ" };
+ *   window.NexusChatConfig = { channel: "WEBSITE-CHAT", tenant: "DIGITZ", widget_code: "SITE-WIDGET" };
  *
  * Desk usage (nexus_live_console calls):
  *   NexusChatWidget.open(conversation_id)   // open existing conversation
@@ -52,7 +52,8 @@
 
     // ── Conversation persistence (localStorage, 1-hour idle TTL) ──────────────
 
-    var _CONV_KEY = 'ncw_session';
+    var _CONV_SCOPE = cfg.storage_key || cfg.widget_code || cfg.channel || cfg.tenant || 'default';
+    var _CONV_KEY = 'ncw_session:' + _CONV_SCOPE;
     var _CONV_TTL = 60 * 60 * 1000; // 1 hour in ms
 
     function _conv_save() {

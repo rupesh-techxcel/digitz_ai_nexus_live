@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus Chat Embed</title>
+  <!-- csrf_token -->
+  {% if widget_valid %}
+  <script>
+    window.NexusChatConfig = {
+      tenant: "{{ widget_tenant }}",
+      channel: "{{ widget_channel }}",
+      widget_code: "{{ widget_code }}",
+      storage_key: "{{ widget_code }}"
+    };
+    window.dev_server = 1;
+    window.socketio_port = 9512;
+    window.frappe = window.frappe || {};
+    frappe.boot = {
+      sitename: "digitz_ai_nexus.site",
+      socketio_port: 9512
+    };
+    frappe.ready_events = [];
+    frappe.ready = function(fn) { frappe.ready_events.push(fn); };
+  </script>
+  {% endif %}
+  <style>
+    html,
+    body {
+      background: transparent;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  {% if widget_valid %}
+  <script src="/assets/frappe/dist/js/frappe-web.bundle.RGYFHIMP.js"></script>
+  <script src="/assets/digitz_ai_nexus_live/js/nexus_chat_widget.bundle.js?v=20260617-widget-storage"></script>
+  <script>
+    (function() {
+      var parentOrigin = "{{ parent_origin }}";
+
+      function panelIsOpen() {
+        var panel = document.getElementById("ncw-panel");
+        return !!panel && panel.style.display !== "none";
+      }
+
+      function postState() {
+        window.parent.postMessage({
+          source: "nexus-chat-embed",
+          state: panelIsOpen() ? "open" : "closed"
+        }, parentOrigin);
+      }
+
+      function openChat() {
+        var panel = document.getElementById("ncw-panel");
+        if (panel && panel.style.display !== "none") {
+          postState();
+          return;
+        }
+
+        var bubble = document.getElementById("ncw-bubble");
+        if (bubble) {
+          bubble.click();
+          postState();
+        }
+      }
+
+      function bindObserver() {
+        var root = document.getElementById("ncw-root");
+        var panel = document.getElementById("ncw-panel");
+
+        if (!root || !panel) {
+          setTimeout(bindObserver, 150);
+          return;
+        }
+
+        new MutationObserver(postState).observe(panel, {
+          attributes: true,
+          attributeFilter: ["style", "class"]
+        });
+
+        postState();
+      }
+
+      window.addEventListener("message", function(event) {
+        var data = event.data || {};
+        if (event.origin !== parentOrigin || data.source !== "nexus-external-site" || data.action !== "open-chat") {
+          return;
+        }
+
+        openChat();
+      });
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", bindObserver);
+      } else {
+        bindObserver();
+      }
+    })();
+  </script>
+  {% else %}
+  <script>
+    window.parent.postMessage({
+      source: "nexus-chat-embed",
+      state: "unavailable"
+    }, "*");
+  </script>
+  {% endif %}
+</body>
+</html>

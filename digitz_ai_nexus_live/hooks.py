@@ -222,7 +222,7 @@ scheduler_events = {
 # Request Events
 # ----------------
 # before_request = ["digitz_ai_nexus_live.utils.before_request"]
-# after_request = ["digitz_ai_nexus_live.utils.after_request"]
+after_request = ["digitz_ai_nexus_live.embed.set_embed_headers"]
 
 # Job Events
 # ----------
@@ -271,4 +271,3 @@ scheduler_events = {
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-
