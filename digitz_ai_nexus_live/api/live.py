@@ -23,6 +23,37 @@ def parse_payload(payload=None):
     return payload or {}
 
 
+def _resolve_widget_for_api_call(widget_code):
+    """Returns widget row or None (absent = trusted caller). Throws on invalid contract."""
+    if not widget_code:
+        return None
+    from digitz_ai_nexus_live.nexus_live_channels.doctype.nexus_website_widget.nexus_website_widget import (
+        get_widget_for_api_call,
+    )
+    widget = get_widget_for_api_call(widget_code)
+    if not widget:
+        frappe.throw("Widget contract is not valid or has been suspended.")
+    return widget
+
+
+def get_category_faq_questions(category_name):
+    """Return enabled public-safe FAQ quick questions for a chat category."""
+    if not category_name:
+        return []
+
+    rows = frappe.get_all(
+        "Nexus Chat Category FAQ",
+        filters={
+            "parent": category_name,
+            "parenttype": "Nexus Chat Category",
+            "enabled": 1,
+        },
+        fields=["name", "question", "display_order"],
+        order_by="display_order asc, idx asc",
+    )
+    return [{"name": row.name, "question": row.question} for row in rows]
+
+
 @frappe.whitelist()
 def get_available_categories_for_tenant(tenant=None):
     """
@@ -39,7 +70,7 @@ def get_available_categories_for_tenant(tenant=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_channel_categories(channel=None, visitor_email=None, email=None):
+def get_channel_categories(channel=None, tenant=None, visitor_email=None, email=None, widget_code=None):
     """
     Return chat categories the current visitor may actually use.
 
@@ -49,8 +80,14 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
        configured for the visitor's resolved identity type. A category with
        no route would cause a hard error when selected.
     """
-    if not channel:
-        frappe.throw("Channel is required.")
+    widget = _resolve_widget_for_api_call(widget_code)
+    if widget and not widget.knowledge_delivery_enabled:
+        return {
+            "channel": channel,
+            "tenant": tenant,
+            "categories": [],
+            "knowledge_delivery_enabled": False,
+        }
 
     is_authenticated = frappe.session.user not in ("Guest", None, "")
 
@@ -59,13 +96,42 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
         "visitor_email": visitor_email or email,
     })
 
-    auth_filters = {"channel": channel, "enabled": 1, "visibility": ["in", ["External", "Both"]]}
+    channel_filters = {"enabled": 1, "channel_type": "Website Chat"}
+    if tenant:
+        channel_filters["tenant"] = tenant
+    if channel:
+        channel_filters["name"] = channel
+
+    channel_names = frappe.get_all(
+        "Nexus Live Channel",
+        filters=channel_filters,
+        pluck="name",
+    )
+    if not channel_names:
+        return {
+            "channel": channel,
+            "tenant": tenant,
+            "is_authenticated": is_authenticated,
+            "identity_type": identity_type,
+            "categories": [],
+            "knowledge_delivery_enabled": True,
+        }
+
+    auth_filters = {
+        "channel": ["in", channel_names],
+        "enabled": 1,
+        "published": 1,
+        "visibility": ["in", ["External", "Both"]],
+    }
+    if tenant:
+        auth_filters["tenant"] = tenant
 
     candidates = frappe.get_all(
         "Nexus Chat Category",
         filters=auth_filters,
         fields=[
             "name",
+            "channel",
             "category_code",
             "category_label",
             "display_order",
@@ -77,45 +143,40 @@ def get_channel_categories(channel=None, visitor_email=None, email=None):
     )
 
     if not candidates:
-        return {"channel": channel, "is_authenticated": is_authenticated, "categories": []}
+        return {
+            "channel": channel,
+            "tenant": tenant,
+            "is_authenticated": is_authenticated,
+            "identity_type": identity_type,
+            "categories": [],
+            "knowledge_delivery_enabled": True,
+        }
 
-    candidate_codes = [c.category_code for c in candidates]
+    candidate_names = [c.name for c in candidates]
 
-    routed_codes = set(frappe.get_all(
+    routed_categories = set(frappe.get_all(
         "Nexus Category Identity Route",
         filters={
-            "channel": channel,
-            "chat_category": ["in", candidate_codes],
-            "identity_type": identity_type,
+            "channel": ["in", channel_names],
+            "chat_category": ["in", candidate_names],
             "enabled": 1,
+            "published": 1,
         },
         pluck="chat_category",
     ))
 
-    verification_codes = {
-        c.category_code
-        for c in candidates
-        if c.identity_verification_mode in ("Email OTP", "Registered Email OTP")
-    }
-
-    if verification_codes:
-        routed_codes.update(frappe.get_all(
-            "Nexus Category Identity Route",
-            filters={
-                "channel": channel,
-                "chat_category": ["in", list(verification_codes)],
-                "enabled": 1,
-            },
-            pluck="chat_category",
-        ))
-
-    categories = [c for c in candidates if c.category_code in routed_codes]
+    categories = [c for c in candidates if c.name in routed_categories]
+    for category in categories:
+        category["faq_questions"] = get_category_faq_questions(category.name)
 
     return {
         "channel": channel,
+        "tenant": tenant,
+        "channels": channel_names,
         "is_authenticated": is_authenticated,
         "identity_type": identity_type,
         "categories": categories,
+        "knowledge_delivery_enabled": True,
     }
 
 
@@ -134,6 +195,13 @@ def get_widget_tenant():
 def ask_question(payload=None):
     """Public / internal Q And A API endpoint."""
     payload = parse_payload(payload)
+    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    if widget and not widget.knowledge_delivery_enabled:
+        return {
+            "status": "service_paused",
+            "knowledge_delivery_enabled": False,
+            "message": "This service is temporarily paused.",
+        }
     return ask_live_question(payload)
 
 
@@ -145,6 +213,13 @@ def start_chat(payload=None):
     The AI response is pushed via frappe.realtime event "nexus_chat_response".
     """
     payload = parse_payload(payload)
+    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    if widget and not widget.knowledge_delivery_enabled:
+        return {
+            "status": "service_paused",
+            "knowledge_delivery_enabled": False,
+            "message": "This service is temporarily paused.",
+        }
     return start_live_chat(payload)
 
 
@@ -159,6 +234,9 @@ def send_chat_message(conversation_id=None, payload=None):
         frappe.throw("Conversation ID is required.")
 
     payload = parse_payload(payload)
+    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    if widget and not widget.knowledge_delivery_enabled:
+        frappe.throw("Knowledge delivery is currently paused for this widget.")
 
     return continue_live_chat(
         conversation_id=conversation_id,

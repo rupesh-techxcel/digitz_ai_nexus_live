@@ -45,11 +45,16 @@ def get_external_widget(widget_code, origin=None):
 	if not widget_code or not origin:
 		return None
 
-	name = frappe.db.get_value("Nexus Website Widget", {"widget_code": widget_code, "enabled": 1}, "name")
-	if not name:
+	row = frappe.db.get_value(
+		"Nexus Website Widget",
+		{"widget_code": widget_code, "enabled": 1},
+		["name", "contract_status"],
+		as_dict=True,
+	)
+	if not row or row.contract_status != "Active":
 		return None
 
-	widget = frappe.get_doc("Nexus Website Widget", name)
+	widget = frappe.get_doc("Nexus Website Widget", row.name)
 	allowed_origins = get_allowed_origins(widget)
 	if "*" not in allowed_origins and origin not in allowed_origins:
 		return None
@@ -64,6 +69,21 @@ def get_external_widget(widget_code, origin=None):
 		"origin": origin,
 		"allowed_origins": allowed_origins,
 	}
+
+
+def get_widget_for_api_call(widget_code):
+	"""Lightweight validation for API call handshake. No origin re-check."""
+	if not widget_code:
+		return None
+	row = frappe.db.get_value(
+		"Nexus Website Widget",
+		{"widget_code": widget_code, "enabled": 1},
+		["name", "contract_status", "knowledge_delivery_enabled"],
+		as_dict=True,
+	)
+	if not row or row.contract_status != "Active":
+		return None
+	return row
 
 
 @frappe.whitelist(allow_guest=True)
@@ -83,4 +103,6 @@ def get_embed_config(widget_code=None, origin=None):
 		"primary_color": widget.primary_color,
 		"welcome_text": widget.welcome_text,
 		"position": widget.position,
+		"knowledge_delivery_enabled": int(widget.knowledge_delivery_enabled),
+		"contract_status": widget.contract_status,
 	}

@@ -151,10 +151,11 @@ permitted Identity Profiles.
 
 | Field | Purpose |
 |---|---|
-| `channel` | Link → Nexus Live Channel |
-| `chat_category` | Link → Nexus Chat Category |
+| `chat_category` | Link → Nexus Chat Category (required). The category owns the channel — selecting a category implies the channel. |
+| `channel` | Link → Nexus Live Channel (read-only). Derived from `chat_category.channel` via `fetch_from`. Retained for filtering and reporting. |
 | `ai_agent_profile` | Link → Nexus AI Agent Profile — governs AI behavior (tone, fallback, escalation, model config) |
 | `enabled` | Whether this route is active |
+| `published` | When unchecked, route is inactive without being deleted |
 | `priority` | Lower number = higher priority when multiple routes match |
 | `identity_profiles` | Child table of permitted `Nexus Identity Profile` records |
 
@@ -167,8 +168,8 @@ The `identity_profiles` child table controls **who** can access and **what** kno
 
 ### How a Route is Selected
 
-1. Visitor selects a chat category on a channel.
-2. System queries `Nexus Category Identity Route` filtered by `channel + chat_category + enabled = 1`.
+1. Visitor selects a chat category. The channel is implied by `Nexus Chat Category.channel` — there is one channel per category.
+2. System derives the channel from the category and queries `Nexus Category Identity Route` filtered by `channel + chat_category + enabled = 1`.
 3. The first matching route (ordered by priority) is used.
 4. The route's `ai_agent_profile` is loaded for AI behavior.
 5. The route's `identity_profiles` child table is used to resolve knowledge access.

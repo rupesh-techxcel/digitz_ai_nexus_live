@@ -137,8 +137,8 @@ confirm a valid identity profile exists for public visitors.
 The default runtime route is:
 
 ```text
-WEBSITE-CHAT + GENERAL-SUPPORT
-    is_public_route = 1
+GENERAL-SUPPORT (channel implied from category: WEBSITE-CHAT)
+    identity_profiles: empty (open to all public visitors)
     -> AI Agent Profile: PUBLIC-AI-ASSISTANT
     -> Profile access: Public Access → Public policy
     -> Identity Profile: DEFAULT-PUBLIC-PROFILE (attached to route)

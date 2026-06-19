@@ -51,9 +51,10 @@ def get_channel_categories(channel):
 @frappe.whitelist()
 def get_category_routes(channel, category_code):
     # category_code is actually the chat category doc name (e.g. NEXUS-PLATFORM-KNOW-HOW-DIGITZ-AI-NEXUS)
+    category_channel = frappe.db.get_value("Nexus Chat Category", category_code, "channel")
     routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category_code},
+        filters={"channel": category_channel or channel, "chat_category": category_code},
         fields=["name", "ai_agent_profile", "enabled", "priority", "description"],
         order_by="priority asc",
     )
@@ -111,8 +112,12 @@ def save_route(data):
         doc = frappe.get_doc("Nexus Category Identity Route", name)
     else:
         doc = frappe.new_doc("Nexus Category Identity Route")
-        doc.channel = data["channel"]
-        doc.chat_category = data["chat_category"]
+
+    doc.chat_category = data["chat_category"]
+    category_channel = frappe.db.get_value("Nexus Chat Category", doc.chat_category, "channel")
+    if not category_channel:
+        frappe.throw("Selected chat category is not linked to a channel.")
+    doc.channel = category_channel
 
     doc.ai_agent_profile = data.get("ai_agent_profile")
     doc.enabled = int(data.get("enabled", 1))

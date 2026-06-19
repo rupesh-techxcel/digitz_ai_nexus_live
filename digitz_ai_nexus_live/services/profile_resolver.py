@@ -42,6 +42,20 @@ def is_system_manager_session_user(user=None):
     return bool(user and "System Manager" in frappe.get_roles(user))
 
 
+def resolve_chat_category_name(category_value):
+    if not category_value:
+        return None
+
+    if frappe.db.exists("Nexus Chat Category", category_value):
+        return category_value
+
+    return frappe.db.get_value(
+        "Nexus Chat Category",
+        {"category_code": category_value},
+        "name",
+    )
+
+
 def resolve_behavior_from_chat_category(category_code, identity_type, is_authenticated=False, payload=None):
     """
     Resolve AI behavior for a visitor-selected chat category.
@@ -63,10 +77,11 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
     if not category_code:
         frappe.throw("Chat category is required to start this conversation.")
 
-    if not frappe.db.exists("Nexus Chat Category", category_code):
+    category_name = resolve_chat_category_name(category_code)
+    if not category_name:
         frappe.throw(f"Chat category '{category_code}' not found.")
 
-    category = frappe.get_doc("Nexus Chat Category", category_code)
+    category = frappe.get_doc("Nexus Chat Category", category_name)
 
     if not category.enabled:
         frappe.throw(f"Chat category '{category_code}' is not currently active.")
@@ -80,7 +95,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
     channel = category.channel
 
     if identity_type == "Public":
-        route = _find_any_route(channel, category_code)
+        route = _find_any_route(channel, category.name)
         if not route:
             frappe.throw(
                 f"No route configured for category '{category.category_label}'. "
@@ -90,7 +105,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
 
     else:
         route, knowledge_profile_names = _find_registered_route(
-            channel, category_code, identity_type, payload
+            channel, category.name, identity_type, payload
         )
         if not route:
             frappe.throw(
@@ -107,6 +122,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
         route_name=route.name,
         category_code=category.category_code,
         category_label=category.category_label,
+        channel=category.channel,
         identity_type=identity_type,
         knowledge_profile_names=knowledge_profile_names,
     )
@@ -135,12 +151,17 @@ def resolve_behavior_from_conversation(conversation):
         except Exception:
             snapshot = {}
 
+    if getattr(conversation, "chat_category", None) and not snapshot.get("chat_category"):
+        return None
+
     profile = frappe.get_doc("Nexus AI Agent Profile", profile_name)
 
     return _build_behavior_dict(
         profile=profile,
         source="Nexus Live Conversation (snapshot)",
-        category_code=getattr(conversation, "chat_category", None),
+        category_code=snapshot.get("category_code") or getattr(conversation, "chat_category", None),
+        category_label=snapshot.get("category_label"),
+        channel=getattr(conversation, "channel", None),
         identity_type=getattr(conversation, "resolved_identity_type", None),
         knowledge_profile_names=snapshot.get("knowledge_profile_names") or [],
     )
@@ -224,12 +245,12 @@ def resolve_behavior_for_internal_user(user):
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
-def _find_any_route(channel, category_code):
+def _find_any_route(channel, category_name):
     routes = frappe.get_all(
         "Nexus Category Identity Route",
         filters={
             "channel": channel,
-            "chat_category": category_code,
+            "chat_category": category_name,
             "enabled": 1,
             "published": 1,
         },
@@ -240,7 +261,7 @@ def _find_any_route(channel, category_code):
     return routes[0] if routes else None
 
 
-def _find_registered_route(channel, category_code, identity_type, payload):
+def _find_registered_route(channel, category_name, identity_type, payload):
     """
     Find the highest-priority route for a registered visitor whose Identity Profiles
     intersect with the route's permitted Identity Profiles.
@@ -267,7 +288,7 @@ def _find_registered_route(channel, category_code, identity_type, payload):
 
     all_routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category_code, "enabled": 1, "published": 1},
+        filters={"channel": channel, "chat_category": category_name, "enabled": 1, "published": 1},
         fields=["name", "ai_agent_profile"],
         order_by="priority asc",
     )
@@ -309,6 +330,7 @@ def _build_behavior_dict(
     route_name=None,
     category_code=None,
     category_label=None,
+    channel=None,
     identity_type=None,
     knowledge_profile_names=None,
 ):
@@ -318,6 +340,7 @@ def _build_behavior_dict(
         "profile_name": profile.name if profile else None,
         "category_code": category_code,
         "category_label": category_label,
+        "channel": channel,
         "identity_type": identity_type,
         "knowledge_profile_names": knowledge_profile_names or [],
         "behavior_prompt": profile.behavior_prompt if profile else None,

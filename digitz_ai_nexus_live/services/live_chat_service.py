@@ -16,6 +16,7 @@ from digitz_ai_nexus_live.services.profile_resolver import (
     is_system_manager_session_user,
     resolve_behavior_from_chat_category,
     resolve_behavior_from_conversation,
+    resolve_chat_category_name,
     resolve_behavior_for_internal_user,
 )
 from digitz_ai_nexus_live.services.conversation_service import (
@@ -156,18 +157,34 @@ def _send_category_picker(conversation, greeting_name=None, publish=True, is_int
         "published": 1,
         "visibility": ["in", visibility_filter],
     }
-    if conversation.channel:
+    if is_internal and conversation.channel:
         cat_filters["channel"] = conversation.channel
+    elif not is_internal:
+        website_channels = _get_website_chat_channels_for_conversation(conversation)
+        if website_channels:
+            cat_filters["channel"] = ["in", website_channels]
+        elif conversation.channel:
+            cat_filters["channel"] = conversation.channel
+        else:
+            return None
+
+        if getattr(conversation, "tenant", None):
+            cat_filters["tenant"] = conversation.tenant
 
     categories = frappe.get_all(
         "Nexus Chat Category",
         filters=cat_filters,
-        fields=["name", "category_code", "category_label", "description", "display_order"],
+        fields=["name", "channel", "category_code", "category_label", "description", "display_order"],
         order_by="display_order asc",
     )
 
+    categories = _filter_categories_with_active_routes(categories)
+
     if not categories:
         return None
+
+    for category in categories:
+        category["faq_questions"] = _get_faq_questions(category.name)
 
     if greeting_name:
         prompt = (
@@ -707,6 +724,17 @@ def start_live_chat(payload):
     ai_profile_override = None
     chat_category = payload.get("chat_category")
     if chat_category:
+        category_name = resolve_chat_category_name(chat_category)
+        if category_name:
+            category_channel = frappe.db.get_value(
+                "Nexus Chat Category",
+                category_name,
+                "channel",
+            )
+            payload["chat_category"] = category_name
+            payload["channel"] = category_channel or payload.get("channel")
+            chat_category = category_name
+
         from digitz_ai_nexus_live.services.identity_resolver import (
             resolve_identity_registry_name,
             resolve_identity_safeguard_access_categories,
@@ -1001,11 +1029,12 @@ def continue_live_chat(conversation_id, payload):
     # ── Category selection (transparent — don't store __cat__ as visitor message) ──
     if intent == "await_category" and message.startswith("__cat__:"):
         category_code = message.split(":", 1)[1].strip()
+        category_name = resolve_chat_category_name(category_code)
 
         cat = frappe.db.get_value(
             "Nexus Chat Category",
-            {"category_code": category_code, "enabled": 1, "published": 1},
-            ["name", "category_label", "identity_verification_mode"],
+            {"name": category_name, "enabled": 1, "published": 1} if category_name else {"category_code": category_code, "enabled": 1, "published": 1},
+            ["name", "channel", "category_code", "category_label", "identity_verification_mode"],
             as_dict=True,
         )
 
@@ -1026,12 +1055,66 @@ def continue_live_chat(conversation_id, payload):
         )
 
         new_intent = "await_verification" if requires_verification else ""
-        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+        conversation_updates = {
             "chat_category": cat.name,
+            "channel": cat.channel,
             "intent": new_intent,
-        })
+        }
+
+        payload["chat_category"] = cat.name
+        payload["channel"] = cat.channel
+
+        if not requires_verification:
+            from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+
+            identity_type = resolve_identity_type(payload)
+            cat_behavior = resolve_behavior_from_chat_category(
+                cat.name,
+                identity_type,
+                False,
+                payload=payload,
+            )
+            if cat_behavior and cat_behavior.profile_name:
+                profile = frappe.get_doc(
+                    "Nexus AI Agent Profile",
+                    cat_behavior.profile_name,
+                )
+                payload["identity_type"] = identity_type
+                payload["knowledge_profile_names"] = cat_behavior.knowledge_profile_names or []
+                conversation_updates.update({
+                    "resolved_identity_type": identity_type,
+                    "assigned_agent": profile.name,
+                    "assigned_agent_type": "AI",
+                    "assigned_ai_agent_profile": profile.name,
+                    "ai_profile_snapshot_json": json.dumps({
+                        "name": profile.name,
+                        "nickname": getattr(profile, "display_name", None) or getattr(profile, "agent_name", None),
+                        "chat_category": cat.name,
+                        "category_code": cat.category_code,
+                        "category_label": cat.category_label,
+                        "identity_type": identity_type,
+                        "identity_registry": payload.get("identity_registry"),
+                        "identity_safeguard_access_categories": payload.get(
+                            "identity_safeguard_access_categories"
+                        ),
+                        "knowledge_profile_names": cat_behavior.knowledge_profile_names or [],
+                        "behavior_prompt": profile.behavior_prompt,
+                        "tone": profile.tone,
+                        "response_style": profile.response_style,
+                        "welcome_message": profile.welcome_message,
+                        "fallback_message": profile.fallback_message,
+                        "do_not_answer_rules": profile.do_not_answer_rules,
+                        "confidence_threshold": profile.confidence_threshold,
+                        "escalation_enabled": profile.escalation_enabled,
+                        "escalation_policy": profile.escalation_policy,
+                        "memory_mode": profile.memory_mode,
+                        "default_response_mode": profile.default_response_mode,
+                        "collect_visitor_name": getattr(profile, "collect_visitor_name", 0),
+                    }),
+                })
+
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, conversation_updates)
         conversation.reload()
-        payload["chat_category"] = category_code
 
         visitor_name = conversation.visitor_name or ""
         name_part = f", {visitor_name}" if visitor_name else ""
@@ -1343,6 +1426,13 @@ def _process_ai_response(conversation_id, payload_json):
             behavior=behavior,
         )
 
+        # Nexy Sales Companion enrichment — injects role-profile persona + forces agent_loop
+        try:
+            from digitz_ai_nexus_nexy.services.nexy_live_response_service import try_enrich_with_companion_context
+            core_payload = try_enrich_with_companion_context(conversation, agent, core_payload)
+        except Exception:
+            pass
+
         try:
             core_response = answer_query(core_payload)
         except Exception:
@@ -1472,6 +1562,7 @@ def _process_ai_response(conversation_id, payload_json):
             )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
+        correlated_questions = core_response.get("correlated_questions") or []
 
         publish_chat_response(conversation_id, {
             "status": "success",
@@ -1485,6 +1576,7 @@ def _process_ai_response(conversation_id, payload_json):
             "answer": answer,
             "confidence": confidence,
             "sources": sources,
+            "correlated_questions": correlated_questions,
 
             "escalated": bool(escalation_created),
             "escalation": escalation_created.name if escalation_created else None,
@@ -1526,6 +1618,46 @@ def _touch_last_message_at(conversation):
         now_datetime(),
         update_modified=False,
     )
+
+
+def _get_website_chat_channels_for_conversation(conversation):
+    filters = {"enabled": 1, "channel_type": "Website Chat"}
+    tenant = getattr(conversation, "tenant", None)
+    if not tenant and getattr(conversation, "channel", None):
+        tenant = frappe.db.get_value(
+            "Nexus Live Channel",
+            conversation.channel,
+            "tenant",
+        )
+    if tenant:
+        filters["tenant"] = tenant
+
+    return frappe.get_all(
+        "Nexus Live Channel",
+        filters=filters,
+        pluck="name",
+    )
+
+
+def _filter_categories_with_active_routes(categories):
+    if not categories:
+        return []
+
+    category_names = [c.name for c in categories if c.get("name")]
+    if not category_names:
+        return []
+
+    routed_names = set(frappe.get_all(
+        "Nexus Category Identity Route",
+        filters={
+            "chat_category": ["in", category_names],
+            "enabled": 1,
+            "published": 1,
+        },
+        pluck="chat_category",
+    ))
+
+    return [c for c in categories if c.name in routed_names]
 
 
 def _get_faq_questions(category_name, exclude_name=None):
@@ -1631,4 +1763,3 @@ def _wrap_low_confidence_answer(visitor_message, raw_answer, confidence):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Nexus Low Confidence Wrap Failed")
         return raw_answer
-

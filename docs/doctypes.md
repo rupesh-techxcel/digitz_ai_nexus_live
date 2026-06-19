@@ -270,24 +270,26 @@ Stores a short-lived email OTP challenge for chat categories that require email 
 
 ### Nexus Category Identity Route
 
-Maps a channel + chat category to an AI Agent Profile and a set of permitted Identity Profiles.
-This is the primary route resolution mechanism for chat-window users.
+Maps a chat category (and its implied channel) to an AI Agent Profile and a set of permitted
+Identity Profiles. This is the primary route resolution mechanism for chat-window users.
 
 **Two route types:**
 
-| Type | `is_public_route` | Knowledge access |
+| Type | `open_to_all` (derived) | Knowledge access |
 |---|---|---|
-| Public | 1 | `allowed_access_policies = ["Public"]` only. No Identity Profile matching. |
-| Registered | 0 | Person's identity profiles intersected with route's permitted profiles |
+| Public | `True` (no `identity_profiles` configured) | `allowed_access_policies = ["Public"]` only. No Identity Profile matching. |
+| Registered | `False` (`identity_profiles` present) | Person's identity profiles intersected with route's permitted profiles |
+
+`open_to_all` is derived at runtime as `not bool(identity_profiles)` — there is no stored field.
 
 | Field | Type | Notes |
 |---|---|---|
-| `channel` | Link → Nexus Live Channel | |
-| `chat_category` | Link → Nexus Chat Category | |
+| `channel` | Link → Nexus Live Channel (read-only) | Derived from `chat_category.channel` via `fetch_from`. Cannot be set manually. |
+| `chat_category` | Link → Nexus Chat Category | Required. The category owns the channel; selecting a category implies the channel. |
 | `ai_agent_profile` | Link → Nexus AI Agent Profile | AI behavior config — not knowledge access |
-| `is_public_route` | Check (default 0) | When enabled, serves public visitors. No profile matching. |
-| `identity_profiles` | Table → Nexus Route Identity Profile | Permitted profiles for registered visitors |
 | `enabled` | Check | |
+| `published` | Check | When unchecked, route is inactive for identity-based routing without being deleted |
+| `identity_profiles` | Table → Nexus Route Identity Profile | Permitted profiles for registered visitors |
 | `priority` | Int | Lower number = higher priority when multiple routes match |
 | `description` | Small Text | |
 
@@ -328,20 +330,25 @@ Autoname: `field:channel_code`.
 
 ### Nexus Chat Category
 
-Pre-defined options displayed in the chat window. A category declares user intent. Profile
-resolution happens through `Nexus Category Identity Route`.
+Pre-defined options displayed in the chat window. A category declares user intent and owns
+its channel. Selecting a category implies the channel. Profile resolution happens through
+`Nexus Category Identity Route`.
 
 | Field | Type | Notes |
 |---|---|---|
 | `category_code` | Data (unique) | |
 | `category_label` | Data | What the user sees in the chat window |
-| `channel` | Link → Nexus Live Channel | |
-| `requires_authentication` | Check | Hide from guests when enabled |
+| `channel` | Link → Nexus Live Channel (required) | The channel this category belongs to. One category → one channel. |
+| `tenant` | Link → Nexus Tenant | |
+| `enabled` | Check | |
+| `published` | Check | When checked, category appears in the chat widget picker |
+| `visibility` | Select | External / Internal / Both — controls which interface surfaces this category |
 | `identity_verification_mode` | Select | None / Email OTP / Registered Email OTP |
 | `allow_public_fallback` | Check | Allow unregistered OTP-verified emails to continue as Public |
 | `display_order` | Int | Sort order in chat window |
-| `enabled` | Check | |
 | `description` | Small Text | |
+| `enable_escalation` | Check | When enabled, AI can escalate conversations in this category to a human agent |
+| `faq_questions` | Table → Nexus Chat Category FAQ | Pre-built FAQ quick questions shown to visitors |
 
 ---
 

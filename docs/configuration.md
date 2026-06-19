@@ -38,8 +38,8 @@ Knowledge access is configured via Identity Profiles (see Step 3), not on the AI
 
    | Route type | Config |
    |---|---|
-   | Public | `is_public_route = 1`, assign AI Agent Profile. Knowledge = ["Public"] only. |
-   | Registered | Add permitted Identity Profiles to the child table. Assign AI Agent Profile. |
+   | Public | Leave `identity_profiles` child table empty (empty = open to all). Assign AI Agent Profile. Knowledge = ["Public"] only. |
+   | Registered | Add permitted Identity Profiles to the `identity_profiles` child table. Assign AI Agent Profile. |
 
    A category with no enabled route cannot start a conversation.
 

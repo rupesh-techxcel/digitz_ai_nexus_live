@@ -72,16 +72,18 @@ Blocked registry records are denied. Unverified registries are not elevated.
 
 ### 3. Category Identity Route
 
-`Nexus Category Identity Route` maps the selected category and channel to an AI Agent Profile
-and a set of **permitted Identity Profiles**.
+`Nexus Category Identity Route` maps the selected category to an AI Agent Profile and a set
+of **permitted Identity Profiles**. The channel is implied by the category — each Chat Category
+belongs to exactly one channel, so selecting the category determines the channel.
 
 | Field | Purpose |
 |---|---|
-| `channel` | Link → Nexus Live Channel |
-| `chat_category` | Link → Nexus Chat Category |
+| `chat_category` | Link → Nexus Chat Category (required). The category owns the channel relationship. |
+| `channel` | Link → Nexus Live Channel (read-only). Derived from `chat_category.channel` via `fetch_from`. Retained for filtering and reporting only. |
 | `ai_agent_profile` | AI behavior config (tone, fallback, escalation, thresholds) |
 | `identity_profiles` | Child table of permitted `Nexus Identity Profile` records |
 | `enabled` | Active flag |
+| `published` | When unchecked, route is inactive without being deleted |
 | `priority` | Lower = higher priority when multiple routes match |
 
 **Important separation of concerns:**
@@ -338,7 +340,8 @@ The payload sent from Live to Nexus Core includes:
 For each chat category and route:
 
 ```
-[ ] Nexus Category Identity Route exists for the channel + category combination
+[ ] Nexus Chat Category has a channel assigned (one category = one channel)
+[ ] Nexus Category Identity Route exists for the category (channel is derived automatically)
 [ ] Public route: identity_profiles left empty (open_to_all = True), ai_agent_profile assigned
 [ ] Registered routes: permitted identity_profiles configured
 [ ] ai_agent_profile has behavior configured (prompt, tone, thresholds)

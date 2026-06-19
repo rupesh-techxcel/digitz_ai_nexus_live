@@ -237,6 +237,9 @@ def save_route(
             identity_profiles = []
 
     identity_profiles = [p for p in (identity_profiles or []) if p]
+    category_channel = frappe.db.get_value("Nexus Chat Category", chat_category, "channel")
+    if not category_channel:
+        frappe.throw("Selected chat category is not linked to a channel.")
 
     # Load existing or create new
     if existing_route and frappe.db.exists("Nexus Category Identity Route", existing_route):
@@ -246,7 +249,7 @@ def save_route(
         found = frappe.db.get_value(
             "Nexus Category Identity Route",
             {
-                "channel": channel,
+                "channel": category_channel,
                 "chat_category": chat_category,
                 "ai_agent_profile": ai_agent_profile,
             },
@@ -256,10 +259,11 @@ def save_route(
             doc = frappe.get_doc("Nexus Category Identity Route", found)
         else:
             doc = frappe.new_doc("Nexus Category Identity Route")
-            doc.channel = channel
             doc.chat_category = chat_category
             doc.priority = int(priority)
 
+    doc.chat_category = chat_category
+    doc.channel = category_channel
     doc.ai_agent_profile = ai_agent_profile
     doc.enabled = 1
     doc.published = 0

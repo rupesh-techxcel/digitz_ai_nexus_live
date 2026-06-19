@@ -49,12 +49,6 @@ DEFAULT_LIVE_CHANNEL = {
     "description": "Default public website chat channel.",
 }
 
-DEFAULT_QA_CHANNEL = {
-    "channel_code": "WEBSITE-QA",
-    "channel_name": "Website Q&A",
-    "channel_type": "Website Q&A",
-    "description": "Default public website Q&A channel.",
-}
 
 DEFAULT_CHAT_CATEGORY = {
     "category_code": "GENERAL-SUPPORT",
@@ -109,17 +103,16 @@ def seed_defaults():
     No DIGITZ or NEXUS-specific records are created here.
     """
     seed_identity_types()
-    seed_default_access_governance(tenant=None)
 
     tenant           = ensure_default_tenant()
+    seed_default_access_governance(tenant=tenant)
     channel          = ensure_default_chat_channel(tenant)
-    qa_channel       = ensure_default_qa_channel(tenant)
     category         = ensure_default_chat_category(channel, tenant)
-    profile          = ensure_default_ai_agent_profile(channel, qa_channel, tenant)
+    profile          = ensure_default_ai_agent_profile(channel, tenant=tenant)
     identity_profile = ensure_default_identity_profile(tenant)
 
     ensure_default_category_route(channel, category, profile, identity_profile)
-    ensure_tenant_configuration(tenant, channel, qa_channel)
+    ensure_tenant_configuration(tenant, channel)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live platform defaults seeded.")
@@ -159,13 +152,12 @@ def seed_digitz_nexus_live_foundation():
     core_seed = seed_default_access_governance(tenant=tenant)
 
     channel          = ensure_default_chat_channel(tenant)
-    qa_channel       = ensure_default_qa_channel(tenant)
     category         = ensure_default_chat_category(channel, tenant)
-    profile          = ensure_default_ai_agent_profile(channel, qa_channel, tenant)
+    profile          = ensure_default_ai_agent_profile(channel, tenant=tenant)
     identity_profile = ensure_default_identity_profile(tenant)
 
     ensure_default_category_route(channel, category, profile, identity_profile)
-    ensure_tenant_configuration(tenant, channel, qa_channel)
+    ensure_tenant_configuration(tenant, channel)
 
     frappe.db.commit()
     frappe.logger().info("Nexus Live DIGITZ-NEXUS foundation seeded.")
@@ -176,7 +168,6 @@ def seed_digitz_nexus_live_foundation():
         "core_seed": core_seed,
         "tenant": tenant,
         "live_channel": channel,
-        "qa_channel": qa_channel,
         "chat_category": category,
         "ai_agent_profile": profile,
         "identity_profile": identity_profile,
@@ -242,29 +233,6 @@ def ensure_default_chat_channel(tenant):
     return doc.name
 
 
-def ensure_default_qa_channel(tenant):
-    code     = DEFAULT_QA_CHANNEL["channel_code"]
-    existing = frappe.db.get_value(
-        "Nexus Live Channel", {"channel_code": code, "tenant": tenant}, "name"
-    )
-
-    if existing:
-        doc = frappe.get_doc("Nexus Live Channel", existing)
-    else:
-        doc = frappe.new_doc("Nexus Live Channel")
-        doc.channel_code = code
-        doc.tenant       = tenant
-
-    doc.channel_name           = DEFAULT_QA_CHANNEL["channel_name"]
-    doc.channel_type           = DEFAULT_QA_CHANNEL["channel_type"]
-    doc.enabled                = 1
-    doc.public_access          = 1
-    doc.requires_visitor_email = 0
-    doc.agent_based            = 0
-    doc.description            = DEFAULT_QA_CHANNEL["description"]
-    doc.save(ignore_permissions=True)
-    return doc.name
-
 
 def ensure_default_chat_category(channel, tenant):
     code     = DEFAULT_CHAT_CATEGORY["category_code"]
@@ -291,7 +259,7 @@ def ensure_default_chat_category(channel, tenant):
     return doc.name
 
 
-def ensure_default_ai_agent_profile(channel, qa_channel=None, tenant=None):
+def ensure_default_ai_agent_profile(channel, tenant=None):
     code     = DEFAULT_AGENT["agent_code"]
     existing = frappe.db.get_value(
         "Nexus AI Agent Profile", {"agent_code": code, "tenant": tenant}, "name"
@@ -329,13 +297,6 @@ def ensure_default_ai_agent_profile(channel, qa_channel=None, tenant=None):
     doc.memory_mode         = "Session"
     doc.system_notes        = "Seeded default profile for public website chat."
     doc.save(ignore_permissions=True)
-
-    if qa_channel and frappe.db.exists("Nexus Live Channel", qa_channel):
-        qa_doc = frappe.get_doc("Nexus Live Channel", qa_channel)
-        if frappe.get_meta("Nexus Live Channel").has_field("default_agent"):
-            qa_doc.default_agent = doc.name
-            qa_doc.save(ignore_permissions=True)
-
     return doc.name
 
 
@@ -394,21 +355,23 @@ def ensure_default_category_route(channel, category, profile, identity_profile=N
     return doc.name
 
 
-def ensure_tenant_configuration(tenant, channel, qa_channel=None):
+def ensure_tenant_configuration(tenant, channel):
     ensure_nexus_master("Nexus Business Unit", "Default", "business_unit_name", tenant)
 
-    existing = frappe.get_all(
+    # Check for any existing enabled configuration for this tenant — not just "Default Live".
+    # If one already exists (user may have created their own), skip creation entirely.
+    any_existing = frappe.get_all(
         "Nexus Tenant Configuration",
-        filters={"tenant": tenant, "configuration_name": "Default Live"},
+        filters={"tenant": tenant},
         pluck="name",
         limit_page_length=1,
     )
-    if existing:
-        doc = frappe.get_doc("Nexus Tenant Configuration", existing[0])
-    else:
-        doc = frappe.new_doc("Nexus Tenant Configuration")
-        doc.tenant        = tenant
-        doc.configuration_name = "Default Live"
+    if any_existing:
+        return any_existing[0]
+
+    doc = frappe.new_doc("Nexus Tenant Configuration")
+    doc.tenant             = tenant
+    doc.configuration_name = "Default Live"
 
     doc.configuration_type                  = "Sandbox"
     doc.enabled                         = 1
@@ -418,8 +381,6 @@ def ensure_tenant_configuration(tenant, channel, qa_channel=None):
     doc.require_approved_knowledge      = 1
     doc.strict_tenant_mode              = 1
     doc.default_top_k                   = 5
-    doc.qa_enabled                      = 1
-    doc.default_qa_channel              = qa_channel or channel
     doc.live_chat_enabled               = 1
     doc.default_chat_channel            = channel
     doc.website_widget_enabled          = 0

@@ -28,6 +28,8 @@
         sending:          false,
         tenant:           cfg.tenant || null,
         channel:          cfg.channel || null,
+        widget_code:      cfg.widget_code || null,
+        knowledge_delivery_enabled: cfg.knowledge_delivery_enabled !== 0 && cfg.knowledge_delivery_enabled !== false,
         _realtime_bound:  false,
         visitor_email:                   null,
         identity_verification_challenge: null,
@@ -401,11 +403,16 @@
 
             var _rt_offer = data.identity_verification_offer;
             var _rt_faq   = data.faq_questions || [];
+            var _rt_related = data.correlated_questions || [];
             typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
                 if (_rt_offer && !is_desk()) {
                     render_identity_verification_prompt();
-                } else if (_rt_faq.length && !is_desk()) {
+                }
+                if (_rt_faq.length && !is_desk()) {
                     render_faq_chips(_rt_faq);
+                }
+                if (_rt_related.length && !is_desk()) {
+                    render_related_question_chips(_rt_related);
                 }
             });
         });
@@ -562,12 +569,21 @@
                 delete base.channel;
             } else {
                 base.roles = ['Guest'];
+                if (S.widget_code) base.widget_code = S.widget_code;
             }
             const r = await api('digitz_ai_nexus_live.api.live.start_chat', {
                 payload: JSON.stringify(base),
             });
 
             const data = r.message || {};
+
+            if (data.status === 'service_paused') {
+                hide_typing();
+                S.conversation_id = null;
+                append_system_message(data.message || 'This service is temporarily paused. Please try again later.');
+                lock_input('Service temporarily paused.');
+                return;
+            }
 
             hide_typing();
 
@@ -744,6 +760,8 @@
         input.value = '';
         input.style.height = 'auto';
 
+        el('ncw-messages').querySelectorAll('.ncw-related-strip').forEach(function (s) { s.remove(); });
+
         append_message('visitor', message);
         show_typing();
         S.sending = true;
@@ -756,6 +774,7 @@
             const msg_payload = { message, tenant: S.tenant };
             if (S.visitor_email) msg_payload.visitor_email = S.visitor_email;
             if (S.identity_verification_challenge) msg_payload.identity_verification_challenge = S.identity_verification_challenge;
+            if (!is_desk() && S.widget_code) msg_payload.widget_code = S.widget_code;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(msg_payload),
@@ -787,7 +806,7 @@
                 (c.description ? '<span class="ncw-cat-desc">' + escape_html(c.description) + '</span>' : '');
 
             btn.addEventListener('click', function () {
-                select_category(c.category_code, c.category_label || c.category_code);
+                select_category(c.category_code, c.category_label || c.category_code, c.faq_questions || []);
             });
 
             picker.appendChild(btn);
@@ -797,7 +816,7 @@
         scroll_bottom();
     }
 
-    async function select_category(code, label) {
+    async function select_category(code, label, faq_questions) {
         // Remove all pickers
         el('ncw-messages').querySelectorAll('.ncw-category-picker').forEach(function (p) {
             p.remove();
@@ -814,13 +833,15 @@
         S.sending = true;
 
         try {
+            const cat_payload = { message: '__cat__:' + code, tenant: S.tenant };
+            if (!is_desk() && S.widget_code) cat_payload.widget_code = S.widget_code;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
-                payload: JSON.stringify({
-                    message: '__cat__:' + code,
-                    tenant:  S.tenant,
-                }),
+                payload: JSON.stringify(cat_payload),
             });
+            if (faq_questions && faq_questions.length && !is_desk()) {
+                render_faq_chips(faq_questions);
+            }
             _conv_touch();
         } catch (_) {
             hide_typing();
@@ -878,12 +899,11 @@
         S.sending = true;
 
         try {
+            const faq_payload = { message: '__faq__:' + faq_name, tenant: S.tenant };
+            if (!is_desk() && S.widget_code) faq_payload.widget_code = S.widget_code;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
-                payload: JSON.stringify({
-                    message: '__faq__:' + faq_name,
-                    tenant:  S.tenant,
-                }),
+                payload: JSON.stringify(faq_payload),
             });
         } catch (_) {
             hide_typing();
@@ -891,6 +911,55 @@
         } finally {
             S.sending = false;
         }
+    }
+
+    // ── Related question chips ────────────────────────────────────────────────
+
+    function render_related_question_chips(questions) {
+        if (!questions || !questions.length) return;
+        const msgs = el('ncw-messages');
+
+        msgs.querySelectorAll('.ncw-related-strip').forEach(function (s) { s.remove(); });
+
+        const strip = document.createElement('div');
+        strip.className = 'ncw-faq-strip ncw-related-strip';
+
+        const lbl = document.createElement('div');
+        lbl.className = 'ncw-faq-label';
+        lbl.textContent = 'Related questions:';
+        strip.appendChild(lbl);
+
+        const chips = document.createElement('div');
+        chips.className = 'ncw-faq-chips';
+
+        questions.forEach(function (item) {
+            const question = (typeof item === 'string') ? item : item.question;
+            if (!question) return;
+
+            const btn = document.createElement('button');
+            btn.className = 'ncw-faq-chip';
+            btn.textContent = question;
+            btn.addEventListener('click', function () {
+                strip.remove();
+                send_suggested_question(question);
+            });
+            chips.appendChild(btn);
+        });
+
+        if (!chips.childNodes.length) return;
+
+        strip.appendChild(chips);
+        msgs.appendChild(strip);
+        scroll_bottom();
+    }
+
+    function send_suggested_question(question) {
+        if (!question || S.locked || S.sending) return;
+
+        const input = el('ncw-input');
+        input.value = question;
+        input.style.height = 'auto';
+        send_message();
     }
 
     // ── Identity verification prompt ───────────────────────────────────────────

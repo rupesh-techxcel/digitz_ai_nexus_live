@@ -11,6 +11,9 @@
     "channel",
     "widget_type",
     "enabled",
+    "section_contract",
+    "contract_status",
+    "knowledge_delivery_enabled",
     "theme",
     "primary_color",
     "welcome_text",
@@ -52,6 +55,26 @@
       "default": 1
     },
     {
+      "fieldname": "section_contract",
+      "fieldtype": "Section Break",
+      "label": "Widget Contract"
+    },
+    {
+      "fieldname": "contract_status",
+      "fieldtype": "Select",
+      "label": "Contract Status",
+      "options": "Draft\nActive\nSuspended\nRevoked",
+      "default": "Active",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "knowledge_delivery_enabled",
+      "fieldtype": "Check",
+      "label": "Knowledge Delivery Enabled",
+      "default": 1,
+      "description": "When unchecked, widget still loads but AI knowledge retrieval is disabled."
+    },
+    {
       "fieldname": "theme",
       "fieldtype": "Select",
       "label": "Theme",
@@ -85,7 +108,7 @@
   "index_web_pages_for_search": 1,
   "istable": 0,
   "links": [],
-  "modified": "2026-05-10 00:00:00.000000",
+  "modified": "2026-06-19 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Website Widget",

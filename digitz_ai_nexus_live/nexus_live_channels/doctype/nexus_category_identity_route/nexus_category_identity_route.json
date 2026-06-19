@@ -6,8 +6,8 @@
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
-    "channel",
     "chat_category",
+    "channel",
     "column_break_1",
     "ai_agent_profile",
     "enabled",
@@ -20,12 +20,13 @@
   ],
   "fields": [
     {
+      "fetch_from": "chat_category.channel",
       "fieldname": "channel",
       "fieldtype": "Link",
       "in_list_view": 1,
       "label": "Channel",
       "options": "Nexus Live Channel",
-      "reqd": 1
+      "read_only": 1
     },
     {
       "fieldname": "chat_category",

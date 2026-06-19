@@ -17,7 +17,7 @@ GET api/method/digitz_ai_nexus_live.api.live.get_channel_categories
 
 **What it does:**
 - Looks up active `Nexus Chat Category` records for the given channel
-- Filters out categories with `requires_authentication = 1` for guest visitors
+- Filters by `visibility` field (External or Both) for guest/public visitors; Internal-only categories are excluded
 - Filters out categories that have no enabled `Nexus Category Identity Route` for the visitor's identity type
 
 **DocTypes read:**
@@ -430,12 +430,12 @@ registry. It is a uniform class-level ceiling. Stored on the conversation as
 
 | Symptom | What to check |
 |---|---|
-| `start_chat` returns "no active route found" | `Nexus Category Identity Route` — verify channel + category combination exists with `enabled = 1`. For public routes: `is_public_route = 1`. For registered routes: permitted `identity_profiles` child table populated. |
+| `start_chat` returns "no active route found" | `Nexus Category Identity Route` — verify a route exists for the category with `enabled = 1`. For public routes: `identity_profiles` child table must be empty (no rows = open to all). For registered routes: `identity_profiles` child table must be populated. |
 | `start_chat` returns "no agent available" | `Nexus Live Agent` — check an approved, Idle agent exists for the channel |
 | AI answer never arrives (typing indicator stays) | Background worker — run `bench worker --queue short`; check Redis |
 | `allowed_access_policies` is empty; answer retrieval is denied | Trace the chain: `Nexus Identity Registry` (person exists and Verified?) → `Nexus Identity Profile` (enabled?) → `identity_mappings` rows (correct identity_type?) → `Knowledge Profile` (enabled Access Category?) → `Nexus Access Category` (policies configured?) → chunk `access_policy` matches? |
 | Desk user denied access despite registry entry | Check `registry.user` field matches exact Frappe username. Check registry `verification_status = Verified`. Check Identity Profile has a mapping row for "Internal" or "Admin". |
-| Public visitor getting empty policies | If no public route is configured for the category, the system finds no route and throws. Create a `Nexus Category Identity Route` with `is_public_route = 1` for the category. |
+| Public visitor getting empty policies | If no public route is configured for the category, the system finds no route and throws. Create a `Nexus Category Identity Route` for the category with `identity_profiles` child table left empty (empty = public/open to all). |
 | User asks for human but escalation does not trigger | Check `escalation_enabled = True` on the `Nexus AI Agent Profile`; verify "Human Agent Request" handler is enabled in `Nexus Intent Handler` and not disabled in `Nexus Profile Intent Override` |
 | `conversation_id` not found on follow-up | Client is sending document name (`NLC-00001`) instead of `conversation_id` hex string |
 | Greeting treated as a knowledge query | Router LLM classification issue; check that the user message is a clear social exchange |
