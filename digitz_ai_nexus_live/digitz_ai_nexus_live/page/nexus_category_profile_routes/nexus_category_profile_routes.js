@@ -45,7 +45,8 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
         <div class="nexus-admin-hero-actions">
             <button class="btn btn-default" data-route-list="Nexus Category Identity Route">All Routes</button>
             <button class="btn btn-default" data-route-list="Nexus Chat Category">Categories</button>
-            <button class="btn btn-default" data-route-list="Nexus AI Agent Profile">Profiles</button>
+            <button class="btn btn-default" data-route-list="Nexus AI Agent Profile">AI Agent Profiles</button>
+            <button class="btn btn-default" data-route-list="Nexus Identity Profile">Identity Profiles</button>
             <button class="btn btn-default" data-route-page="nexus-chat-category-manager">Category Manager</button>
         </div>
     </div>

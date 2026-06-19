@@ -81,6 +81,7 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
                             <div id="nccm_channel_title" class="nccm-channel-title"></div>
                         </div>
                         <div style="display:flex; gap:8px;">
+                            <button id="nccm_edit_channel_btn" class="btn btn-default btn-sm">✏ Edit Channel</button>
                             <button id="nccm_routes_btn" class="btn btn-default btn-sm">Manage Routes →</button>
                             <button id="nccm_add_btn" class="btn btn-primary btn-sm">+ Add Category</button>
                         </div>
@@ -236,6 +237,9 @@ frappe.pages['nexus-chat-category-manager'].on_page_load = function (wrapper) {
         });
         $(page.body).on('click', '#nccm_add_btn', () => openModal(null));
         $(page.body).on('click', '#nccm_routes_btn', () => frappe.set_route('nexus-category-profile-routes'));
+        $(page.body).on('click', '#nccm_edit_channel_btn', () => {
+            if (state.selectedChannel) frappe.set_route('Form', 'Nexus Live Channel', state.selectedChannel);
+        });
         $(page.body).on('click', '#nccm_modal_close, #nccm_modal_cancel', closeModal);
         $(page.body).on('click', '#nccm_modal_overlay', function (e) {
             if ($(e.target).is('#nccm_modal_overlay')) closeModal();

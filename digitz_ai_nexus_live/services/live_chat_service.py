@@ -667,17 +667,18 @@ def start_live_chat(payload):
                 "conversation_id": conversation.conversation_id,
             }
             category_data = _send_category_picker(conversation, publish=False, is_internal=True)
-            category_data["agent_name"] = agent_nick
-            return {
-                "status": "await_category",
-                "conversation": conversation.name,
-                "conversation_id": conversation.conversation_id,
-                "agent": agent.name,
-                "agent_code": agent.agent_code,
-                "agent_name": agent_nick,
-                "agent_instance": getattr(conversation, "agent_profile_instance", None),
-                "initial_messages": [intro_data, category_data],
-            }
+            if category_data is not None:
+                category_data["agent_name"] = agent_nick
+                return {
+                    "status": "await_category",
+                    "conversation": conversation.name,
+                    "conversation_id": conversation.conversation_id,
+                    "agent": agent.name,
+                    "agent_code": agent.agent_code,
+                    "agent_name": agent_nick,
+                    "agent_instance": getattr(conversation, "agent_profile_instance", None),
+                    "initial_messages": [intro_data, category_data],
+                }
 
         greeting = (
             f"Hi{name_part}! I'm {agent_nick}, your AI assistant. How can I help you today?"
