@@ -8,6 +8,7 @@ frappe.pages['nexus-category-route-editor'].on_page_load = function (wrapper) {
     const state = {
         mode: 'create',   // 'create' | 'edit'
         routeName: null,
+        tenant: '',
         channel: null,
         channelLabel: null,
         category: null,
@@ -38,6 +39,7 @@ frappe.pages['nexus-category-route-editor'].on_page_load = function (wrapper) {
                 state.routeName = ctx.route;
             } else {
                 state.mode = 'create';
+                state.tenant = ctx.tenant || '';
                 state.channel = ctx.channel || '';
                 state.channelLabel = ctx.channel_label || ctx.channel || '';
                 state.category = ctx.category || '';
@@ -56,6 +58,7 @@ frappe.pages['nexus-category-route-editor'].on_page_load = function (wrapper) {
         Object.assign(state, {
             mode: 'create',
             routeName: null,
+            tenant: '',
             channel: null,
             channelLabel: null,
             category: null,
@@ -72,39 +75,43 @@ frappe.pages['nexus-category-route-editor'].on_page_load = function (wrapper) {
     }
 
     function loadPageData() {
+        if (state.mode === 'edit' && state.routeName && !state.channel) {
+            // For edit mode: fetch the route first to get tenant, then fetch page data filtered by it
+            frappe.call({
+                method: 'digitz_ai_nexus_live.api.nexus_category_profile_router.get_route',
+                args: { name: state.routeName },
+                callback(r) {
+                    if (!r.message) { frappe.msgprint('Route not found.'); return; }
+                    const d = r.message;
+                    state.tenant = d.tenant || '';
+                    state.channel = d.channel;
+                    state.channelLabel = d.channel;
+                    state.category = d.chat_category;
+                    state.categoryLabel = d.chat_category;
+                    state.ai_agent_profile = d.ai_agent_profile || '';
+                    state.enabled = !!d.enabled;
+                    state.published = !!d.published;
+                    state.priority = d.priority || 10;
+                    state.description = d.description || '';
+                    state.identity_profiles = d.identity_profiles || [];
+                    fetchProfilesAndRender();
+                },
+            });
+        } else {
+            fetchProfilesAndRender();
+        }
+    }
+
+    function fetchProfilesAndRender() {
+        const args = {};
+        if (state.tenant) args.tenant = state.tenant;
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_category_profile_router.get_page_data',
+            args,
             callback(r) {
                 if (!r.message) return;
                 state.profiles = r.message.profiles || [];
                 state.identityProfiles = r.message.identity_profiles || [];
-
-                if (state.mode === 'edit') {
-                    loadRoute();
-                } else {
-                    renderPage();
-                }
-            },
-        });
-    }
-
-    function loadRoute() {
-        frappe.call({
-            method: 'digitz_ai_nexus_live.api.nexus_category_profile_router.get_route',
-            args: { name: state.routeName },
-            callback(r) {
-                if (!r.message) { frappe.msgprint('Route not found.'); return; }
-                const d = r.message;
-                state.channel = d.channel;
-                state.channelLabel = d.channel;
-                state.category = d.chat_category;
-                state.categoryLabel = d.chat_category;
-                state.ai_agent_profile = d.ai_agent_profile || '';
-                state.enabled = !!d.enabled;
-                state.published = !!d.published;
-                state.priority = d.priority || 10;
-                state.description = d.description || '';
-                state.identity_profiles = d.identity_profiles || [];
                 renderPage();
             },
         });

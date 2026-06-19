@@ -5,12 +5,12 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
         single_column: true,
     });
 
-    const state = { data: null, activeSection: 'channels' };
+    const state = { data: null, activeSection: 'channels', activeTenant: null };
 
     inject_css();
     $(page.body).html(buildShell());
     bindEvents();
-    loadData();
+    loadData(null);   // null → backend returns default_tenant, we'll reload with it
 
     // ── Shell ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,12 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
             <div class="nlc-badge"><span class="nlc-pulse"></span>DIGITZ AI Nexus</div>
             <h1>Live Chat Configuration</h1>
             <p>Review readiness across every workflow layer — channels, agents, routes, identity access, and escalation.</p>
+            <div class="nlc-tenant-bar">
+                <label class="nlc-tenant-lbl" for="nlc-tenant-select">Tenant</label>
+                <select id="nlc-tenant-select" class="nlc-tenant-sel">
+                    <option value="">All tenants</option>
+                </select>
+            </div>
         </div>
         <div class="nlc-hero-right">
             <div class="nlc-score-ring">
@@ -53,21 +59,50 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
 
     // ── Data ───────────────────────────────────────────────────────────────────
 
-    function loadData() {
+    function loadData(tenant) {
         $('#nlc-loading').show();
         $('#nlc-body').hide();
+        const args = {};
+        if (tenant) args.tenant = tenant;
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_live_config.get_config_readiness',
+            args,
             callback(r) {
                 $('#nlc-loading').hide();
                 if (!r.message) return;
                 state.data = r.message;
+
+                // On very first load (no tenant selected yet), use the admin's default
+                if (state.activeTenant === null) {
+                    const defaultTenant = r.message.default_tenant || '';
+                    state.activeTenant = defaultTenant;
+                    if (defaultTenant) {
+                        // Reload with the default tenant so data is filtered from the start
+                        populateTenantSelect(r.message.tenant_options, defaultTenant);
+                        loadData(defaultTenant);
+                        return;
+                    }
+                }
+
+                populateTenantSelect(r.message.tenant_options, state.activeTenant || '');
                 renderScore(state.data.score);
                 renderNavDots(state.data);
                 renderSection(state.activeSection);
                 $('#nlc-body').show();
             },
         });
+    }
+
+    function populateTenantSelect(options, selected) {
+        const $sel = $('#nlc-tenant-select');
+        const currentVal = $sel.val();
+        $sel.empty().append('<option value="">All tenants</option>');
+        (options || []).forEach(function (t) {
+            $sel.append(
+                $('<option>').val(t.name).text(t.label || t.name)
+            );
+        });
+        $sel.val(selected !== undefined ? selected : (currentVal || ''));
     }
 
     // ── Score ring ─────────────────────────────────────────────────────────────
@@ -431,12 +466,16 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
 
     function bindEvents() {
         $(page.body)
-            .on('click', '#nlc-refresh', loadData)
+            .on('click', '#nlc-refresh', () => loadData(state.activeTenant || null))
             .on('click', '#nlc-run-test', () => frappe.set_route('nexus-chat-workflow-tester'))
             .on('click', '.nlc-nav-item', function () {
                 $('.nlc-nav-item').removeClass('active');
                 $(this).addClass('active');
                 if (state.data) renderSection($(this).data('section'));
+            })
+            .on('change', '#nlc-tenant-select', function () {
+                state.activeTenant = $(this).val() || null;
+                loadData(state.activeTenant);
             });
     }
 
@@ -450,7 +489,7 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
 .nlc-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;
     background:#fff;border:1px solid #d9e2f2;border-radius:10px;padding:22px 24px;margin-bottom:16px;}
 .nlc-hero h1{font-size:22px;font-weight:900;color:#102b67;margin:4px 0 6px;}
-.nlc-hero p{color:#53688f;max-width:600px;margin:0;font-size:13px;}
+.nlc-hero p{color:#53688f;max-width:600px;margin:0 0 12px;font-size:13px;}
 .nlc-badge{color:#214dbb;font-size:11px;font-weight:800;letter-spacing:.04em;
     display:flex;align-items:center;gap:6px;margin-bottom:6px;}
 .nlc-pulse{width:7px;height:7px;background:#12b76a;border-radius:50%;
@@ -458,6 +497,14 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
 @keyframes nlc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
 .nlc-hero-right{display:flex;align-items:center;gap:20px;flex-shrink:0;}
 .nlc-hero-actions{display:flex;flex-direction:column;gap:8px;}
+/* Tenant selector */
+.nlc-tenant-bar{display:flex;align-items:center;gap:10px;}
+.nlc-tenant-lbl{font-size:11px;font-weight:800;color:#667085;text-transform:uppercase;
+    letter-spacing:.04em;white-space:nowrap;margin:0;}
+.nlc-tenant-sel{border:1px solid #d9e2f2;border-radius:6px;padding:5px 28px 5px 10px;
+    font-size:12px;font-weight:700;color:#102b67;background:#f9fafb;cursor:pointer;
+    appearance:auto;min-width:160px;}
+.nlc-tenant-sel:focus{outline:none;border-color:#2f63d6;box-shadow:0 0 0 2px rgba(47,99,214,.12);}
 /* Score ring */
 .nlc-score-ring{position:relative;width:80px;height:80px;flex-shrink:0;}
 .nlc-score-ring svg{transform:rotate(-90deg);}

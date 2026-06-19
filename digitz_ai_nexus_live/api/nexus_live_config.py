@@ -2,35 +2,52 @@ import frappe
 
 
 @frappe.whitelist()
-def get_config_readiness():
-    channels   = _check_channels()
-    agents     = _check_agents()
-    routes     = _check_routes()
-    identity   = _check_identity()
-    escalation = _check_escalation()
+def get_config_readiness(tenant=None):
+    from digitz_ai_nexus_live.api.nexus_profile_access_allocation import get_available_tenants
+
+    tenant = tenant or None
+
+    tenant_data    = get_available_tenants()
+    default_tenant = tenant_data.get("default_tenant") or ""
+    raw_tenants    = tenant_data.get("tenants") or []
+    tenant_options = [{"name": t.get("name", ""), "label": t.get("tenant_name") or t.get("name", "")} for t in raw_tenants]
+
+    channels   = _check_channels(tenant)
+    agents     = _check_agents(tenant)
+    routes     = _check_routes(tenant)
+    identity   = _check_identity(tenant)
+    escalation = _check_escalation(tenant)
 
     sections = [channels, agents, routes, identity, escalation]
     total    = sum(s["score"] for s in sections)
     score    = round(total / len(sections))
 
     return {
-        "score":     score,
-        "channels":  channels,
-        "agents":    agents,
-        "routes":    routes,
-        "identity":  identity,
-        "escalation": escalation,
+        "score":          score,
+        "tenant":         tenant,
+        "default_tenant": default_tenant,
+        "tenant_options": tenant_options,
+        "channels":       channels,
+        "agents":         agents,
+        "routes":         routes,
+        "identity":       identity,
+        "escalation":     escalation,
     }
 
 
 # ── Channels & Categories ──────────────────────────────────────────────────────
 
-def _check_channels():
+def _check_channels(tenant=None):
     issues = []
     items  = []
 
+    ch_filters = {}
+    if tenant:
+        ch_filters["tenant"] = tenant
+
     channels = frappe.get_all(
         "Nexus Live Channel",
+        filters=ch_filters,
         fields=["name", "channel_code", "channel_name", "channel_type",
                 "enabled", "public_access", "default_agent"],
     )
@@ -38,19 +55,24 @@ def _check_channels():
     enabled_channels = [c for c in channels if c.enabled]
 
     for ch in enabled_channels:
+        cat_filters = {"channel": ch.name, "enabled": 1}
+        if tenant:
+            cat_filters["tenant"] = tenant
+
         cats = frappe.get_all(
             "Nexus Chat Category",
-            filters={"channel": ch.name, "enabled": 1},
+            filters=cat_filters,
             fields=["name", "category_code", "category_label",
                     "identity_verification_mode"],
         )
 
         cat_items = []
         for cat in cats:
-            routes = frappe.db.count(
-                "Nexus Category Identity Route",
-                {"channel": ch.name, "chat_category": cat.name, "enabled": 1},
-            )
+            route_filters = {"channel": ch.name, "chat_category": cat.name, "enabled": 1}
+            if tenant:
+                route_filters["tenant"] = tenant
+
+            routes = frappe.db.count("Nexus Category Identity Route", route_filters)
             cat_ready = routes > 0
             if not cat_ready:
                 issues.append(
@@ -98,25 +120,28 @@ def _check_channels():
 
 # ── AI Agent Profiles ──────────────────────────────────────────────────────────
 
-def _check_agents():
+def _check_agents(tenant=None):
     issues = []
     items  = []
 
+    profile_filters = {"enabled": 1}
+    if tenant:
+        profile_filters["tenant"] = tenant
+
     profiles = frappe.get_all(
         "Nexus AI Agent Profile",
-        filters={"enabled": 1},
+        filters=profile_filters,
         fields=["name", "agent_code", "agent_name", "display_name",
                 "nickname_pool", "behavior_prompt", "escalation_enabled",
                 "escalation_policy", "status", "confidence_threshold"],
     )
 
     for p in profiles:
-        # Knowledge access is owned by Identity Profile → identity_mappings → Knowledge Profile.
-        # Check whether the profile is referenced by at least one enabled route instead.
-        route_count = frappe.db.count(
-            "Nexus Category Identity Route",
-            {"ai_agent_profile": p.name, "enabled": 1},
-        )
+        route_filters = {"ai_agent_profile": p.name, "enabled": 1}
+        if tenant:
+            route_filters["tenant"] = tenant
+
+        route_count = frappe.db.count("Nexus Category Identity Route", route_filters)
 
         checks = {
             "has_behavior":  bool(p.behavior_prompt),
@@ -171,13 +196,17 @@ def _check_agents():
 
 # ── Routes & Access ────────────────────────────────────────────────────────────
 
-def _check_routes():
+def _check_routes(tenant=None):
     issues = []
     items  = []
 
+    route_filters = {"enabled": 1}
+    if tenant:
+        route_filters["tenant"] = tenant
+
     routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"enabled": 1},
+        filters=route_filters,
         fields=["name", "channel", "chat_category", "ai_agent_profile", "priority"],
     )
 
@@ -190,11 +219,10 @@ def _check_routes():
             filters={"parent": r.name},
             pluck="identity_profile",
         )
-        open_to_all = not bool(identity_profiles)  # no profiles = open to all visitors
+        open_to_all = not bool(identity_profiles)
 
         mappings_ok = True
         if not open_to_all:
-            # At least one attached identity profile must have a usable mapping
             has_any_mapping = False
             for ip_name in identity_profiles:
                 if frappe.db.count("Nexus Identity Profile Mapping", {"parent": ip_name}):
@@ -243,9 +271,9 @@ def _check_routes():
         "status":  _status(score),
         "counts": {
             "routes":     len(routes),
-            "open_to_all": sum(1 for i in items if i["open_to_all"]),
-            "restricted":  sum(1 for i in items if not i["open_to_all"]),
-            "ready":       sum(1 for i in items if i["ready"]),
+            "public":     sum(1 for i in items if i["open_to_all"]),
+            "registered": sum(1 for i in items if not i["open_to_all"]),
+            "ready":      sum(1 for i in items if i["ready"]),
         },
         "items":  items,
         "issues": issues,
@@ -254,11 +282,11 @@ def _check_routes():
 
 # ── Identity & Registry ────────────────────────────────────────────────────────
 
-def _check_identity():
+def _check_identity(tenant=None):
     issues = []
     items  = []
 
-    # Identity Types
+    # Identity Types have no tenant field — structurally global across all tenants
     identity_types = frappe.get_all(
         "Nexus Identity Type",
         filters={"enabled": 1},
@@ -272,10 +300,13 @@ def _check_identity():
     if missing:
         issues.append(f"Missing standard identity types: {', '.join(sorted(missing))}.")
 
-    # Identity Profiles
+    # Identity Profiles are per-tenant
+    ip_filters = {"enabled": 1}
+    if tenant:
+        ip_filters["tenant"] = tenant
     ip_docs = frappe.get_all(
         "Nexus Identity Profile",
-        filters={"enabled": 1},
+        filters=ip_filters,
         fields=["name", "profile_name", "title"],
     ) if frappe.db.exists("DocType", "Nexus Identity Profile") else []
 
@@ -335,25 +366,27 @@ def _check_identity():
 
 # ── Human Escalation ───────────────────────────────────────────────────────────
 
-def _check_escalation():
+def _check_escalation(tenant=None):
     issues = []
     items  = []
 
-    # Profiles with escalation enabled
+    esc_filters = {"enabled": 1, "escalation_enabled": 1}
+    if tenant:
+        esc_filters["tenant"] = tenant
+
     escalation_profiles = frappe.get_all(
         "Nexus AI Agent Profile",
-        filters={"enabled": 1, "escalation_enabled": 1},
+        filters=esc_filters,
         fields=["name", "agent_name", "escalation_policy"],
     )
 
-    # Human agents available
+    # Human agents and escalation rules are global (not per-tenant)
     human_agents = frappe.get_all(
         "Nexus User Profile Assignment",
         filters={"active": 1, "can_handle_escalations": 1},
         fields=["name", "user", "max_escalation_sessions"],
     )
 
-    # Escalation rules
     rules = frappe.get_all(
         "Nexus Escalation Rule",
         filters={"enabled": 1},
@@ -400,12 +433,12 @@ def _check_escalation():
         ],
         "rules": [
             {
-                "name":               r.name,
-                "rule_name":          r.rule_name,
-                "agent_role":         r.agent_role,
-                "min_confidence":     r.minimum_confidence,
-                "on_no_knowledge":    bool(r.escalate_on_no_knowledge),
-                "on_human_request":   bool(r.escalate_on_human_request),
+                "name":             r.name,
+                "rule_name":        r.rule_name,
+                "agent_role":       r.agent_role,
+                "min_confidence":   r.minimum_confidence,
+                "on_no_knowledge":  bool(r.escalate_on_no_knowledge),
+                "on_human_request": bool(r.escalate_on_human_request),
             }
             for r in rules
         ],

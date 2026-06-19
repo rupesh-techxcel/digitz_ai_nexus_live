@@ -4,26 +4,37 @@ import re
 
 
 @frappe.whitelist()
-def get_wizard_data():
+def get_wizard_data(tenant=None):
     """Return all initial data needed for the Channel Setup Wizard."""
     tenants = frappe.get_all(
         "Nexus Tenant",
         fields=["name", "tenant_name"],
         order_by="tenant_name asc",
     )
+    channel_filters = {}
+    if tenant:
+        channel_filters["tenant"] = tenant
     channels = frappe.get_all(
         "Nexus Live Channel",
+        filters=channel_filters,
         fields=["name", "channel_name", "channel_type", "tenant"],
         order_by="channel_name asc",
     )
+    profile_filters = {}
+    if tenant:
+        profile_filters["tenant"] = tenant
     profiles = frappe.get_all(
         "Nexus AI Agent Profile",
+        filters=profile_filters,
         fields=["name", "agent_name", "tenant"],
         order_by="agent_name asc",
     )
+    ip_filters = {"enabled": 1}
+    if tenant:
+        ip_filters["tenant"] = tenant
     identity_profiles = frappe.get_all(
         "Nexus Identity Profile",
-        filters={"enabled": 1},
+        filters=ip_filters,
         fields=["name", "profile_name", "title"],
         order_by="profile_name asc",
     )

@@ -385,6 +385,7 @@ frappe.pages['nexus-category-profile-routes'].on_page_load = function (wrapper) 
             channel_label: ch ? (ch.channel_name || ch.name) : state.selectedChannel,
             category: state.selectedCategory,
             category_label: cat ? cat.category_label : state.selectedCategory,
+            tenant: state.tenant || '',
         };
         frappe.set_route('nexus-category-route-editor');
     }

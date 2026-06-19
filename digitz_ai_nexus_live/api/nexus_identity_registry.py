@@ -4,7 +4,7 @@ import frappe
 
 
 @frappe.whitelist()
-def get_page_data(search=None):
+def get_page_data(search=None, tenant=None):
     filters = {}
     if search:
         filters["email"] = ["like", f"%{search.strip().lower()}%"]
@@ -29,9 +29,12 @@ def get_page_data(search=None):
         limit_page_length=50,
     )
 
+    ip_filters = {"enabled": 1}
+    if tenant:
+        ip_filters["tenant"] = tenant
     identity_profiles = frappe.get_all(
         "Nexus Identity Profile",
-        filters={"enabled": 1},
+        filters=ip_filters,
         fields=["name", "profile_name", "title", "description"],
         order_by="profile_name asc",
     )

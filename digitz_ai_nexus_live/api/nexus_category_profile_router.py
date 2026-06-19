@@ -18,14 +18,21 @@ def get_page_data(tenant=None):
         fields=["name", "channel_code", "channel_name", "channel_type"],
         order_by="channel_name asc",
     )
+    profile_filters = {}
+    if tenant:
+        profile_filters["tenant"] = tenant
     profiles = frappe.get_all(
         "Nexus AI Agent Profile",
+        filters=profile_filters,
         fields=["name", "agent_name"],
         order_by="name asc",
     )
+    ip_filters = {"enabled": 1}
+    if tenant:
+        ip_filters["tenant"] = tenant
     identity_profiles = frappe.get_all(
         "Nexus Identity Profile",
-        filters={"enabled": 1},
+        filters=ip_filters,
         fields=["name", "profile_name", "title"],
         order_by="profile_name asc",
     )
@@ -95,6 +102,7 @@ def get_route(name):
     doc = frappe.get_doc("Nexus Category Identity Route", name)
     return {
         "name": doc.name,
+        "tenant": doc.tenant or "",
         "channel": doc.channel,
         "chat_category": doc.chat_category,
         "ai_agent_profile": doc.ai_agent_profile,

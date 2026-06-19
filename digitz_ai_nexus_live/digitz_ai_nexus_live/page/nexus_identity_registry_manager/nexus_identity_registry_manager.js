@@ -6,6 +6,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
     });
 
     const state = {
+        tenant: '',
         registries: [],
         availableProfiles: [],   // {name, profile_name, title, description, identity_types[]}
         selected: null,          // registry name
@@ -15,7 +16,7 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
     inject_css();
     $(page.body).html(buildShell());
     bindEvents();
-    loadData();
+    loadTenant();
 
     // ── Shell ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,12 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
             </p>
         </div>
         <div class="nir-hero-actions">
+            <div class="nir-tenant-bar">
+                <label class="nir-tenant-lbl" for="nir_tenant_select">Tenant</label>
+                <select id="nir_tenant_select" class="nir-tenant-sel">
+                    <option value="">Loading…</option>
+                </select>
+            </div>
             <button class="btn btn-default btn-sm" data-list="Nexus Identity Registry">Open List</button>
             <button class="btn btn-default btn-sm" id="nir_manage_profiles">Manage Profiles →</button>
             <button class="btn btn-primary" id="nir_new">+ New Registry</button>
@@ -193,6 +200,10 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
         $(page.body).on('click', '#nir_new', newRegistry);
         $(page.body).on('click', '#nir_search_btn', () => loadData($('#nir_search').val()));
         $(page.body).on('keydown', '#nir_search', function (e) { if (e.key === 'Enter') loadData($(this).val()); });
+        $(page.body).on('change', '#nir_tenant_select', function () {
+            state.tenant = $(this).val() || '';
+            loadData($('#nir_search').val());
+        });
         $(page.body).on('click', '#nir_save', saveRegistry);
         $(page.body).on('click', '#nir_open_doc', () => {
             if (state.selected) frappe.set_route('Form', 'Nexus Identity Registry', state.selected);
@@ -239,10 +250,29 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 
     // ── Data loading ───────────────────────────────────────────────────────────
 
+    function loadTenant() {
+        frappe.call({
+            method: 'digitz_ai_nexus_live.api.nexus_profile_access_allocation.get_available_tenants',
+            callback(r) {
+                if (!r.message) { loadData(); return; }
+                const tenants = r.message.tenants || [];
+                const defaultTenant = r.message.default_tenant || (tenants[0] && tenants[0].name) || '';
+                state.tenant = defaultTenant;
+                const $sel = $('#nir_tenant_select');
+                $sel.html(tenants.map(t =>
+                    `<option value="${esc(t.name)}" ${t.name === state.tenant ? 'selected' : ''}>${esc(t.tenant_name || t.name)}</option>`
+                ).join(''));
+                loadData();
+            },
+        });
+    }
+
     function loadData(search) {
+        const args = { search };
+        if (state.tenant) args.tenant = state.tenant;
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_identity_registry.get_page_data',
-            args: { search },
+            args,
             callback(r) {
                 if (!r.message) return;
                 state.registries = r.message.registries || [];
@@ -526,6 +556,10 @@ frappe.pages['nexus-identity-registry-manager'].on_page_load = function (wrapper
 .nir-hero-desc { margin:10px 0 0; font-size:14px; line-height:1.65; color:#27416f; font-weight:500; max-width:700px; }
 .nir-hero-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex-shrink:0; }
 .nir-hero-actions .btn { border-radius:999px; font-weight:850; }
+.nir-tenant-bar { display:flex; align-items:center; gap:8px; }
+.nir-tenant-lbl { font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; margin:0; }
+.nir-tenant-sel { border:1px solid #d9e2f2; border-radius:999px; padding:5px 12px; font-size:12px; font-weight:700; color:#173b8c; background:#f9fafb; min-width:140px; cursor:pointer; }
+.nir-tenant-sel:focus { outline:none; border-color:#214dbb; }
 
 /* ── Layout ───────────────────────────────────────────────────────────────── */
 .nir-layout { display:grid; grid-template-columns: 280px minmax(0,1fr); gap:16px; align-items:start; }
