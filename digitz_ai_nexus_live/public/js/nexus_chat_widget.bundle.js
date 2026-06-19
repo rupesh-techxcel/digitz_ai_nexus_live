@@ -760,7 +760,7 @@
         input.value = '';
         input.style.height = 'auto';
 
-        el('ncw-messages').querySelectorAll('.ncw-related-strip').forEach(function (s) { s.remove(); });
+        el('ncw-messages').querySelectorAll('.ncw-related-strip, .ncw-faq-strip').forEach(function (s) { s.remove(); });
 
         append_message('visitor', message);
         show_typing();
@@ -829,6 +829,11 @@
         el('ncw-messages').appendChild(chip);
         scroll_bottom();
 
+        // Show FAQ chips immediately — data is already known from the category list
+        if (faq_questions && faq_questions.length && !is_desk()) {
+            render_faq_chips(faq_questions);
+        }
+
         show_typing();
         S.sending = true;
 
@@ -839,9 +844,6 @@
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(cat_payload),
             });
-            if (faq_questions && faq_questions.length && !is_desk()) {
-                render_faq_chips(faq_questions);
-            }
             _conv_touch();
         } catch (_) {
             hide_typing();
@@ -857,8 +859,8 @@
         if (!faqs || !faqs.length) return;
         const msgs = el('ncw-messages');
 
-        // Remove any previous FAQ chip strip
-        msgs.querySelectorAll('.ncw-faq-strip').forEach(function (s) { s.remove(); });
+        // Remove any previous FAQ chip strip (not related-question strips — those are separate)
+        msgs.querySelectorAll('.ncw-faq-strip:not(.ncw-related-strip)').forEach(function (s) { s.remove(); });
 
         const strip = document.createElement('div');
         strip.className = 'ncw-faq-strip';
@@ -922,22 +924,22 @@
         msgs.querySelectorAll('.ncw-related-strip').forEach(function (s) { s.remove(); });
 
         const strip = document.createElement('div');
-        strip.className = 'ncw-faq-strip ncw-related-strip';
+        strip.className = 'ncw-related-strip';
 
         const lbl = document.createElement('div');
-        lbl.className = 'ncw-faq-label';
-        lbl.textContent = 'Related questions:';
+        lbl.className = 'ncw-related-label';
+        lbl.textContent = 'People also ask:';
         strip.appendChild(lbl);
 
         const chips = document.createElement('div');
-        chips.className = 'ncw-faq-chips';
+        chips.className = 'ncw-related-chips';
 
         questions.forEach(function (item) {
             const question = (typeof item === 'string') ? item : item.question;
             if (!question) return;
 
             const btn = document.createElement('button');
-            btn.className = 'ncw-faq-chip';
+            btn.className = 'ncw-related-chip';
             btn.textContent = question;
             btn.addEventListener('click', function () {
                 strip.remove();
@@ -1708,6 +1710,40 @@
 .ncw-faq-chip:hover {
     background: #ddeaf8;
     border-color: #a0bcdf;
+}
+
+/* ── Correlated question chips (People also ask) ── */
+.ncw-related-strip {
+    padding: 4px 10px 8px;
+}
+.ncw-related-label {
+    font-size: calc(var(--ncw-fs) - 3px);
+    color: #8a7bbf;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+.ncw-related-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.ncw-related-chip {
+    background: #f4f1fc;
+    border: 1px solid #cbbfef;
+    border-radius: 16px;
+    padding: 5px 12px;
+    font-size: calc(var(--ncw-fs) - 1.5px);
+    color: #3d2d7f;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    text-align: left;
+    line-height: 1.35;
+}
+.ncw-related-chip:hover {
+    background: #e8e2f8;
+    border-color: #a899df;
 }
 
 /* ── Identity verification prompt ── */

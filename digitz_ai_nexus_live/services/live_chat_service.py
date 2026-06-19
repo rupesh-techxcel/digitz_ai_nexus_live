@@ -1647,13 +1647,19 @@ def _filter_categories_with_active_routes(categories):
     if not category_names:
         return []
 
+    route_filters = {
+        "chat_category": ["in", category_names],
+        "enabled": 1,
+        "published": 1,
+    }
+    # Categories are already tenant-scoped; add explicit tenant filter when available
+    tenant = next((c.get("tenant") for c in categories if c.get("tenant")), None)
+    if tenant:
+        route_filters["tenant"] = tenant
+
     routed_names = set(frappe.get_all(
         "Nexus Category Identity Route",
-        filters={
-            "chat_category": ["in", category_names],
-            "enabled": 1,
-            "published": 1,
-        },
+        filters=route_filters,
         pluck="chat_category",
     ))
 

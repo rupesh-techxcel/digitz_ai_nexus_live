@@ -6,6 +6,7 @@
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
+    "tenant",
     "chat_category",
     "channel",
     "column_break_1",
@@ -19,6 +20,15 @@
     "description"
   ],
   "fields": [
+    {
+      "fetch_from": "chat_category.tenant",
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Tenant",
+      "options": "Nexus Tenant",
+      "read_only": 1
+    },
     {
       "fetch_from": "chat_category.channel",
       "fieldname": "channel",
@@ -96,7 +106,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-06-14 00:00:00",
+  "modified": "2026-06-19 00:00:00",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Category Identity Route",

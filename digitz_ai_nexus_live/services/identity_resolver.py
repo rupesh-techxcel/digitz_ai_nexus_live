@@ -169,9 +169,12 @@ def resolve_registered_identity_type(payload):
     channel = payload.get("channel")
     chat_category = payload.get("chat_category")
     if channel and chat_category:
+        _route_filters = {"channel": channel, "chat_category": chat_category, "enabled": 1}
+        if payload.get("tenant"):
+            _route_filters["tenant"] = payload["tenant"]
         route_name = frappe.db.get_value(
             "Nexus Category Identity Route",
-            {"channel": channel, "chat_category": chat_category, "enabled": 1},
+            _route_filters,
             "name",
             order_by="priority asc",
         )

@@ -12,12 +12,15 @@ class NexusCategoryIdentityRoute(Document):
         if not self.chat_category:
             return
 
-        cat_channel = frappe.db.get_value("Nexus Chat Category", self.chat_category, "channel")
+        cat_channel, cat_tenant = frappe.db.get_value(
+            "Nexus Chat Category", self.chat_category, ["channel", "tenant"]
+        )
         if not cat_channel:
             frappe.throw(
                 f"Chat category '{self.chat_category}' is not linked to a channel."
             )
         self.channel = cat_channel
+        self.tenant = cat_tenant or None
 
     def _warn_if_profile_missing_access(self):
         # No identity profiles = open to all visitors (valid — no warning needed).

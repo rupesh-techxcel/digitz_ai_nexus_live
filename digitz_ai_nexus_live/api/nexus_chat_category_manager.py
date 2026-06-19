@@ -202,9 +202,12 @@ def get_category_chain(category_code):
 
     cat = frappe.get_doc("Nexus Chat Category", category_code)
 
+    _cat_route_filters = {"chat_category": category_code, "enabled": 1}
+    if cat.tenant:
+        _cat_route_filters["tenant"] = cat.tenant
     routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"chat_category": category_code, "enabled": 1},
+        filters=_cat_route_filters,
         fields=["name", "ai_agent_profile", "priority"],
         order_by="priority asc",
     )
@@ -312,9 +315,12 @@ def get_channel_categories(channel, tenant=None):
 
     # Annotate each category with its configured identity profiles
     for cat in categories:
+        _route_f = {"chat_category": cat.category_code, "enabled": 1}
+        if tenant:
+            _route_f["tenant"] = tenant
         routes = frappe.get_all(
             "Nexus Category Identity Route",
-            filters={"chat_category": cat.category_code, "enabled": 1},
+            filters=_route_f,
             fields=["name"],
             order_by="priority asc",
         )

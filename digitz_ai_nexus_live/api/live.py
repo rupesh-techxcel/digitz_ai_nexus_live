@@ -154,14 +154,17 @@ def get_channel_categories(channel=None, tenant=None, visitor_email=None, email=
 
     candidate_names = [c.name for c in candidates]
 
+    _route_filters = {
+        "channel": ["in", channel_names],
+        "chat_category": ["in", candidate_names],
+        "enabled": 1,
+        "published": 1,
+    }
+    if tenant:
+        _route_filters["tenant"] = tenant
     routed_categories = set(frappe.get_all(
         "Nexus Category Identity Route",
-        filters={
-            "channel": ["in", channel_names],
-            "chat_category": ["in", candidate_names],
-            "enabled": 1,
-            "published": 1,
-        },
+        filters=_route_filters,
         pluck="chat_category",
     ))
 

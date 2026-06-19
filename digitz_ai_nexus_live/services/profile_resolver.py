@@ -95,7 +95,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
     channel = category.channel
 
     if identity_type == "Public":
-        route = _find_any_route(channel, category.name)
+        route = _find_any_route(channel, category.name, tenant=payload.get("tenant") or category.tenant)
         if not route:
             frappe.throw(
                 f"No route configured for category '{category.category_label}'. "
@@ -245,15 +245,18 @@ def resolve_behavior_for_internal_user(user):
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
-def _find_any_route(channel, category_name):
+def _find_any_route(channel, category_name, tenant=None):
+    filters = {
+        "channel": channel,
+        "chat_category": category_name,
+        "enabled": 1,
+        "published": 1,
+    }
+    if tenant:
+        filters["tenant"] = tenant
     routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={
-            "channel": channel,
-            "chat_category": category_name,
-            "enabled": 1,
-            "published": 1,
-        },
+        filters=filters,
         fields=["name", "ai_agent_profile"],
         order_by="priority asc",
         limit_page_length=1,
@@ -286,9 +289,12 @@ def _find_registered_route(channel, category_name, identity_type, payload):
     if not person_profile_names:
         return None, []
 
+    _route_filters = {"channel": channel, "chat_category": category_name, "enabled": 1, "published": 1}
+    if payload.get("tenant"):
+        _route_filters["tenant"] = payload["tenant"]
     all_routes = frappe.get_all(
         "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category_name, "enabled": 1, "published": 1},
+        filters=_route_filters,
         fields=["name", "ai_agent_profile"],
         order_by="priority asc",
     )
