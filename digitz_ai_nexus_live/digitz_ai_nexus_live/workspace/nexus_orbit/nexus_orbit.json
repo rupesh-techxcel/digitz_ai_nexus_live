@@ -15,12 +15,12 @@
  "idx": 0,
  "indicator_color": "green",
  "is_hidden": 0,
- "label": "Home",
+ "label": "Nexus Orbit",
  "links": [],
- "modified": "2026-06-12 12:51:31.090134",
+ "modified": "2026-06-20 12:44:09.612098",
  "modified_by": "Administrator",
  "module": "Digitz AI Nexus Live",
- "name": "Home",
+ "name": "Nexus Orbit",
  "number_cards": [],
  "owner": "Administrator",
  "parent_page": "",
@@ -29,5 +29,5 @@
  "roles": [],
  "sequence_id": 5.0,
  "shortcuts": [],
- "title": "Home"
+ "title": "Nexus Orbit"
 }

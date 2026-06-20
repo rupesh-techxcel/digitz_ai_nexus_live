@@ -18,7 +18,9 @@
     "primary_color",
     "welcome_text",
     "position",
-    "allowed_domains_json"
+    "allowed_domains_json",
+    "section_embed_snippet",
+    "embed_snippet_html"
   ],
   "fields": [
     {
@@ -103,12 +105,22 @@
       "fieldtype": "Code",
       "label": "Allowed Domains JSON",
       "options": "JSON"
+    },
+    {
+      "fieldname": "section_embed_snippet",
+      "fieldtype": "Section Break",
+      "label": "Embed Snippet"
+    },
+    {
+      "fieldname": "embed_snippet_html",
+      "fieldtype": "HTML",
+      "label": "Embed Snippet"
     }
   ],
   "index_web_pages_for_search": 1,
   "istable": 0,
   "links": [],
-  "modified": "2026-06-19 00:00:00.000000",
+  "modified": "2026-06-20 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Website Widget",

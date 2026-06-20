@@ -22,10 +22,11 @@
     <!--
         Frappe replaces the comment below with:
             <script>frappe.csrf_token = "actual_session_token";</script>
-        This is needed so frappe.call() can pass CSRF validation for logged-in
-        sessions (e.g. developer testing). For pure guest visitors the session
-        has no CSRF token and validation is skipped automatically by Frappe.
+        frappe must exist as an object BEFORE this script tag runs, otherwise
+        the assignment throws ReferenceError and the token is lost. We create
+        the global here so the injected script can safely set the property.
     -->
+    <script>window.frappe = window.frappe || {};</script>
     <!-- csrf_token -->
 
     <script>
@@ -38,13 +39,13 @@
         };
 
         /* ── Frappe environment bootstrap ── */
-        window.dev_server    = 1;
-        window.socketio_port = 9512;
+        window.dev_server    = {{ dev_server }};
+        window.socketio_port = {{ frappe.socketio_port or 9000 }};
 
         window.frappe = window.frappe || {};
         frappe.boot   = {
-            sitename      : 'digitz_ai_nexus_live_test.site',
-            socketio_port : 9512,
+            sitename      : '{{ sitename }}',
+            socketio_port : {{ frappe.socketio_port or 9000 }},
         };
 
         /*
@@ -197,10 +198,10 @@
 <!-- ══ Widget Scripts — loaded at end of body ══ -->
 
 <!-- Frappe web client: frappe.call(), frappe.realtime, jQuery -->
-<script src="/assets/frappe/dist/js/frappe-web.bundle.RGYFHIMP.js"></script>
+{{ include_script('frappe-web.bundle.js') }}
 
 <!-- Nexus chat widget -->
-<script src="/assets/digitz_ai_nexus_live/dist/js/nexus_chat_widget.bundle.WAX5PEHK.js"></script>
+{{ include_script('nexus_chat_widget.bundle.js') }}
 
 </body>
 </html>

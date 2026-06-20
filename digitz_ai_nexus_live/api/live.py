@@ -11,6 +11,11 @@ from digitz_ai_nexus_live.services.conversation_service import (
     get_conversation_messages,
 )
 from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
+from digitz_ai_nexus_live.services.rate_limit import (
+    check_rate_limit,
+    get_caller_ip,
+    validate_widget_origin,
+)
 
 
 def parse_payload(payload=None):
@@ -198,7 +203,14 @@ def get_widget_tenant():
 def ask_question(payload=None):
     """Public / internal Q And A API endpoint."""
     payload = parse_payload(payload)
-    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    widget_code = payload.get("widget_code")
+    validate_widget_origin(widget_code)
+    check_rate_limit(
+        f"ask:{get_caller_ip()}",
+        max_calls=30, window_seconds=60,
+        throw_message="Too many requests. Please slow down.",
+    )
+    widget = _resolve_widget_for_api_call(widget_code)
     if widget and not widget.knowledge_delivery_enabled:
         return {
             "status": "service_paused",
@@ -216,14 +228,39 @@ def start_chat(payload=None):
     The AI response is pushed via frappe.realtime event "nexus_chat_response".
     """
     payload = parse_payload(payload)
-    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    widget_code = payload.get("widget_code")
+    validate_widget_origin(widget_code)
+    check_rate_limit(
+        f"start_chat:{get_caller_ip()}",
+        max_calls=10, window_seconds=60,
+        throw_message="Too many chat sessions started. Please wait a moment.",
+    )
+    widget = _resolve_widget_for_api_call(widget_code)
     if widget and not widget.knowledge_delivery_enabled:
         return {
             "status": "service_paused",
             "knowledge_delivery_enabled": False,
             "message": "This service is temporarily paused.",
         }
-    return start_live_chat(payload)
+    result = start_live_chat(payload)
+    try:
+        settings = frappe.get_single("Nexus Settings")
+        result["show_correlated_on_desk"] = bool(getattr(settings, "show_correlated_on_desk", 0))
+    except Exception:
+        result["show_correlated_on_desk"] = False
+
+    # Attach the caller_token so guest widgets can authenticate future detail fetches
+    conv_id = result.get("conversation_id")
+    if conv_id and frappe.session.user in ("Guest", None, ""):
+        token = frappe.db.get_value(
+            "Nexus Live Conversation",
+            {"conversation_id": conv_id},
+            "caller_token",
+        )
+        if token:
+            result["caller_token"] = token
+
+    return result
 
 
 @frappe.whitelist(allow_guest=True)
@@ -237,7 +274,14 @@ def send_chat_message(conversation_id=None, payload=None):
         frappe.throw("Conversation ID is required.")
 
     payload = parse_payload(payload)
-    widget = _resolve_widget_for_api_call(payload.get("widget_code"))
+    widget_code = payload.get("widget_code")
+    validate_widget_origin(widget_code)
+    check_rate_limit(
+        f"send_msg:{get_caller_ip()}",
+        max_calls=60, window_seconds=60,
+        throw_message="Too many messages. Please slow down.",
+    )
+    widget = _resolve_widget_for_api_call(widget_code)
     if widget and not widget.knowledge_delivery_enabled:
         frappe.throw("Knowledge delivery is currently paused for this widget.")
 
@@ -350,13 +394,27 @@ def get_active_conversations(limit=50, tenant=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_conversation_detail(conversation_id=None):
+def get_conversation_detail(conversation_id=None, caller_token=None):
     """
     Return full conversation metadata + messages.
     Called by both the Live Console (desk) and the website widget (guest resume).
+    Guest callers must supply the caller_token issued at start_chat time.
     """
     if not conversation_id:
         frappe.throw("Conversation ID is required.")
+
+    is_guest = frappe.session.user in ("Guest", None, "")
+
+    if is_guest:
+        if not caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+        stored_token = frappe.db.get_value(
+            "Nexus Live Conversation",
+            {"conversation_id": conversation_id},
+            "caller_token",
+        )
+        if not stored_token or stored_token != caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
 
     conversation = get_conversation(conversation_id)
 

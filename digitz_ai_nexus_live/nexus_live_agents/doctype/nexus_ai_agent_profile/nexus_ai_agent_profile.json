@@ -30,6 +30,8 @@
   "response_style",
   "welcome_message",
   "fallback_message",
+  "fallback_topic",
+  "email_followup_enabled",
   "do_not_answer_rules",
   "default_response_mode",
   "confidence_threshold",
@@ -196,6 +198,19 @@
    "fieldname": "fallback_message",
    "fieldtype": "Small Text",
    "label": "Fallback Message"
+  },
+  {
+   "fieldname": "fallback_topic",
+   "fieldtype": "Data",
+   "label": "Fallback Topic",
+   "description": "Short description of what domain this agent covers, e.g. 'Nexus AI platform configuration'. Included in the smart fallback message when email follow-up is enabled."
+  },
+  {
+   "default": 1,
+   "fieldname": "email_followup_enabled",
+   "fieldtype": "Check",
+   "label": "Offer Email Follow-up on Fallback",
+   "description": "When enabled, visitors will be offered an email notification after a fallback response. Set Fallback Topic for a personalised message referencing the domain."
   },
   {
    "fieldname": "do_not_answer_rules",

@@ -32,7 +32,8 @@
     "human_agent",
     "started_on",
     "last_message_at",
-    "closed_on"
+    "closed_on",
+    "caller_token"
   ],
   "fields": [
     {
@@ -206,12 +207,19 @@
       "fieldname": "closed_on",
       "fieldtype": "Datetime",
       "label": "Closed On"
+    },
+    {
+      "fieldname": "caller_token",
+      "fieldtype": "Password",
+      "label": "Caller Token",
+      "hidden": 1,
+      "no_copy": 1
     }
   ],
   "index_web_pages_for_search": 1,
   "istable": 0,
   "links": [],
-  "modified": "2026-05-10 00:00:00.000000",
+  "modified": "2026-06-20 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Conversations",
   "name": "Nexus Live Conversation",

@@ -14,12 +14,12 @@
       storage_key: "{{ widget_code }}",
       knowledge_delivery_enabled: {{ knowledge_delivery_enabled }}
     };
-    window.dev_server = 1;
-    window.socketio_port = 9512;
+    window.dev_server = {{ dev_server }};
+    window.socketio_port = {{ frappe.socketio_port or 9000 }};
     window.frappe = window.frappe || {};
     frappe.boot = {
-      sitename: "digitz_ai_nexus.site",
-      socketio_port: 9512
+      sitename: "{{ sitename }}",
+      socketio_port: {{ frappe.socketio_port or 9000 }}
     };
     frappe.ready_events = [];
     frappe.ready = function(fn) { frappe.ready_events.push(fn); };
@@ -37,8 +37,8 @@
 </head>
 <body>
   {% if widget_valid %}
-  <script src="/assets/frappe/dist/js/frappe-web.bundle.RGYFHIMP.js"></script>
-  <script src="/assets/digitz_ai_nexus_live/js/nexus_chat_widget.bundle.js?v=20260617-widget-storage"></script>
+  {{ include_script('frappe-web.bundle.js') }}
+  {{ include_script('nexus_chat_widget.bundle.js') }}
   <script>
     (function() {
       var parentOrigin = "{{ parent_origin }}";

@@ -62,6 +62,8 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
     conversation.status = "Open"
     conversation.escalation_status = "None"
     conversation.started_on = now_datetime()
+    if conversation.user_type in ("Guest", None, ""):
+        conversation.caller_token = frappe.generate_hash(length=32)
 
     if assigned_agent:
         conversation.assigned_agent = assigned_agent.name

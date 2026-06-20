@@ -94,14 +94,33 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
 
     channel = category.channel
 
+    tenant = payload.get("tenant") or category.tenant
+
     if identity_type == "Public":
-        route = _find_any_route(channel, category.name, tenant=payload.get("tenant") or category.tenant)
+        route = _find_any_route(channel, category.name, tenant=tenant)
         if not route:
             frappe.throw(
                 f"No route configured for category '{category.category_label}'. "
                 "Please contact support or try a different option."
             )
         knowledge_profile_names = []
+
+    elif identity_type in ("Admin", "Internal"):
+        # Try registry-based routing first — desk users may have configured Identity Profiles
+        # that restrict their knowledge access (e.g. HR vs Sales vs Support users).
+        # Fall back to any-route only when no registry is found, covering the common case
+        # where a System Manager or unconfigured internal user opens the desk chat.
+        route, knowledge_profile_names = _find_registered_route(
+            channel, category.name, identity_type, payload
+        )
+        if not route:
+            route = _find_any_route(channel, category.name, tenant=tenant)
+            if not route:
+                frappe.throw(
+                    f"No route configured for category '{category.category_label}'. "
+                    "Please contact support or try a different option."
+                )
+            knowledge_profile_names = []
 
     else:
         route, knowledge_profile_names = _find_registered_route(

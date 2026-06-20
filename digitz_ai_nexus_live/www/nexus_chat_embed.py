@@ -17,6 +17,7 @@ def get_context(context):
 	context.widget_tenant = ""
 	context.widget_name = "Nexus AI"
 	context.knowledge_delivery_enabled = 1
+	context.sitename = frappe.local.site
 
 	config = get_external_widget(context.widget_code, context.parent_origin)
 	if not config:

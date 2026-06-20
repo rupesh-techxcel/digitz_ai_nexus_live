@@ -15,6 +15,7 @@
       channel: cfg.channel || null,
       widget_code: cfg.widget_code || null,
       knowledge_delivery_enabled: cfg.knowledge_delivery_enabled !== 0 && cfg.knowledge_delivery_enabled !== false,
+      show_correlated_on_desk: false,
       _realtime_bound: false,
       visitor_email: null,
       identity_verification_challenge: null
@@ -33,16 +34,22 @@
     var _CONV_SCOPE = cfg.storage_key || cfg.widget_code || cfg.channel || cfg.tenant || "default";
     var _CONV_KEY = "ncw_session:" + _CONV_SCOPE;
     var _CONV_TTL = 60 * 60 * 1e3;
-    function _conv_save() {
+    function _conv_save(caller_token) {
       if (is_desk() || !S.conversation_id)
         return;
       try {
+        var existing = {};
+        try {
+          existing = JSON.parse(localStorage.getItem(_CONV_KEY) || "{}");
+        } catch (_) {
+        }
         localStorage.setItem(_CONV_KEY, JSON.stringify({
           id: S.conversation_id,
           ts: Date.now(),
           status: "open",
           tenant: S.tenant || null,
-          channel: S.channel || null
+          channel: S.channel || null,
+          caller_token: caller_token || existing.caller_token || null
         }));
       } catch (_) {
       }
@@ -139,9 +146,10 @@
     }
     function api(method, args) {
       return new Promise(function(resolve, reject) {
-        frappe.call({
+        var call = frappe.call({
           method,
           args: args || {},
+          error_msg: "#__ncw_void__",
           callback: function(r) {
             resolve(r);
           },
@@ -149,6 +157,11 @@
             reject(e);
           }
         });
+        if (call && typeof call.fail === "function") {
+          call.fail(function(xhr) {
+            reject(xhr);
+          });
+        }
       });
     }
     function build_dom() {
@@ -276,7 +289,7 @@
       el("ncw-max-btn").addEventListener("click", toggle_maximise);
       el("ncw-min-btn").addEventListener("click", close_panel);
       _apply_font_size(_load_font_size());
-      if (sessionStorage.getItem("ncw_wa_dismissed")) {
+      if (is_desk() || sessionStorage.getItem("ncw_wa_dismissed")) {
         el("ncw-wa-strip").style.display = "none";
       }
       el("ncw-wa-dismiss").addEventListener("click", function(e) {
@@ -358,23 +371,32 @@
         if (data.response_type === "faq_answer") {
           typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
             var _rem = data.faq_questions || [];
-            if (_rem.length && !is_desk())
+            if (_rem.length)
               render_faq_chips(_rem);
           });
           return;
         }
         var _rt_offer = data.identity_verification_offer;
+        var _rt_email_offer = data.email_followup_offer;
+        var _rt_gap_name = data.gap_name || null;
         var _rt_faq = data.faq_questions || [];
         var _rt_related = data.correlated_questions || [];
+        var _rt_debug = data.debug_info || null;
         typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
           if (_rt_offer && !is_desk()) {
             render_identity_verification_prompt();
           }
-          if (_rt_faq.length && !is_desk()) {
+          if (_rt_email_offer && _rt_gap_name && !is_desk()) {
+            render_email_followup_prompt(_rt_gap_name);
+          }
+          if (_rt_faq.length) {
             render_faq_chips(_rt_faq);
           }
-          if (_rt_related.length && !is_desk()) {
+          if (_rt_related.length && (!is_desk() || S.show_correlated_on_desk)) {
             render_related_question_chips(_rt_related);
+          }
+          if (_rt_debug) {
+            render_debug_panel(_rt_debug);
           }
         });
       });
@@ -534,9 +556,10 @@
         }
         S.agent_instance = data.agent_instance || null;
         S.agent_name = data.agent_name || null;
+        S.show_correlated_on_desk = !!data.show_correlated_on_desk;
         set_header(S.agent_name || "AI Assistant", "AI Assistant \xB7 Online");
         set_input_placeholder("Type a message\u2026");
-        _conv_save();
+        _conv_save(data.caller_token || null);
         const initial = data.initial_messages || [];
         initial.forEach(function(msg) {
           var _lbl = msg.agent_name || S.agent_name || null;
@@ -556,7 +579,9 @@
       } catch (_) {
         hide_typing();
         S.conversation_id = null;
+        set_header("Unavailable", "");
         append_error("Could not connect. Please refresh and try again.");
+        lock_input("Could not connect.");
       }
     }
     async function load_conversation(conversation_id) {
@@ -590,8 +615,16 @@
       set_header("Reconnecting\u2026", "");
       set_input_placeholder("Please wait\u2026");
       try {
+        var _stored_token = null;
+        try {
+          var _raw = localStorage.getItem(_CONV_KEY);
+          if (_raw)
+            _stored_token = (JSON.parse(_raw) || {}).caller_token || null;
+        } catch (_) {
+        }
         const r = await api("digitz_ai_nexus_live.api.live.get_conversation_detail", {
-          conversation_id
+          conversation_id,
+          caller_token: _stored_token
         });
         const data = r.message || {};
         const conversation = data.conversation || {};
@@ -697,7 +730,7 @@
       chip.innerHTML = '<div class="ncw-bubble ncw-bubble-category">' + escape_html(label) + "</div>";
       el("ncw-messages").appendChild(chip);
       scroll_bottom();
-      if (faq_questions && faq_questions.length && !is_desk()) {
+      if (faq_questions && faq_questions.length) {
         render_faq_chips(faq_questions);
       }
       show_typing();
@@ -830,6 +863,141 @@
       });
       document.getElementById("ncw-verify-email").focus();
     }
+    function render_email_followup_prompt(gap_name) {
+      var uid = "ncw-efp-" + Date.now();
+      var msgs = el("ncw-messages");
+      var card = document.createElement("div");
+      card.className = "ncw-verify-prompt";
+      var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (S.visitor_email && EMAIL_RE.test(S.visitor_email)) {
+        msgs.appendChild(card);
+        show_known_email_step(S.visitor_email);
+        return;
+      }
+      function show_known_email_step(email) {
+        card.innerHTML = `<div class="ncw-verify-label">We'll notify you at <strong>` + escape_html(email) + '</strong> when we have this information. Would you like to proceed?</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center;"><button class="ncw-verify-btn" id="' + uid + '-confirm">Yes, notify me</button><button class="ncw-verify-skip" id="' + uid + '-skip-k" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;padding:0;">No thanks</button></div><div class="ncw-verify-msg" id="' + uid + '-k-msg" style="display:none;"></div>';
+        scroll_bottom();
+        var confirm_btn = document.getElementById(uid + "-confirm");
+        var k_msg = document.getElementById(uid + "-k-msg");
+        confirm_btn.addEventListener("click", function() {
+          confirm_btn.disabled = true;
+          confirm_btn.textContent = "Saving\u2026";
+          api("digitz_ai_nexus.api.knowledge_gap.submit_gap_visitor_email", {
+            gap_name,
+            email,
+            conversation_id: S.conversation_id || ""
+          }).then(function() {
+            card.innerHTML = `<div class="ncw-verify-msg ncw-verify-success">&#10003; Noted. We'll notify <strong>` + escape_html(email) + "</strong> once we have this covered.</div>";
+            scroll_bottom();
+          }).catch(function(err) {
+            confirm_btn.disabled = false;
+            confirm_btn.textContent = "Yes, notify me";
+            k_msg.className = "ncw-verify-msg ncw-verify-error";
+            k_msg.textContent = err && err.message || "Something went wrong. Please try again.";
+            k_msg.style.display = "";
+          });
+        });
+        document.getElementById(uid + "-skip-k").addEventListener("click", function() {
+          card.style.display = "none";
+        });
+      }
+      function show_email_step() {
+        card.innerHTML = '<div class="ncw-verify-label">Would you like to be notified by email when this information is available?</div><div class="ncw-verify-row"><input type="email" class="ncw-verify-input" id="' + uid + '-email" placeholder="your@email.com" autocomplete="email"><button class="ncw-verify-btn" id="' + uid + '-send" disabled>Send Code</button></div><div class="ncw-verify-msg" id="' + uid + '-email-msg" style="display:none;"></div><div style="margin-top:6px;"><button class="ncw-verify-skip" id="' + uid + '-skip1" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;padding:0;">No thanks</button></div>';
+        scroll_bottom();
+        var email_input = document.getElementById(uid + "-email");
+        var send_btn = document.getElementById(uid + "-send");
+        var email_msg = document.getElementById(uid + "-email-msg");
+        email_input.addEventListener("input", function() {
+          var val = email_input.value.trim();
+          if (!val) {
+            email_msg.style.display = "none";
+            send_btn.disabled = true;
+          } else if (!EMAIL_RE.test(val)) {
+            email_msg.className = "ncw-verify-msg ncw-verify-error";
+            email_msg.textContent = "Please enter a valid email address.";
+            email_msg.style.display = "";
+            send_btn.disabled = true;
+          } else {
+            email_msg.style.display = "none";
+            send_btn.disabled = false;
+          }
+        });
+        function do_send() {
+          var email = email_input.value.trim();
+          if (!EMAIL_RE.test(email))
+            return;
+          send_btn.disabled = true;
+          send_btn.textContent = "Sending\u2026";
+          email_msg.style.display = "none";
+          api(
+            "digitz_ai_nexus.api.knowledge_gap.request_gap_email_otp",
+            { gap_name, email }
+          ).then(function(r) {
+            var d = r.message || {};
+            show_otp_step(email, d.challenge_token);
+          }).catch(function(err) {
+            send_btn.disabled = false;
+            send_btn.textContent = "Send Code";
+            email_msg.className = "ncw-verify-msg ncw-verify-error";
+            email_msg.textContent = err && err.message || "Could not send code. Please try again.";
+            email_msg.style.display = "";
+          });
+        }
+        send_btn.addEventListener("click", do_send);
+        email_input.addEventListener("keydown", function(e) {
+          if (e.key === "Enter" && !send_btn.disabled) {
+            e.preventDefault();
+            do_send();
+          }
+        });
+        document.getElementById(uid + "-skip1").addEventListener("click", function() {
+          card.style.display = "none";
+        });
+        email_input.focus();
+      }
+      function show_otp_step(email, challenge_token) {
+        card.innerHTML = '<div class="ncw-verify-label">A code was sent to <strong>' + escape_html(email) + `</strong>. Enter it below:</div><div class="ncw-verify-spam-note">Didn't receive it? Check your <strong>spam or junk</strong> folder.</div><div class="ncw-verify-row"><input type="text" class="ncw-verify-input" id="` + uid + '-otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code"><button class="ncw-verify-btn" id="' + uid + '-verify">Verify</button></div><div class="ncw-verify-msg" id="' + uid + '-otp-msg" style="display:none;"></div><div style="margin-top:6px;"><button class="ncw-verify-skip" id="' + uid + '-skip2" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;padding:0;">No thanks</button></div>';
+        scroll_bottom();
+        var otp_input = document.getElementById(uid + "-otp");
+        var verify_btn = document.getElementById(uid + "-verify");
+        var otp_msg = document.getElementById(uid + "-otp-msg");
+        function do_verify() {
+          var otp = otp_input.value.trim();
+          if (!otp)
+            return;
+          verify_btn.disabled = true;
+          verify_btn.textContent = "Verifying\u2026";
+          otp_msg.style.display = "none";
+          api(
+            "digitz_ai_nexus.api.knowledge_gap.verify_gap_email_otp",
+            { gap_name, challenge_token, otp }
+          ).then(function(r) {
+            var verified_email = (r.message || {}).email || email;
+            card.innerHTML = `<div class="ncw-verify-msg ncw-verify-success">&#10003; Email verified. We'll notify <strong>` + escape_html(verified_email) + "</strong> once we have this covered.</div>";
+            scroll_bottom();
+          }).catch(function(err) {
+            verify_btn.disabled = false;
+            verify_btn.textContent = "Verify";
+            otp_msg.className = "ncw-verify-msg ncw-verify-error";
+            otp_msg.textContent = err && err.message || "Invalid code. Please try again.";
+            otp_msg.style.display = "";
+          });
+        }
+        verify_btn.addEventListener("click", do_verify);
+        otp_input.addEventListener("keydown", function(e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            do_verify();
+          }
+        });
+        document.getElementById(uid + "-skip2").addEventListener("click", function() {
+          card.style.display = "none";
+        });
+        otp_input.focus();
+      }
+      msgs.appendChild(card);
+      show_email_step();
+    }
     async function submit_email_for_verification(prompt_el) {
       const email_input = document.getElementById("ncw-verify-email");
       const email = (email_input ? email_input.value : "").trim();
@@ -935,6 +1103,38 @@
       div.className = "ncw-msg ncw-msg-error";
       div.innerHTML = '<div class="ncw-bubble ncw-bubble-error">' + escape_html(text2) + "</div>";
       msgs.appendChild(div);
+      scroll_bottom();
+    }
+    function render_debug_panel(dbg) {
+      if (!dbg)
+        return;
+      const msgs = el("ncw-messages");
+      const wrap = document.createElement("div");
+      wrap.className = "ncw-msg ncw-debug-panel-wrap";
+      var policies = (dbg.allowed_access_policies || []).join(", ") || "(none)";
+      var features = dbg.features || {};
+      var qf = dbg.question_first || {};
+      var status_color = {
+        "allowed": "#276749",
+        "no_context": "#c05621",
+        "low_confidence": "#744210",
+        "restricted": "#c53030"
+      }[dbg.access_status] || "#4a5568";
+      var chunks_html = "";
+      if (dbg.top_chunks && dbg.top_chunks.length) {
+        chunks_html = '<table class="ncw-debug-table"><thead><tr><th>Chunk</th><th>Score</th><th>Vector</th><th>Keyword</th><th>Policy</th></tr></thead><tbody>';
+        dbg.top_chunks.forEach(function(c) {
+          chunks_html += '<tr><td title="' + escape_html(c.chunk || "") + '">' + escape_html((c.title || c.chunk || "").substring(0, 40)) + "</td><td>" + (c.score || 0).toFixed(4) + "</td><td>" + (c.vector_score || 0).toFixed(4) + "</td><td>" + (c.keyword_score || 0).toFixed(4) + "</td><td>" + escape_html(c.access_policy || "") + "</td></tr>";
+        });
+        chunks_html += "</tbody></table>";
+      } else {
+        chunks_html = "<em>No chunks retrieved.</em>";
+      }
+      var id = "ncw-dbg-" + Date.now();
+      wrap.innerHTML = `<div class="ncw-debug-toggle" onclick="var b=document.getElementById('` + id + `');b.style.display=b.style.display==='none'?'block':'none'">&#x1F50D; Retrieval Debug <span style="font-size:10px;color:#888">(System Manager)</span></div><div id="` + id + '" class="ncw-debug-body" style="display:none"><div class="ncw-debug-row"><span class="ncw-debug-label">Access Status</span><span class="ncw-debug-val" style="color:' + status_color + ';font-weight:600">' + escape_html(dbg.access_status || "") + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Access Cap</span><span class="ncw-debug-val">' + escape_html(dbg.access_cap_applied || "") + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Allowed Policies</span><span class="ncw-debug-val ncw-debug-policies">' + escape_html(policies) + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Candidates</span><span class="ncw-debug-val">Total: ' + (dbg.original_candidate_count || 0) + " \u2192 Scored: " + (dbg.allowed_count || 0) + " \u2192 Final: " + (dbg.final_result_count || 0) + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Confidence</span><span class="ncw-debug-val">' + (dbg.confidence || 0).toFixed(4) + (dbg.fallback_used ? ' <em style="color:#c05621">(fallback)</em>' : "") + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Question-First</span><span class="ncw-debug-val">' + (qf.applied ? "Applied (" + (qf.match_count || 0) + " matches)" : "Not applied") + '</span></div><div class="ncw-debug-row"><span class="ncw-debug-label">Features</span><span class="ncw-debug-val">' + ["multi_query", "reranking", "semantic_index", "context_summary"].filter(function(k) {
+        return features[k];
+      }).join(", ") || '(none)</span></div><div class="ncw-debug-section-title">Top Retrieved Chunks</div>' + chunks_html + "</div>";
+      msgs.appendChild(wrap);
       scroll_bottom();
     }
     function reset_messages() {
@@ -1684,6 +1884,78 @@
     background-clip: text;
     color: transparent;
 }
+/* \u2500\u2500 Retrieval Debug Panel \u2500\u2500 */
+.ncw-debug-panel-wrap {
+    align-self: stretch;
+    width: 100%;
+    margin: 4px 0;
+}
+.ncw-debug-toggle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4a5568;
+    background: #edf2f7;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px 6px 0 0;
+    padding: 5px 10px;
+    cursor: pointer;
+    user-select: none;
+}
+.ncw-debug-toggle:hover { background: #e2e8f0; }
+.ncw-debug-body {
+    background: #f7fafc;
+    border: 1px solid #cbd5e0;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #2d3748;
+    font-family: monospace;
+}
+.ncw-debug-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+.ncw-debug-label {
+    font-weight: 700;
+    color: #718096;
+    min-width: 120px;
+    flex-shrink: 0;
+}
+.ncw-debug-val { color: #1a202c; word-break: break-all; }
+.ncw-debug-policies { color: #2b6cb0; word-break: break-all; }
+.ncw-debug-section-title {
+    font-weight: 700;
+    color: #4a5568;
+    margin: 8px 0 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.ncw-debug-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+}
+.ncw-debug-table th {
+    background: #e2e8f0;
+    padding: 3px 5px;
+    text-align: left;
+    font-weight: 700;
+    color: #4a5568;
+}
+.ncw-debug-table td {
+    padding: 3px 5px;
+    border-bottom: 1px solid #edf2f7;
+    color: #2d3748;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
         `;
       document.head.appendChild(s);
     }
@@ -1705,4 +1977,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.FR2HC5IH.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.UQRHSYZR.js.map

@@ -456,6 +456,7 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         "user": user_context,
         "force_public_only": force_public_only,
         "allowed_access_policies": access_resolution["allowed_access_policies"],
+        "_access_cap_applied": access_resolution.get("access_cap_applied"),
 
         "ai_profile": ai_profile,
         "resolved_intents": resolved_intents,
@@ -494,8 +495,8 @@ def _resolve_behavior(payload, conversation=None, agent=None):
     if chat_category:
         from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
         is_authenticated = (
-            payload.get("user_type", "Guest") != "Guest"
-            and bool(payload.get("user"))
+            (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
+            or frappe.session.user not in ("Guest", None, "")
         )
         identity_type = resolve_identity_type(payload)
         return resolve_behavior_from_chat_category(
@@ -742,8 +743,8 @@ def start_live_chat(payload):
             resolve_identity_type,
         )
         is_authenticated = (
-            payload.get("user_type", "Guest") != "Guest"
-            and bool(payload.get("user"))
+            (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
+            or frappe.session.user not in ("Guest", None, "")
         )
         identity_type = resolve_identity_type(payload)
         cat_behavior = resolve_behavior_from_chat_category(
@@ -1069,10 +1070,14 @@ def continue_live_chat(conversation_id, payload):
             from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 
             identity_type = resolve_identity_type(payload)
+            _is_authenticated = (
+                (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
+                or frappe.session.user not in ("Guest", None, "")
+            )
             cat_behavior = resolve_behavior_from_chat_category(
                 cat.name,
                 identity_type,
-                False,
+                _is_authenticated,
                 payload=payload,
             )
             if cat_behavior and cat_behavior.profile_name:
@@ -1454,6 +1459,18 @@ def _process_ai_response(conversation_id, payload_json):
         sources = core_response.get("sources") if isinstance(core_response, dict) else []
         retrieval_debug = core_response.get("retrieval_debug") if isinstance(core_response, dict) else {}
 
+        debug_info = None
+        try:
+            _payload_user = (payload.get("user") or {}).get("name")
+            if (
+                _payload_user
+                and "System Manager" in frappe.get_roles(_payload_user)
+                and _is_retrieval_debug_enabled()
+            ):
+                debug_info = _build_retrieval_debug_info(core_response, core_payload)
+        except Exception:
+            pass
+
         fallback_message = (
             behavior.fallback_message
             if behavior and behavior.fallback_message
@@ -1585,10 +1602,13 @@ def _process_ai_response(conversation_id, payload_json):
             "confidence_threshold": threshold,
             "fallback_used": 1 if core_response.get("fallback_used") else 0,
             "identity_verification_offer": identity_verification_offer,
+            "email_followup_offer": bool(core_response.get("email_followup_offer")),
+            "gap_name": core_response.get("gap_name") or None,
 
             "tenant": payload.get("tenant"),
             "channel": payload.get("channel"),
             "resolved_tenant_context": resolved_context,
+            "debug_info": debug_info,
         })
 
     except Exception:
@@ -1770,3 +1790,50 @@ def _wrap_low_confidence_answer(visitor_message, raw_answer, confidence):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Nexus Low Confidence Wrap Failed")
         return raw_answer
+
+
+# ── Retrieval debug helpers ────────────────────────────────────────────────────
+
+def _is_retrieval_debug_enabled():
+    try:
+        settings = frappe.get_single("Nexus Settings")
+        return bool(getattr(settings, "enable_retrieval_debug", 0))
+    except Exception:
+        return False
+
+
+def _build_retrieval_debug_info(core_response, core_payload):
+    rr = (core_response.get("retrieval_result") or {}) if isinstance(core_response, dict) else {}
+    chunks = rr.get("results") or []
+
+    top_chunks = []
+    for chunk in chunks[:5]:
+        top_chunks.append({
+            "chunk": chunk.get("chunk"),
+            "title": (
+                chunk.get("knowledge_source_title")
+                or chunk.get("chunk_preview")
+                or chunk.get("title")
+                or "(untitled)"
+            ),
+            "score": round(float(chunk.get("final_score") or chunk.get("hybrid_score") or chunk.get("score") or 0), 4),
+            "vector_score": round(float(chunk.get("vector_score") or 0), 4),
+            "keyword_score": round(float(chunk.get("keyword_score") or 0), 4),
+            "access_policy": chunk.get("access_policy"),
+        })
+
+    return {
+        "access_status": rr.get("access_status") or core_response.get("access_status"),
+        "allowed_access_policies": core_payload.get("allowed_access_policies") or [],
+        "access_cap_applied": core_payload.get("_access_cap_applied") or "unknown",
+        "candidate_count": rr.get("candidate_count") or 0,
+        "original_candidate_count": rr.get("original_candidate_count") or 0,
+        "allowed_count": rr.get("allowed_count") or 0,
+        "denied_count": rr.get("denied_count") or 0,
+        "final_result_count": len(chunks),
+        "confidence": round(float(core_response.get("confidence") or 0), 4),
+        "fallback_used": bool(core_response.get("fallback_used")),
+        "features": rr.get("features") or {},
+        "question_first": rr.get("question_first") or {},
+        "top_chunks": top_chunks,
+    }

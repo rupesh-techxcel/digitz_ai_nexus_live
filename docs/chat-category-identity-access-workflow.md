@@ -186,15 +186,33 @@ start_live_chat(payload)
 │   ├── resolve_identity_type(payload)
 │   │
 │   ├── resolve_behavior_from_chat_category(category, identity_type, is_authenticated, payload)
+│   │
+│   │       is_authenticated check (guards Internal-visibility categories):
+│   │         payload user_type != "Guest" AND payload has user  →  True
+│   │         OR frappe.session.user not in ("Guest", None, "")  →  True
+│   │         (session check covers desk users whose category payload omits user fields)
+│   │
 │   │       Public identity:
-│   │         → find route where open_to_all = not bool(identity_profiles)
+│   │         → _find_any_route (no registry needed)
 │   │         → knowledge_profile_names = []
-│   │       Registered identity:
+│   │
+│   │       Admin / Internal identity (desk users):
+│   │         → _find_registered_route first
+│   │             requires: registry.user = frappe.session.user, verified, active profiles,
+│   │             route's permitted identity_profiles intersect person's profiles
+│   │             → knowledge_profile_names from matched profiles (restricted access)
+│   │         → if no registry / unverified / no matching profiles:
+│   │             fall back to _find_any_route
+│   │             → knowledge_profile_names = [] (unrestricted — System Manager default)
+│   │
+│   │       All other registered identities (Customer, Partner, Prospect):
+│   │         → _find_registered_route only (no fallback)
 │   │         → find person's registry
 │   │         → get active identity profiles
 │   │         → intersect with route's permitted identity_profiles
 │   │         → collect knowledge_profile for matching identity_type
 │   │         → union → knowledge_profile_names
+│   │
 │   │       Returns behavior dict including knowledge_profile_names
 │   │
 │   ├── resolve_identity_registry_name(payload)
@@ -242,23 +260,55 @@ boundary is active throughout the whole conversation even if admin configuration
 
 ### Internal / Desk User Path
 
-Desk users resolve knowledge via `Nexus Identity Registry` — the same path as visitors.
+Desk users go through category-based routing with a two-step resolution:
+
+**Step 1 — Try registry-based routing** (same as registered visitors):
 
 ```
 session_user (Frappe desk user)
     ↓
 Nexus Identity Registry (matched by registry.user = frappe.session.user)
-    ↓
+    ↓ requires: enabled, verification_status = "Verified"
 Active identity profiles on the registry
     ↓
 Identity Profile mappings where identity_type = "Internal" | "Admin"
     ↓
-knowledge_profile_names list
+Intersect with route's permitted Identity Profiles
     ↓
-resolve_allowed_policies({knowledge_profile_names})
+knowledge_profile_names list  →  profile-restricted access
 ```
 
-`System Manager` sessions bypass profile narrowing and receive all enabled access policies.
+This path is the correct one for internal users who should be restricted to specific knowledge
+domains — e.g. HR staff seeing HR-only knowledge, Support staff seeing Support-only knowledge.
+Configure this by creating a verified Identity Registry for the Frappe user and assigning
+Identity Profiles with the appropriate `Internal` or `Admin` identity type mappings.
+
+**Step 2 — Fall back to any-route** (when registry is absent, unverified, or has no matching profiles):
+
+```
+_find_any_route(channel, category)
+    ↓
+Highest-priority published route for the category
+    ↓
+knowledge_profile_names = []
+    ↓
+resolve_allowed_policies → all enabled policies (Admin) or access_resolver cap
+```
+
+This fallback covers System Managers and any desk user who has not been configured in the
+Identity Registry. They receive the default route with no profile-level knowledge restriction.
+
+**Key rules:**
+
+| Desk user state | Resolution path | Knowledge access |
+|---|---|---|
+| Verified registry + matching Identity Profiles | `_find_registered_route` | Restricted to configured profiles |
+| Registry exists but Unverified | Fall back to `_find_any_route` | Unrestricted (default route) |
+| No registry entry | Fall back to `_find_any_route` | Unrestricted (default route) |
+| System Manager (any registry state) | `_find_any_route` fallback at minimum; `access_resolver` grants all policies | Full access |
+
+Note: `System Manager` sessions are also granted all enabled access policies independently
+by `resolve_allowed_policies` in the retrieval engine — regardless of `knowledge_profile_names`.
 
 ---
 
@@ -327,11 +377,14 @@ The payload sent from Live to Nexus Core includes:
 
 | Situation | Result |
 |---|---|
-| No route found for category + identity | Throws — configuration error surfaced to user |
+| No route found for category + identity (non-desk) | Throws — configuration error surfaced to user |
+| No route found for category + Admin/Internal after fallback | Throws — no published route exists for the category |
 | Route found but no matching identity profiles | `knowledge_profile_names = []` → `allowed_access_policies = []` → retrieval denied |
+| Admin/Internal with no registry or unverified registry | Falls back to `_find_any_route` — does NOT throw |
 | Public route | `["Public"]` only |
 | Safeguard produces empty intersection | `allowed_access_policies = []` → retrieval denied |
 | Registry is Blocked | Throws — access denied |
+| Internal-visibility category accessed by unauthenticated session | Throws — checked via `frappe.session.user`, not just payload |
 
 ---
 
@@ -351,11 +404,21 @@ For each chat category and route:
 [ ] Nexus Identity Type safeguard_access_categories configured for all registered types
 ```
 
-For internal desk users:
+For internal desk users with restricted knowledge access:
 
 ```
 [ ] Nexus Identity Registry entry exists with registry.user = frappe_username
-[ ] Registry is Verified
+[ ] Registry verification_status = "Verified"
 [ ] Identity Profiles assigned with rows for "Internal" or "Admin" identity type
-[ ] Each mapping points to an enabled Knowledge Profile
+[ ] Each identity_type mapping points to an enabled Knowledge Profile
+[ ] Route's permitted identity_profiles includes those Identity Profiles
 ```
+
+If the above is not configured for a desk user, they will fall back to the default route
+with no knowledge profile restriction. This is acceptable for System Managers but may be
+undesirable for other internal users — configure their registry to enforce restrictions.
+
+**Do not** rely on the Nexus Category Identity Route's `published` state to restrict knowledge
+access for desk users. An unpublished route only prevents the category from appearing in the
+category picker — it does not restrict retrieval. Knowledge restriction requires access policy
+configuration on the chunks themselves (via Identity Profile → Knowledge Profile → Access Policy).
