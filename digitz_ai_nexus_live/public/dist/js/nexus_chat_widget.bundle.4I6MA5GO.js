@@ -11,6 +11,10 @@
       agent_name: null,
       locked: false,
       sending: false,
+      close_requested: false,
+      starting: false,
+      unread_count: 0,
+      title_before_unread: null,
       tenant: cfg.tenant || null,
       channel: cfg.channel || null,
       widget_code: cfg.widget_code || null,
@@ -73,6 +77,14 @@
       try {
         localStorage.removeItem(_CONV_KEY);
       } catch (_) {
+      }
+    }
+    function _conv_caller_token() {
+      try {
+        var stored = JSON.parse(localStorage.getItem(_CONV_KEY) || "null");
+        return stored && stored.id === S.conversation_id ? stored.caller_token : null;
+      } catch (_) {
+        return null;
       }
     }
     function _conv_resume() {
@@ -146,21 +158,28 @@
     }
     function api(method, args) {
       return new Promise(function(resolve, reject) {
+        function reject_silently(error) {
+          try {
+            if (frappe.hide_msgprint)
+              frappe.hide_msgprint(true);
+            if (frappe.error_dialog && frappe.error_dialog.hide)
+              frappe.error_dialog.hide();
+          } catch (_) {
+          }
+          reject(error);
+        }
         var call = frappe.call({
           method,
           args: args || {},
+          silent: true,
           error_msg: "#__ncw_void__",
           callback: function(r) {
             resolve(r);
           },
-          error: function(e) {
-            reject(e);
-          }
+          error: reject_silently
         });
         if (call && typeof call.fail === "function") {
-          call.fail(function(xhr) {
-            reject(xhr);
-          });
+          call.fail(reject_silently);
         }
       });
     }
@@ -173,6 +192,13 @@
       const root = document.createElement("div");
       root.id = "ncw-root";
       root.innerHTML = `
+            <div id="ncw-tooltip" role="tooltip" aria-live="polite">
+                <button id="ncw-tooltip-dismiss" aria-label="Dismiss">&#x2715;</button>
+                <div id="ncw-tooltip-kicker">Powered by NEXUS ORBIT</div>
+                <p id="ncw-tooltip-body">Every response here is drawn from a governed knowledge layer and delivered through agentic intelligence &mdash; precision at scale.</p>
+                <button id="ncw-tooltip-cta">Experience it &rarr;</button>
+            </div>
+
             <button id="ncw-bubble" aria-label="Open chat">
                 <img src="/assets/digitz_ai_nexus/images/nexus-chat-agent-icon.svg" alt="Chat" width="52" height="52">
                 <span id="ncw-badge" style="display:none;"></span>
@@ -197,6 +223,12 @@
                     <button id="ncw-min-btn" aria-label="Minimise">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                    <button id="ncw-close-btn" aria-label="Close chat" title="Close chat">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                            <line x1="18" y1="6" x2="6" y2="18"/>
                         </svg>
                     </button>
                 </div>
@@ -225,6 +257,17 @@
                     <div id="ncw-typing-dots">
                         <span></span><span></span><span></span>
                     </div>
+                </div>
+
+                <div id="ncw-nexy-sticky">
+                    <button id="ncw-nexy-connect-btn" type="button" aria-label="Connect with Nexy, Companion, the Agentic AI with many roles">
+                        <span id="ncw-nexy-mark" aria-hidden="true">N</span>
+                        <span id="ncw-nexy-copy">
+                            <strong>Connect with Nexy</strong>
+                            <small>Companion - The Agentic AI with many roles</small>
+                        </span>
+                        <span id="ncw-nexy-arrow" aria-hidden="true">&#8594;</span>
+                    </button>
                 </div>
 
                 <div id="ncw-footer">
@@ -284,10 +327,18 @@
       }, 250);
     }
     function bind_ui_events() {
-      el("ncw-bubble").addEventListener("click", toggle_panel);
+      el("ncw-bubble").addEventListener("click", function() {
+        _dismiss_tooltip();
+        toggle_panel();
+      });
       el("ncw-font-btn").addEventListener("click", cycle_font_size);
       el("ncw-max-btn").addEventListener("click", toggle_maximise);
       el("ncw-min-btn").addEventListener("click", close_panel);
+      el("ncw-close-btn").addEventListener("click", close_widget);
+      if (is_desk()) {
+        el("ncw-close-btn").style.display = "none";
+        el("ncw-nexy-sticky").style.display = "none";
+      }
       _apply_font_size(_load_font_size());
       if (is_desk() || sessionStorage.getItem("ncw_wa_dismissed")) {
         el("ncw-wa-strip").style.display = "none";
@@ -313,6 +364,14 @@
         }
       });
       el("ncw-send-btn").addEventListener("click", send_message);
+      document.addEventListener("visibilitychange", function() {
+        if (!document.hidden && S.open)
+          clear_unread();
+      });
+      global.addEventListener("focus", function() {
+        if (S.open)
+          clear_unread();
+      });
       const input = el("ncw-input");
       input.addEventListener("keydown", function(e) {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -324,11 +383,68 @@
         this.style.height = "auto";
         this.style.height = Math.min(this.scrollHeight, 100) + "px";
       });
+      _init_tooltip();
+    }
+    function _dismiss_tooltip() {
+      var tip = el("ncw-tooltip");
+      if (!tip || tip.style.display === "none")
+        return;
+      tip.style.opacity = "0";
+      tip.style.transform = "translateX(12px)";
+      setTimeout(function() {
+        if (tip)
+          tip.style.display = "none";
+      }, 280);
+      try {
+        sessionStorage.setItem("ncw_tooltip_dismissed", "1");
+      } catch (_) {
+      }
+    }
+    function _init_tooltip() {
+      var tip = el("ncw-tooltip");
+      if (!tip)
+        return;
+      if (is_desk()) {
+        tip.style.display = "none";
+        return;
+      }
+      try {
+        if (sessionStorage.getItem("ncw_tooltip_dismissed")) {
+          tip.style.display = "none";
+          return;
+        }
+      } catch (_) {
+      }
+      var dismiss_btn = el("ncw-tooltip-dismiss");
+      var cta_btn = el("ncw-tooltip-cta");
+      if (dismiss_btn)
+        dismiss_btn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          _dismiss_tooltip();
+        });
+      if (cta_btn)
+        cta_btn.addEventListener("click", function() {
+          _dismiss_tooltip();
+          open_panel();
+        });
+      setTimeout(function() {
+        tip.style.display = "flex";
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            tip.style.opacity = "1";
+            tip.style.transform = "translateX(0)";
+          });
+        });
+        setTimeout(_dismiss_tooltip, 1e4);
+      }, 3e3);
     }
     function bind_realtime() {
       frappe.realtime.on("nexus_chat_response", function(data) {
         if (!data || data.conversation_id !== S.conversation_id)
           return;
+        if (data.response_type !== "visitor_message" && (data.message || data.answer) && (!S.open || document.hidden)) {
+          mark_unread();
+        }
         hide_typing();
         if (data.status === "error") {
           append_error(data.error || "An error occurred.");
@@ -417,6 +533,7 @@
       S.open = true;
       el("ncw-panel").style.display = "flex";
       el("ncw-bubble").style.display = "none";
+      clear_unread();
       if (!S.conversation_id) {
         var session = _conv_resume();
         if (session) {
@@ -441,10 +558,91 @@
       el("ncw-bubble").style.display = "flex";
       _update_max_icon();
     }
+    async function close_widget() {
+      if (!global.confirm("Close this chat? The current conversation will end."))
+        return;
+      var close_btn = el("ncw-close-btn");
+      close_btn.disabled = true;
+      S.close_requested = true;
+      try {
+        var caller_token = _conv_caller_token();
+        var waiting_for_start = S.starting;
+        if (S.conversation_id && !S.locked && caller_token) {
+          await api("digitz_ai_nexus_live.api.live.close_chat", {
+            conversation_id: S.conversation_id,
+            caller_token,
+            widget_code: S.widget_code || ""
+          });
+        }
+        reset_after_visitor_close();
+        if (!waiting_for_start)
+          S.close_requested = false;
+      } catch (err) {
+        S.close_requested = false;
+        close_btn.disabled = false;
+        append_error(err && err.message || "Could not close the chat. Please try again.");
+      }
+    }
+    function reset_after_visitor_close() {
+      _conv_close();
+      hide_typing();
+      reset_messages();
+      S.open = false;
+      S.sending = false;
+      S.conversation_id = null;
+      S.visitor_email = null;
+      S.identity_verification_challenge = null;
+      clear_unread();
+      unlock_input();
+      el("ncw-input").value = "";
+      el("ncw-input").style.height = "auto";
+      el("ncw-panel").classList.remove("ncw-maximised");
+      el("ncw-panel").style.display = "none";
+      el("ncw-bubble").style.display = "flex";
+      el("ncw-close-btn").disabled = false;
+      _update_max_icon();
+    }
     function toggle_maximise() {
       el("ncw-panel").classList.toggle("ncw-maximised");
       _update_max_icon();
       scroll_bottom();
+    }
+    function mark_unread() {
+      S.unread_count += 1;
+      const badge = el("ncw-badge");
+      const bubble = el("ncw-bubble");
+      if (badge) {
+        badge.textContent = S.unread_count > 9 ? "9+" : String(S.unread_count);
+        badge.style.display = "flex";
+      }
+      if (bubble) {
+        bubble.classList.add("ncw-has-unread");
+        bubble.setAttribute(
+          "aria-label",
+          `Open chat, ${S.unread_count} unread message${S.unread_count === 1 ? "" : "s"}`
+        );
+      }
+      if (S.unread_count === 1)
+        S.title_before_unread = document.title;
+      const base_title = S.title_before_unread || document.title;
+      document.title = `(${S.unread_count}) New message - ${base_title}`;
+    }
+    function clear_unread() {
+      S.unread_count = 0;
+      const badge = el("ncw-badge");
+      const bubble = el("ncw-bubble");
+      if (badge) {
+        badge.textContent = "";
+        badge.style.display = "none";
+      }
+      if (bubble) {
+        bubble.classList.remove("ncw-has-unread");
+        bubble.setAttribute("aria-label", "Open chat");
+      }
+      if (S.title_before_unread !== null) {
+        document.title = S.title_before_unread;
+        S.title_before_unread = null;
+      }
     }
     var NCW_FONT_STEPS = [13.5, 16, 18, 20];
     var NCW_FONT_LABELS = ["A", "A", "A", "A"];
@@ -507,11 +705,13 @@
       S.open = true;
       el("ncw-panel").style.display = "flex";
       el("ncw-bubble").style.display = "none";
+      clear_unread();
     }
     function public_close() {
       close_panel();
     }
     async function start_new_chat() {
+      S.starting = true;
       reset_messages();
       set_header("Connecting\u2026", "");
       set_input_placeholder("Please wait\u2026");
@@ -536,6 +736,7 @@
         const r = await api("digitz_ai_nexus_live.api.live.start_chat", {
           payload: JSON.stringify(base)
         });
+        S.starting = false;
         const data = r.message || {};
         if (data.status === "service_paused") {
           hide_typing();
@@ -560,6 +761,19 @@
         set_header(S.agent_name || "AI Assistant", "AI Assistant \xB7 Online");
         set_input_placeholder("Type a message\u2026");
         _conv_save(data.caller_token || null);
+        if (S.close_requested) {
+          try {
+            await api("digitz_ai_nexus_live.api.live.close_chat", {
+              conversation_id: data.conversation_id,
+              caller_token: data.caller_token || _conv_caller_token(),
+              widget_code: S.widget_code || ""
+            });
+          } catch (_) {
+          }
+          reset_after_visitor_close();
+          S.close_requested = false;
+          return;
+        }
         const initial = data.initial_messages || [];
         initial.forEach(function(msg) {
           var _lbl = msg.agent_name || S.agent_name || null;
@@ -577,6 +791,8 @@
           }
         });
       } catch (_) {
+        S.starting = false;
+        S.close_requested = false;
         hide_typing();
         S.conversation_id = null;
         set_header("Unavailable", "");
@@ -931,7 +1147,11 @@
           email_msg.style.display = "none";
           api(
             "digitz_ai_nexus.api.knowledge_gap.request_gap_email_otp",
-            { gap_name, email }
+            {
+              gap_name,
+              email,
+              conversation_id: S.conversation_id || ""
+            }
           ).then(function(r) {
             var d = r.message || {};
             show_otp_step(email, d.challenge_token);
@@ -970,7 +1190,12 @@
           otp_msg.style.display = "none";
           api(
             "digitz_ai_nexus.api.knowledge_gap.verify_gap_email_otp",
-            { gap_name, challenge_token, otp }
+            {
+              gap_name,
+              challenge_token,
+              otp,
+              conversation_id: S.conversation_id || ""
+            }
           ).then(function(r) {
             var verified_email = (r.message || {}).email || email;
             card.innerHTML = `<div class="ncw-verify-msg ncw-verify-success">&#10003; Email verified. We'll notify <strong>` + escape_html(verified_email) + "</strong> once we have this covered.</div>";
@@ -1138,6 +1363,9 @@
       scroll_bottom();
     }
     function reset_messages() {
+      _tw_generation++;
+      _tw_queue = [];
+      _tw_running = false;
       el("ncw-messages").innerHTML = "";
     }
     function show_typing() {
@@ -1149,6 +1377,7 @@
     }
     var _tw_queue = [];
     var _tw_running = false;
+    var _tw_generation = 0;
     function typewrite_message(side, text2, time, sender_label, on_done) {
       var is_agent_side = side === "agent" || side === "human-agent";
       if (!is_agent_side) {
@@ -1171,6 +1400,7 @@
       _tw_run(job, _tw_drain);
     }
     function _tw_run(job, next) {
+      var generation = _tw_generation;
       var msgs = el("ncw-messages");
       var div = document.createElement("div");
       div.className = "ncw-msg ncw-msg-" + job.side;
@@ -1186,6 +1416,8 @@
       var idx = 0;
       var built = "";
       function tick() {
+        if (generation !== _tw_generation)
+          return;
         if (idx >= words.length) {
           bubble.classList.remove("ncw-tw");
           bubble.innerHTML = format_message(raw, is_agent);
@@ -1282,6 +1514,13 @@
     transform: scale(1.08);
     filter: drop-shadow(0 6px 22px rgba(23, 67, 157, 0.65));
 }
+#ncw-bubble.ncw-has-unread {
+    animation: ncw-unread-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ncw-unread-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 16px rgba(23, 67, 157, 0.50)); }
+    50% { transform: scale(1.08); filter: drop-shadow(0 6px 24px rgba(229, 62, 62, 0.62)); }
+}
 #ncw-bubble img {
     width: 60px;
     height: 60px;
@@ -1292,8 +1531,9 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: 18px;
+    min-width: 18px;
     height: 18px;
+    padding: 0 4px;
     background: #e53e3e;
     color: #fff;
     font-size: 10px;
@@ -1303,6 +1543,79 @@
     align-items: center;
     justify-content: center;
 }
+
+/* \u2500\u2500 Tooltip \u2500\u2500 */
+#ncw-tooltip {
+    display: none;
+    opacity: 0;
+    transform: translateX(12px);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+    position: absolute;
+    bottom: 76px;
+    right: 0;
+    width: 260px;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(23,67,157,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    border: 1px solid rgba(33,88,199,0.12);
+    flex-direction: column;
+    overflow: hidden;
+}
+#ncw-tooltip::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    right: 20px;
+    width: 16px;
+    height: 8px;
+    background: #fff;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    filter: drop-shadow(0 2px 2px rgba(23,67,157,0.10));
+}
+#ncw-tooltip-kicker {
+    background: linear-gradient(135deg, #0b2b72 0%, #2158c7 60%, #16A37F 100%);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    padding: 8px 14px 7px;
+}
+#ncw-tooltip-body {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #1a2540;
+    padding: 10px 14px 4px;
+    margin: 0;
+}
+#ncw-tooltip-cta {
+    margin: 8px 14px 12px;
+    padding: 7px 14px;
+    background: linear-gradient(90deg, #2158c7, #16A37F);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: opacity 0.15s;
+    align-self: flex-start;
+}
+#ncw-tooltip-cta:hover { opacity: 0.88; }
+#ncw-tooltip-dismiss {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+#ncw-tooltip-dismiss:hover { color: #fff; }
 
 /* \u2500\u2500 Panel \u2500\u2500 */
 #ncw-panel {
@@ -1366,7 +1679,7 @@
     text-overflow: ellipsis;
     margin-top: 1px;
 }
-#ncw-font-btn, #ncw-max-btn, #ncw-min-btn {
+#ncw-font-btn, #ncw-max-btn, #ncw-min-btn, #ncw-close-btn {
     width: 28px;
     height: 28px;
     border: none;
@@ -1379,8 +1692,8 @@
     flex-shrink: 0;
     transition: background 0.15s;
 }
-#ncw-font-btn:hover, #ncw-max-btn:hover, #ncw-min-btn:hover { background: rgba(255,255,255,0.28); }
-#ncw-max-btn svg, #ncw-min-btn svg {
+#ncw-font-btn:hover, #ncw-max-btn:hover, #ncw-min-btn:hover, #ncw-close-btn:hover { background: rgba(255,255,255,0.28); }
+#ncw-max-btn svg, #ncw-min-btn svg, #ncw-close-btn svg {
     width: 14px;
     height: 14px;
     stroke: #fff;
@@ -1795,6 +2108,68 @@
 .ncw-verify-success strong { color: #22543d; }
 
 /* \u2500\u2500 Footer \u2500\u2500 */
+#ncw-nexy-sticky {
+    flex-shrink: 0;
+    padding: 8px 12px 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 35%);
+}
+#ncw-nexy-connect-btn {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 11px;
+    border: 1px solid #bfd0ff;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #eef4ff 0%, #f4f0ff 100%);
+    color: #173f94;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(33, 88, 199, 0.12);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+#ncw-nexy-connect-btn:hover {
+    transform: translateY(-1px);
+    border-color: #8eabf5;
+    box-shadow: 0 6px 18px rgba(33, 88, 199, 0.18);
+}
+#ncw-nexy-mark {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2158c7 0%, #6846c7 100%);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+}
+#ncw-nexy-copy {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1px;
+}
+#ncw-nexy-copy strong {
+    font-size: calc(var(--ncw-fs) - 0.5px);
+    line-height: 1.25;
+}
+#ncw-nexy-copy small {
+    color: #5d6f99;
+    font-size: calc(var(--ncw-fs) - 3px);
+    line-height: 1.25;
+}
+#ncw-nexy-arrow {
+    flex-shrink: 0;
+    color: #6846c7;
+    font-size: 18px;
+    font-weight: 700;
+}
 #ncw-footer {
     border-top: 1px solid #edf2ff;
     flex-shrink: 0;
@@ -1977,4 +2352,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.UQRHSYZR.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.4I6MA5GO.js.map

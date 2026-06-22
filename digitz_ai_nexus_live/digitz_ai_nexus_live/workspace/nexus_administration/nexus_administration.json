@@ -29,6 +29,14 @@
  "quick_lists": [],
  "roles": [],
  "sequence_id": 7.0,
- "shortcuts": [],
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Website Widgets",
+   "link_to": "Nexus Website Widget",
+   "type": "DocType"
+  }
+ ],
  "title": "Nexus Administration"
 }

@@ -33,6 +33,9 @@ class NexusLiveConsole {
 		this._last_msg_map   = {};
 		// Conversations with unread new messages — blink until user opens them
 		this._pending_attention = new Set();
+		this._conversation_refresh_timer = null;
+		this._panel_refresh_interval = null;
+		this._panel_refresh_in_flight = false;
 	}
 
 	async init() {
@@ -89,6 +92,22 @@ class NexusLiveConsole {
 		frappe.realtime.on('nexus_escalation_claimed', function(data) {
 			me.on_escalation_claimed(data);
 		});
+		frappe.realtime.on('nexus_live_message', function(data) {
+			me.on_live_message(data);
+		});
+	}
+
+	on_live_message(data) {
+		if (!data || !data.conversation_id) return;
+
+		if (this.panel_open && data.conversation_id === this.panel_conv_id) {
+			this._append_panel_message(data);
+		} else {
+			this._pending_attention.add(data.conversation_id);
+		}
+
+		clearTimeout(this._conversation_refresh_timer);
+		this._conversation_refresh_timer = setTimeout(() => this.load_conversations(), 250);
 	}
 
 	on_escalation_alert(data) {
@@ -568,6 +587,7 @@ class NexusLiveConsole {
 			this.body.find('#nep-overlay').html(this._panel_html(detail));
 			this._bind_panel_events(detail);
 			this._subscribe_panel_realtime(conversation_id);
+			this._start_panel_message_refresh();
 			// Scroll history to the latest message
 			const $hist = this.body.find('#nep-history');
 			$hist.scrollTop($hist[0].scrollHeight);
@@ -611,7 +631,7 @@ class NexusLiveConsole {
 				: frappe.utils.escape_html(st);
 			const time = m.message_time ? frappe.datetime.prettyDate(m.message_time) : '';
 			return `
-				<div class="nep-msg ${cls}">
+				<div class="nep-msg ${cls}" data-message-id="${frappe.utils.escape_html(m.name || '')}">
 					<div class="nep-msg-meta">
 						<span class="nep-msg-sender">${sender}</span>
 						<span class="nep-msg-time">${time}</span>
@@ -641,7 +661,7 @@ class NexusLiveConsole {
 					? (frappe.utils.escape_html(claimed_nick || st))
 					: frappe.utils.escape_html(st);
 				const time = m.message_time ? frappe.datetime.prettyDate(m.message_time) : '';
-				return `<div class="nep-msg ${cls}">
+				return `<div class="nep-msg ${cls}" data-message-id="${frappe.utils.escape_html(m.name || '')}">
 					<div class="nep-msg-meta">
 						<span class="nep-msg-sender">${sender}</span>
 						<span class="nep-msg-time">${time}</span>
@@ -659,7 +679,7 @@ class NexusLiveConsole {
 					? (frappe.utils.escape_html(claimed_nick || st))
 					: frappe.utils.escape_html(st);
 				const time = m.message_time ? frappe.datetime.prettyDate(m.message_time) : '';
-				return `<div class="nep-msg ${cls}">
+				return `<div class="nep-msg ${cls}" data-message-id="${frappe.utils.escape_html(m.name || '')}">
 					<div class="nep-msg-meta">
 						<span class="nep-msg-sender">${sender}</span>
 						<span class="nep-msg-time">${time}</span>
@@ -850,24 +870,6 @@ class NexusLiveConsole {
 		} else {
 			frappe.realtime.emit('task_subscribe', conversation_id);
 		}
-
-		const me = this;
-		frappe.realtime.on('nexus_chat_response', function(data) {
-			if (!me.panel_open || data.conversation_id !== me.panel_conv_id) return;
-			// Visitor sent a message while escalated — add to history
-			if (data.response_type === 'visitor_message') {
-				me._append_panel_message({
-					sender_type: data.sender_type || 'Visitor',
-					message: data.message,
-				});
-			} else if (data.response_type === 'message' && data.sender_type === 'Human Agent') {
-				me._append_panel_message({
-					sender_type: 'Human Agent',
-					message: data.message,
-					sender_name: data.sender_name,
-				});
-			}
-		});
 	}
 
 	_append_panel_message(msg) {
@@ -878,11 +880,16 @@ class NexusLiveConsole {
 			: 'nep-msg-ai';
 		const sender = frappe.utils.escape_html(msg.sender_name || st);
 		const $hist  = this.body.find('#nep-history');
+		if (msg.name && $hist.find('.nep-msg').filter(function() {
+			return $(this).attr('data-message-id') === msg.name;
+		}).length) return;
+		$hist.find('.nep-empty-history').remove();
+		const display_time = msg.message_time ? frappe.datetime.prettyDate(msg.message_time) : 'just now';
 		const $msg   = $(`
-			<div class="nep-msg ${cls} nep-msg-flash">
+			<div class="nep-msg ${cls} nep-msg-flash" data-message-id="${frappe.utils.escape_html(msg.name || '')}">
 				<div class="nep-msg-meta">
 					<span class="nep-msg-sender">${sender}</span>
-					<span class="nep-msg-time">just now</span>
+					<span class="nep-msg-time">${frappe.utils.escape_html(display_time)}</span>
 				</div>
 				<div class="nep-msg-bubble">${frappe.utils.escape_html(msg.message)}</div>
 			</div>
@@ -895,6 +902,29 @@ class NexusLiveConsole {
 		// Do not blink — the panel is already open, the user is watching this conversation
 	}
 
+	_start_panel_message_refresh() {
+		clearInterval(this._panel_refresh_interval);
+		this._panel_refresh_interval = setInterval(() => this._refresh_panel_messages(), 3000);
+	}
+
+	async _refresh_panel_messages() {
+		if (!this.panel_open || !this.panel_conv_id || this._panel_refresh_in_flight) return;
+		const conversation_id = this.panel_conv_id;
+		this._panel_refresh_in_flight = true;
+		try {
+			const r = await frappe.call({
+				method: 'digitz_ai_nexus_live.api.live.get_conversation_detail',
+				args: { conversation_id },
+			});
+			if (!this.panel_open || this.panel_conv_id !== conversation_id) return;
+			((r.message || {}).messages || []).forEach(message => this._append_panel_message(message));
+		} catch(e) {
+			// Realtime remains primary; the next interval retries reconciliation.
+		} finally {
+			this._panel_refresh_in_flight = false;
+		}
+	}
+
 	async _panel_send() {
 		const $input = this.body.find('#nep-input');
 		const message = $input.val().trim();
@@ -902,12 +932,12 @@ class NexusLiveConsole {
 		$input.val('').prop('disabled', true);
 		this.body.find('#nep-send-btn').prop('disabled', true);
 		try {
-			await frappe.call({
+			const r = await frappe.call({
 				method: 'digitz_ai_nexus_live.api.agent_console.agent_send_message',
 				args: { conversation_id: this.panel_conv_id, message },
 			});
-			const nick = this.agent_context ? this.agent_context.nickname : 'Agent';
-			this._append_panel_message({ sender_type: 'Human Agent', message, sender_name: nick });
+			const saved = (r.message || {}).message;
+			if (saved) this._append_panel_message(saved);
 		} catch(e) {
 			frappe.show_alert({ message: 'Failed to send message.', indicator: 'red' });
 		} finally {
@@ -921,6 +951,9 @@ class NexusLiveConsole {
 		this.panel_open    = false;
 		this.panel_conv_id = null;
 		this.body.find('#nep-overlay').remove();
+		clearInterval(this._panel_refresh_interval);
+		this._panel_refresh_interval = null;
+		this._panel_refresh_in_flight = false;
 		// Unbind panel-specific handlers
 		this.body.off('click', '#nep-close');
 		this.body.off('click', '#nep-claim-btn');

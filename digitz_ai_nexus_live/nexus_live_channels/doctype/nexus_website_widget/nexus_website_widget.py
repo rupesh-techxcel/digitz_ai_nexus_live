@@ -1,4 +1,5 @@
 import json
+import re
 from urllib.parse import urlparse
 
 import frappe
@@ -6,38 +7,78 @@ from frappe.model.document import Document
 
 
 class NexusWebsiteWidget(Document):
-	pass
+	def validate(self):
+		self._auto_generate_widget_code()
+		self._sync_allowed_domains_json()
 
+	def _auto_generate_widget_code(self):
+		if not self.widget_code and self.widget_name:
+			slug = re.sub(r"[^a-zA-Z0-9]+", "-", self.widget_name).strip("-").upper()
+			self.widget_code = slug[:50]
+
+	def _sync_allowed_domains_json(self):
+		"""Keep allowed_domains_json in sync with the child table."""
+		if not (hasattr(self, "allowed_domains") and self.allowed_domains):
+			return
+		origins = []
+		for row in self.allowed_domains:
+			if row.enabled and row.domain:
+				normalized = normalize_origin(row.domain)
+				if normalized:
+					origins.append(normalized)
+		self.allowed_domains_json = json.dumps(origins, indent=2)
+
+
+# ── Helpers used by embed.py and api/live.py ──────────────────────────────────
 
 def normalize_origin(origin):
 	if not origin:
 		return None
-
 	parsed = urlparse(origin)
 	if not parsed.scheme or not parsed.netloc:
 		return None
-
 	return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
 
+def is_local_origin(origin):
+	"""Return True for localhost / 127.x.x.x / ::1 — always allowed without a domain entry."""
+	if not origin:
+		return False
+	host = urlparse(origin).hostname or ""
+	return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0") or host.startswith("127.")
+
+
 def get_allowed_origins(widget):
+	"""
+	Return the list of permitted origins for a widget doc.
+	Reads from the child table when loaded; falls back to allowed_domains_json
+	for records that pre-date the child-table migration.
+	"""
+	table_origins = []
+	if hasattr(widget, "allowed_domains") and widget.allowed_domains:
+		for row in widget.allowed_domains:
+			if getattr(row, "enabled", 1) and row.domain:
+				normalized = normalize_origin(row.domain)
+				if normalized:
+					table_origins.append(normalized)
+		if table_origins:
+			return table_origins
+
+	# Fallback: JSON field (old records / records saved before migration)
 	raw = (widget.allowed_domains_json or "").strip()
 	if not raw:
 		return []
-
 	try:
 		value = json.loads(raw)
 	except Exception:
 		return []
-
 	if isinstance(value, list):
 		origins = value
 	elif isinstance(value, dict):
 		origins = value.get("allowed_origins") or value.get("allowed_domains") or []
 	else:
 		origins = []
-
-	return [origin for origin in (normalize_origin(item) for item in origins) if origin]
+	return [o for o in (normalize_origin(item) for item in origins) if o]
 
 
 def get_external_widget(widget_code, origin=None):
@@ -56,7 +97,7 @@ def get_external_widget(widget_code, origin=None):
 
 	widget = frappe.get_doc("Nexus Website Widget", row.name)
 	allowed_origins = get_allowed_origins(widget)
-	if "*" not in allowed_origins and origin not in allowed_origins:
+	if not is_local_origin(origin) and "*" not in allowed_origins and origin not in allowed_origins:
 		return None
 
 	channel = frappe.get_doc("Nexus Live Channel", widget.channel)
@@ -72,7 +113,6 @@ def get_external_widget(widget_code, origin=None):
 
 
 def get_widget_for_api_call(widget_code):
-	"""Lightweight validation for API call handshake. No origin re-check."""
 	if not widget_code:
 		return None
 	row = frappe.db.get_value(

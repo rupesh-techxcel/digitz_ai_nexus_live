@@ -2,15 +2,23 @@ import frappe
 from frappe.utils import cstr, random_string
 import re
 
+from digitz_ai_nexus.services.tenant_context import get_user_context
+
 
 @frappe.whitelist()
 def get_wizard_data(tenant=None):
     """Return all initial data needed for the Channel Setup Wizard."""
+    user_context = get_user_context()
     tenants = frappe.get_all(
         "Nexus Tenant",
         fields=["name", "tenant_name"],
         order_by="tenant_name asc",
     )
+    tenant_names = {row["name"] for row in tenants}
+    active_tenant = user_context.active_tenant if user_context else ""
+    default_tenant = active_tenant if active_tenant in tenant_names else ""
+    if not default_tenant and tenants:
+        default_tenant = tenants[0]["name"]
     channel_filters = {}
     if tenant:
         channel_filters["tenant"] = tenant
@@ -35,7 +43,7 @@ def get_wizard_data(tenant=None):
     identity_profiles = frappe.get_all(
         "Nexus Identity Profile",
         filters=ip_filters,
-        fields=["name", "profile_name", "title"],
+        fields=["name", "profile_name", "title", "tenant"],
         order_by="profile_name asc",
     )
 
@@ -108,6 +116,7 @@ def get_wizard_data(tenant=None):
         )
 
     return {
+        "default_tenant":     default_tenant,
         "tenants":           tenants,
         "channels":          channels,
         "profiles":          profiles,
@@ -142,6 +151,7 @@ def save_category(
 ):
     """Create a new Nexus Chat Category."""
     frappe.only_for("System Manager")
+    _validate_channel_tenant(channel, tenant)
 
     slug = category_label.lower().replace(" ", "-").replace("/", "-")
     base_code = re.sub(r"[^a-z0-9-]+", "", slug).strip("-")[:55] or "category"
@@ -194,6 +204,7 @@ def save_agent_profile(
     Access is governed by: Identity Profile → identity_mappings → Knowledge Profile → Access Categories.
     """
     frappe.only_for("System Manager")
+    _validate_channel_tenant(channel, tenant)
 
     agent_code = _slugify(agent_name)
     if frappe.db.exists("Nexus AI Agent Profile", {"agent_code": agent_code}):
@@ -223,6 +234,7 @@ def save_agent_profile(
 
 @frappe.whitelist()
 def save_route(
+    tenant,
     channel,
     chat_category,
     ai_agent_profile,
@@ -248,9 +260,33 @@ def save_route(
             identity_profiles = []
 
     identity_profiles = [p for p in (identity_profiles or []) if p]
-    category_channel = frappe.db.get_value("Nexus Chat Category", chat_category, "channel")
+    _validate_channel_tenant(channel, tenant)
+    category_data = frappe.db.get_value(
+        "Nexus Chat Category", chat_category, ["channel", "tenant"], as_dict=True
+    )
+    category_channel = category_data.channel if category_data else None
     if not category_channel:
         frappe.throw("Selected chat category is not linked to a channel.")
+
+    channel_tenant = frappe.db.get_value("Nexus Live Channel", category_channel, "tenant")
+    if channel != category_channel:
+        frappe.throw("Selected chat category does not belong to the selected channel.")
+    if category_data.tenant != channel_tenant:
+        frappe.throw("Selected chat category and channel belong to different tenants.")
+
+    profile_tenant = frappe.db.get_value("Nexus AI Agent Profile", ai_agent_profile, "tenant")
+    if profile_tenant != channel_tenant:
+        frappe.throw("Selected agent profile does not belong to the selected tenant.")
+
+    if identity_profiles:
+        valid_profiles = set(frappe.get_all(
+            "Nexus Identity Profile",
+            filters={"name": ["in", identity_profiles], "tenant": channel_tenant},
+            pluck="name",
+        ))
+        invalid_profiles = sorted(set(identity_profiles) - valid_profiles)
+        if invalid_profiles:
+            frappe.throw("One or more selected identity profiles do not belong to the selected tenant.")
 
     # Load existing or create new
     if existing_route and frappe.db.exists("Nexus Category Identity Route", existing_route):
@@ -304,3 +340,11 @@ def _slugify(text):
     text = cstr(text).lower().strip()
     text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
     return text[:60] or "profile"
+
+
+def _validate_channel_tenant(channel, tenant):
+    channel_tenant = frappe.db.get_value("Nexus Live Channel", channel, "tenant")
+    if not channel_tenant:
+        frappe.throw("Selected channel was not found.")
+    if channel_tenant != tenant:
+        frappe.throw("Selected channel does not belong to the selected tenant.")

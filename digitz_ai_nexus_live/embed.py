@@ -48,7 +48,7 @@ def ensure_external_widget(
 	doc.theme = theme
 	doc.primary_color = primary_color
 	doc.position = "Bottom Right"
-	doc.allowed_domains_json = frappe.as_json(allowed_origins)
+	doc.set("allowed_domains", [{"domain": o, "enabled": 1} for o in allowed_origins])
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()
 	return doc.name

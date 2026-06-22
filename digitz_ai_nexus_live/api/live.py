@@ -249,16 +249,22 @@ def start_chat(payload=None):
     except Exception:
         result["show_correlated_on_desk"] = False
 
-    # Attach the caller_token so guest widgets can authenticate future detail fetches
+    # Attach the token based on the conversation mode, not the HTTP session. A desk
+    # user can legitimately exercise the public widget with roles=["Guest"].
     conv_id = result.get("conversation_id")
-    if conv_id and frappe.session.user in ("Guest", None, ""):
-        token = frappe.db.get_value(
+    if conv_id:
+        conversation_access = frappe.db.get_value(
             "Nexus Live Conversation",
             {"conversation_id": conv_id},
-            "caller_token",
+            ["user_type", "caller_token"],
+            as_dict=True,
         )
-        if token:
-            result["caller_token"] = token
+        if (
+            conversation_access
+            and conversation_access.user_type == "Guest"
+            and conversation_access.caller_token
+        ):
+            result["caller_token"] = conversation_access.caller_token
 
     return result
 
@@ -289,6 +295,41 @@ def send_chat_message(conversation_id=None, payload=None):
         conversation_id=conversation_id,
         payload=payload,
     )
+
+
+@frappe.whitelist(allow_guest=True)
+def close_chat(conversation_id=None, caller_token=None, widget_code=None):
+    """Close a visitor conversation and release its active agent session."""
+    if not conversation_id:
+        frappe.throw("Conversation ID is required.")
+
+    validate_widget_origin(widget_code)
+    check_rate_limit(
+        f"close_chat:{get_caller_ip()}",
+        max_calls=20,
+        window_seconds=60,
+        throw_message="Too many close requests. Please slow down.",
+    )
+
+    conversation = get_conversation(conversation_id)
+    if not conversation:
+        return {"status": "closed", "conversation_id": conversation_id}
+
+    if conversation.status == "Closed":
+        return {"status": "closed", "conversation_id": conversation.conversation_id}
+
+    if conversation.user_type == "Guest":
+        if not caller_token or caller_token != conversation.caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+
+    from digitz_ai_nexus_live.services.live_chat_service import _close_conversation_gracefully
+
+    _close_conversation_gracefully(
+        conversation,
+        farewell="This conversation was closed by the visitor.",
+    )
+
+    return {"status": "closed", "conversation_id": conversation.conversation_id}
 
 
 def _get_human_assignment(user):

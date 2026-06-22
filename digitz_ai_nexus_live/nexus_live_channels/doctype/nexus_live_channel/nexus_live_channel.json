@@ -12,7 +12,6 @@
   "channel_type",
   "enabled",
   "default_agent",
-  "public_access",
   "requires_visitor_email",
   "description",
   "column_break_lpkp",
@@ -59,12 +58,6 @@
    "fieldtype": "Link",
    "label": "Default Agent",
    "options": "Nexus AI Agent Profile"
-  },
-  {
-   "default": "1",
-   "fieldname": "public_access",
-   "fieldtype": "Check",
-   "label": "Public Access"
   },
   {
    "default": "0",

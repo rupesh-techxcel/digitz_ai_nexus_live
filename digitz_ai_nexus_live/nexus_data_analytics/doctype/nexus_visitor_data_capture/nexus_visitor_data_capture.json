@@ -1,0 +1,198 @@
+{
+  "actions": [],
+  "autoname": "hash",
+  "creation": "2026-06-20 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "capture_key",
+    "visitor_name",
+    "email",
+    "normalized_email",
+    "section_context",
+    "tenant",
+    "conversation",
+    "channel",
+    "chat_category",
+    "collection_context",
+    "selected_option",
+    "collection_reason",
+    "source_event",
+    "reference_doctype",
+    "reference_name",
+    "section_governance",
+    "email_verified",
+    "consent_status",
+    "consent_scope",
+    "captured_on",
+    "last_seen_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "capture_key",
+      "fieldtype": "Data",
+      "label": "Capture Key",
+      "hidden": 1,
+      "read_only": 1,
+      "unique": 1,
+      "no_copy": 1
+    },
+    {
+      "fieldname": "visitor_name",
+      "fieldtype": "Data",
+      "label": "Visitor Name",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email ID",
+      "options": "Email",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "normalized_email",
+      "fieldtype": "Data",
+      "label": "Normalized Email",
+      "hidden": 1,
+      "read_only": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "section_context",
+      "fieldtype": "Section Break",
+      "label": "Collection Context"
+    },
+    {
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "label": "Tenant",
+      "options": "Nexus Tenant",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation"
+    },
+    {
+      "fieldname": "channel",
+      "fieldtype": "Link",
+      "label": "Channel",
+      "options": "Nexus Live Channel"
+    },
+    {
+      "fieldname": "chat_category",
+      "fieldtype": "Link",
+      "label": "Selected Chat Option",
+      "options": "Nexus Chat Category"
+    },
+    {
+      "fieldname": "collection_context",
+      "fieldtype": "Select",
+      "label": "Collection Context",
+      "options": "Chat Start\nIdentity Verification\nKnowledge Gap Follow-up\nContact Request\nOther",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "selected_option",
+      "fieldtype": "Data",
+      "label": "Selected Option"
+    },
+    {
+      "fieldname": "collection_reason",
+      "fieldtype": "Small Text",
+      "label": "Collection Reason",
+      "reqd": 1
+    },
+    {
+      "fieldname": "source_event",
+      "fieldtype": "Data",
+      "label": "Source Event",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_doctype",
+      "fieldtype": "Link",
+      "label": "Reference Type",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_name",
+      "fieldtype": "Dynamic Link",
+      "label": "Reference",
+      "options": "reference_doctype",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_governance",
+      "fieldtype": "Section Break",
+      "label": "Verification And Purpose"
+    },
+    {
+      "fieldname": "email_verified",
+      "fieldtype": "Check",
+      "label": "Email Verified",
+      "default": "0",
+      "read_only": 1
+    },
+    {
+      "fieldname": "consent_status",
+      "fieldtype": "Select",
+      "label": "Consent Status",
+      "options": "Not Recorded\nService Requested\nExplicitly Provided\nWithdrawn",
+      "default": "Not Recorded",
+      "reqd": 1
+    },
+    {
+      "fieldname": "consent_scope",
+      "fieldtype": "Data",
+      "label": "Permitted Use",
+      "description": "Purpose for which this email may be used. This does not imply marketing permission."
+    },
+    {
+      "fieldname": "captured_on",
+      "fieldtype": "Datetime",
+      "label": "Captured On",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "last_seen_on",
+      "fieldtype": "Datetime",
+      "label": "Last Seen On",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 0,
+  "links": [],
+  "modified": "2026-06-20 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Data Analytics",
+  "name": "Nexus Visitor Data Capture",
+  "naming_rule": "Random",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "captured_on",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

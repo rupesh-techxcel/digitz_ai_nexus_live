@@ -10,16 +10,25 @@
     "widget_name",
     "channel",
     "widget_type",
+    "col_break_top",
     "enabled",
-    "section_contract",
     "contract_status",
     "knowledge_delivery_enabled",
+    "section_client",
+    "client_name",
+    "contact_email",
+    "col_break_client",
+    "notes",
+    "section_domains",
+    "allowed_domains",
+    "allowed_domains_json",
+    "section_appearance",
     "theme",
     "primary_color",
-    "welcome_text",
+    "col_break_appearance",
     "position",
-    "allowed_domains_json",
-    "section_embed_snippet",
+    "welcome_text",
+    "section_embed",
     "embed_snippet_html"
   ],
   "fields": [
@@ -28,20 +37,23 @@
       "fieldtype": "Data",
       "label": "Widget Code",
       "reqd": 1,
-      "unique": 1
+      "unique": 1,
+      "description": "Auto-generated from Widget Name. Used in the embed snippet."
     },
     {
       "fieldname": "widget_name",
       "fieldtype": "Data",
       "label": "Widget Name",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Friendly name — e.g. Acme Corp Support Chat"
     },
     {
       "fieldname": "channel",
       "fieldtype": "Link",
       "label": "Channel",
       "options": "Nexus Live Channel",
-      "reqd": 1
+      "reqd": 1,
+      "description": "The Nexus Live Channel that will handle conversations from this widget."
     },
     {
       "fieldname": "widget_type",
@@ -51,30 +63,85 @@
       "default": "Combined"
     },
     {
+      "fieldname": "col_break_top",
+      "fieldtype": "Column Break"
+    },
+    {
       "fieldname": "enabled",
       "fieldtype": "Check",
       "label": "Enabled",
-      "default": 1
-    },
-    {
-      "fieldname": "section_contract",
-      "fieldtype": "Section Break",
-      "label": "Widget Contract"
+      "default": 1,
+      "description": "Uncheck to immediately stop the widget from loading on all registered sites."
     },
     {
       "fieldname": "contract_status",
       "fieldtype": "Select",
-      "label": "Contract Status",
+      "label": "Access Status",
       "options": "Draft\nActive\nSuspended\nRevoked",
       "default": "Active",
-      "in_list_view": 1
+      "in_list_view": 1,
+      "description": "Active — widget works normally. Suspended / Revoked — widget loads but all API calls are rejected."
     },
     {
       "fieldname": "knowledge_delivery_enabled",
       "fieldtype": "Check",
-      "label": "Knowledge Delivery Enabled",
+      "label": "AI Responses Enabled",
       "default": 1,
-      "description": "When unchecked, widget still loads but AI knowledge retrieval is disabled."
+      "description": "Uncheck to pause AI responses while keeping the widget visible (e.g. maintenance window)."
+    },
+    {
+      "fieldname": "section_client",
+      "fieldtype": "Section Break",
+      "label": "Client Details"
+    },
+    {
+      "fieldname": "client_name",
+      "fieldtype": "Data",
+      "label": "Client / Company Name",
+      "description": "The business this widget is registered for."
+    },
+    {
+      "fieldname": "contact_email",
+      "fieldtype": "Data",
+      "label": "Contact Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "col_break_client",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Internal Notes",
+      "description": "Admin-only notes — not shown to the client."
+    },
+    {
+      "fieldname": "section_domains",
+      "fieldtype": "Section Break",
+      "label": "Allowed Domains",
+      "description": "Add every domain where this widget is permitted to load. Requests from any other origin will be rejected."
+    },
+    {
+      "fieldname": "allowed_domains",
+      "fieldtype": "Table",
+      "label": "Allowed Domains",
+      "options": "Nexus Widget Allowed Domain"
+    },
+    {
+      "fieldname": "allowed_domains_json",
+      "fieldtype": "Code",
+      "label": "Allowed Domains JSON",
+      "options": "JSON",
+      "hidden": 1,
+      "read_only": 1,
+      "description": "Auto-computed from the table above. Do not edit manually."
+    },
+    {
+      "fieldname": "section_appearance",
+      "fieldtype": "Section Break",
+      "label": "Appearance",
+      "collapsible": 1
     },
     {
       "fieldname": "theme",
@@ -85,29 +152,28 @@
     },
     {
       "fieldname": "primary_color",
-      "fieldtype": "Data",
+      "fieldtype": "Color",
       "label": "Primary Color"
     },
     {
-      "fieldname": "welcome_text",
-      "fieldtype": "Small Text",
-      "label": "Welcome Text"
+      "fieldname": "col_break_appearance",
+      "fieldtype": "Column Break"
     },
     {
       "fieldname": "position",
       "fieldtype": "Select",
-      "label": "Position",
+      "label": "Widget Position",
       "options": "Bottom Right\nBottom Left\nInline",
       "default": "Bottom Right"
     },
     {
-      "fieldname": "allowed_domains_json",
-      "fieldtype": "Code",
-      "label": "Allowed Domains JSON",
-      "options": "JSON"
+      "fieldname": "welcome_text",
+      "fieldtype": "Small Text",
+      "label": "Welcome Text",
+      "description": "Optional greeting shown when the widget first opens."
     },
     {
-      "fieldname": "section_embed_snippet",
+      "fieldname": "section_embed",
       "fieldtype": "Section Break",
       "label": "Embed Snippet"
     },
@@ -120,7 +186,7 @@
   "index_web_pages_for_search": 1,
   "istable": 0,
   "links": [],
-  "modified": "2026-06-20 00:00:00.000000",
+  "modified": "2026-06-22 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Nexus Live Channels",
   "name": "Nexus Website Widget",
@@ -142,6 +208,24 @@
   ],
   "sort_field": "modified",
   "sort_order": "DESC",
-  "states": [],
+  "states": [
+    {
+      "color": "Green",
+      "title": "Active"
+    },
+    {
+      "color": "Yellow",
+      "title": "Draft"
+    },
+    {
+      "color": "Orange",
+      "title": "Suspended"
+    },
+    {
+      "color": "Red",
+      "title": "Revoked"
+    }
+  ],
+  "title_field": "widget_name",
   "track_changes": 1
 }

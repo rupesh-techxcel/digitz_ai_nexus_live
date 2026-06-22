@@ -90,7 +90,6 @@ class TestLiveQA(FrappeTestCase):
         qa_channel.channel_type = "Website Q&A"
         qa_channel.enabled = 1
         qa_channel.default_agent = self.agent_name
-        qa_channel.public_access = 1
         qa_channel.agent_based = 0
         qa_channel.insert(ignore_permissions=True)
 

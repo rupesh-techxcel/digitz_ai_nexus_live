@@ -76,7 +76,6 @@ def get_channels():
             "channel_name",
             "channel_code",
             "channel_type",
-            "public_access",
             "agent_based",
             "default_agent",
             "enabled",

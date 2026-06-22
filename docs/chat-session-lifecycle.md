@@ -6,7 +6,7 @@ User stories, DocType references, and function calls for the chat startup and me
 
 ## User Story 1 — Visitor Opens Chat and Sees Categories
 
-**Story:** A visitor lands on the website, opens the chat widget, and sees a list of available chat categories (e.g. "General Support", "Product Enquiry").
+**Story:** A visitor lands on the website, opens the chat widget, and sees a list of available purpose-specific categories (e.g. "Product Enquiry", "Demo Guidance").
 
 **Function call:**
 
@@ -35,9 +35,9 @@ GET api/method/digitz_ai_nexus_live.api.live.get_channel_categories
     "identity_type": "Public",
     "categories": [
         {
-            "name": "GENERAL-SUPPORT",
-            "category_code": "GENERAL-SUPPORT",
-            "category_label": "General Support",
+            "name": "PRODUCT-ENQUIRY",
+            "category_code": "PRODUCT-ENQUIRY",
+            "category_label": "Product Enquiry",
             "display_order": 1
         }
     ]

@@ -320,7 +320,6 @@ Defines an entry point for conversations.
 | `channel_type` | Select | Website Q&A / Website Chat / Desk / Portal / API / WhatsApp |
 | `enabled` | Check | |
 | `default_agent` | Link → Nexus Live Agent | Fallback when routing cannot find a role-matched agent |
-| `public_access` | Check | Forces `force_public_only` on all queries through this channel |
 | `requires_visitor_email` | Check | Enforces email collection before conversation starts |
 | `agent_based` | Check | Whether agent routing logic applies |
 

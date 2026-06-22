@@ -62,7 +62,14 @@ def validate_widget_origin(widget_code):
         get_widget_for_api_call,
         get_allowed_origins,
         normalize_origin,
+        is_local_origin,
     )
+
+    normalized = normalize_origin(origin)
+
+    # Always allow requests from localhost / 127.x.x.x in any environment
+    if is_local_origin(normalized):
+        return
 
     widget_row = get_widget_for_api_call(widget_code)
     if not widget_row:
@@ -73,7 +80,6 @@ def validate_widget_origin(widget_code):
     if not allowed or "*" in allowed:
         return
 
-    normalized = normalize_origin(origin)
     if normalized not in allowed:
         frappe.throw(
             "This widget is not authorized for your origin.",

@@ -4,6 +4,7 @@ CHAT_RESPONSE_EVENT = "nexus_chat_response"
 CHAT_TYPING_EVENT = "nexus_chat_typing"
 ESCALATION_ALERT_EVENT = "nexus_escalation_alert"
 ESCALATION_CLAIMED_EVENT = "nexus_escalation_claimed"
+LIVE_MESSAGE_EVENT = "nexus_live_message"
 
 
 def publish_chat_response(conversation_id, data):
@@ -31,6 +32,34 @@ def publish_chat_error(conversation_id, error_message):
             "error": error_message,
         },
         task_id=conversation_id,
+    )
+
+
+def publish_live_message(conversation, message):
+    """Publish one persisted transcript message to subscribed console viewers."""
+    conversation_id = getattr(conversation, "conversation_id", None)
+    if not conversation_id:
+        return
+
+    sender_name = None
+    if message.sender_type == "Human Agent" and getattr(conversation, "human_agent", None):
+        sender_name = (
+            frappe.db.get_value("User", conversation.human_agent, "full_name")
+            or conversation.human_agent
+        )
+
+    frappe.publish_realtime(
+        event=LIVE_MESSAGE_EVENT,
+        message={
+            "conversation_id": conversation_id,
+            "name": message.name,
+            "sender_type": message.sender_type,
+            "sender_name": sender_name,
+            "message": message.message,
+            "message_time": str(message.message_time) if message.message_time else None,
+        },
+        task_id=conversation_id,
+        after_commit=True,
     )
 
 

@@ -68,17 +68,6 @@ def get_channel_name(channel_code_or_name=None):
     )
 
 
-def get_channel_visibility(channel_name):
-    if not channel_name:
-        return None
-
-    return frappe.db.get_value(
-        "Nexus Live Channel",
-        channel_name,
-        "public_access",
-    )
-
-
 def get_requested_agent(payload):
     payload = payload or {}
     return payload.get("agent") or payload.get("agent_code")

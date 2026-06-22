@@ -28,6 +28,7 @@ This app is the real-time conversation layer of the platform. It manages AI and 
 - **Escalation management** — trigger escalation based on confidence threshold, no-knowledge, or user request
 - **Experience bundles** — group Q&A and chat configuration into named experience deployments
 - **Analytics** — interaction logs, conversation outcomes, lead capture, and agent performance snapshots
+- **Visitor data analytics** — purpose-specific name and email capture with conversation context, verification, and permitted-use scope
 
 ---
 
@@ -96,6 +97,7 @@ Channels define the entry point for a conversation. Each channel can have routin
 | [DocType Reference](docs/doctypes.md) | All DocTypes with fields, autoname, and purpose |
 | [API Reference](docs/api-reference.md) | All whitelisted endpoints and payload contracts |
 | [Configuration](docs/configuration.md) | Experience bundles, channel setup, development commands |
+| [Nexus Data Analytics](docs/nexus-data-analytics.md) | Contextual visitor contact capture, feeds, deduplication, and permitted-use controls |
 
 ---
 

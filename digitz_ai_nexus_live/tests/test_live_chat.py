@@ -96,7 +96,6 @@ class TestLiveChat(FrappeTestCase):
         chat_channel.channel_type = "Website Chat"
         chat_channel.enabled = 1
         chat_channel.default_agent = self.agent_name
-        chat_channel.public_access = 1
         chat_channel.agent_based = 1
         chat_channel.insert(ignore_permissions=True)
 
@@ -107,7 +106,6 @@ class TestLiveChat(FrappeTestCase):
         qa_channel.channel_name = "Test Non Agent Q And A Channel"
         qa_channel.channel_type = "Website Q&A"
         qa_channel.enabled = 1
-        qa_channel.public_access = 1
         qa_channel.agent_based = 0
         qa_channel.insert(ignore_permissions=True)
 

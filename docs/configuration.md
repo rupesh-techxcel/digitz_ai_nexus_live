@@ -85,11 +85,10 @@ Knowledge access is configured via Identity Profiles (see Step 3), not on the AI
 
 | Flag | Effect |
 |---|---|
-| `public_access = True` | Forces `force_public_only` — only Public knowledge retrieved regardless of profile |
 | `agent_based = True` | Enables agent routing for Q&A channels; if False, queries use a direct profile lookup |
 
-For a public website widget set `public_access = True`.
-For internal desk channels set `public_access = False`.
+Public access is resolved from the visitor identity, category route, identity profile,
+and knowledge access policies rather than a channel-level flag.
 
 ---
 

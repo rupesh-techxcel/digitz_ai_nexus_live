@@ -158,7 +158,7 @@ frappe.pages['nexus_live_studio'].on_page_load = function (wrapper) {
             <div class="nlc-card-head">
                 <div>
                     <div class="nlc-card-title">${esc(ch.label)}</div>
-                    <div class="nlc-card-sub">${esc(ch.type)}${ch.public?' · Public':''}</div>
+                    <div class="nlc-card-sub">${esc(ch.type)}</div>
                 </div>
                 ${chip(ch.ready?'ready':'incomplete')}
             </div>

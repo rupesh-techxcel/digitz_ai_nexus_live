@@ -50,12 +50,6 @@ DEFAULT_LIVE_CHANNEL = {
 }
 
 
-DEFAULT_CHAT_CATEGORY = {
-    "category_code": "GENERAL-SUPPORT",
-    "category_label": "General Support",
-    "description": "Default public chat category for the governed chat workflow.",
-}
-
 DEFAULT_NICKNAME_POOL = (
     "Aria\nNova\nZara\nLyra\nSage\n"
     "Echo\nFinn\nMilo\nLuca\nOrion\n"
@@ -99,7 +93,7 @@ def seed_defaults():
     """
     Seeds all platform-level infrastructure on a fresh installation.
     Creates identity types, access governance, and a generic default tenant
-    with its channels, agent profile, identity profile, and routing.
+    with its channel, agent profile, and identity foundation.
     No DIGITZ or NEXUS-specific records are created here.
     """
     seed_identity_types()
@@ -107,11 +101,9 @@ def seed_defaults():
     tenant           = ensure_default_tenant()
     seed_default_access_governance(tenant=tenant)
     channel          = ensure_default_chat_channel(tenant)
-    category         = ensure_default_chat_category(channel, tenant)
     profile          = ensure_default_ai_agent_profile(channel, tenant=tenant)
-    identity_profile = ensure_default_identity_profile(tenant)
+    ensure_default_identity_profile(tenant)
 
-    ensure_default_category_route(channel, category, profile, identity_profile)
     ensure_tenant_configuration(tenant, channel)
 
     frappe.db.commit()
@@ -152,11 +144,9 @@ def seed_digitz_nexus_live_foundation():
     core_seed = seed_default_access_governance(tenant=tenant)
 
     channel          = ensure_default_chat_channel(tenant)
-    category         = ensure_default_chat_category(channel, tenant)
     profile          = ensure_default_ai_agent_profile(channel, tenant=tenant)
     identity_profile = ensure_default_identity_profile(tenant)
 
-    ensure_default_category_route(channel, category, profile, identity_profile)
     ensure_tenant_configuration(tenant, channel)
 
     frappe.db.commit()
@@ -168,7 +158,6 @@ def seed_digitz_nexus_live_foundation():
         "core_seed": core_seed,
         "tenant": tenant,
         "live_channel": channel,
-        "chat_category": category,
         "ai_agent_profile": profile,
         "identity_profile": identity_profile,
     }
@@ -225,38 +214,12 @@ def ensure_default_chat_channel(tenant):
     doc.channel_name         = DEFAULT_LIVE_CHANNEL["channel_name"]
     doc.channel_type         = DEFAULT_LIVE_CHANNEL["channel_type"]
     doc.enabled              = 1
-    doc.public_access        = 1
     doc.requires_visitor_email = 0
     doc.agent_based          = 0
     doc.description          = DEFAULT_LIVE_CHANNEL["description"]
     doc.save(ignore_permissions=True)
     return doc.name
 
-
-
-def ensure_default_chat_category(channel, tenant):
-    code     = DEFAULT_CHAT_CATEGORY["category_code"]
-    existing = frappe.db.get_value(
-        "Nexus Chat Category", {"category_code": code, "tenant": tenant}, "name"
-    )
-
-    if existing:
-        doc = frappe.get_doc("Nexus Chat Category", existing)
-    else:
-        doc = frappe.new_doc("Nexus Chat Category")
-        doc.category_code = code
-        doc.tenant        = tenant
-
-    doc.category_label             = DEFAULT_CHAT_CATEGORY["category_label"]
-    doc.channel                    = channel
-    doc.enabled                    = 1
-    doc.visibility                 = "External"
-    doc.identity_verification_mode = "None"
-    doc.allow_public_fallback      = 0
-    doc.display_order              = 10
-    doc.description                = DEFAULT_CHAT_CATEGORY["description"]
-    doc.save(ignore_permissions=True)
-    return doc.name
 
 
 def ensure_default_ai_agent_profile(channel, tenant=None):
@@ -322,37 +285,6 @@ def ensure_default_identity_profile(tenant=None):
     return doc.name
 
 
-
-
-def ensure_default_category_route(channel, category, profile, identity_profile=None):
-    existing = frappe.get_all(
-        "Nexus Category Identity Route",
-        filters={"channel": channel, "chat_category": category},
-        pluck="name",
-        limit_page_length=1,
-    )
-    if existing:
-        doc = frappe.get_doc("Nexus Category Identity Route", existing[0])
-    else:
-        doc = frappe.new_doc("Nexus Category Identity Route")
-        doc.channel       = channel
-        doc.chat_category = category
-
-    doc.ai_agent_profile = profile
-    doc.enabled          = 1
-    doc.priority         = 10
-    doc.description      = "Default route for website chat."
-
-    if identity_profile:
-        already_linked = any(
-            row.identity_profile == identity_profile
-            for row in (doc.identity_profiles or [])
-        )
-        if not already_linked:
-            doc.append("identity_profiles", {"identity_profile": identity_profile})
-
-    doc.save(ignore_permissions=True)
-    return doc.name
 
 
 def ensure_tenant_configuration(tenant, channel):

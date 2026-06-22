@@ -100,6 +100,18 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
 
     conversation.insert(ignore_permissions=True)
 
+    if conversation.visitor_email:
+        from digitz_ai_nexus_live.services.visitor_data_capture import capture_from_conversation
+
+        capture_from_conversation(
+            conversation,
+            collection_context="Chat Start",
+            collection_reason="Visitor identity supplied when the live chat session started.",
+            source_event="conversation_created",
+            consent_status="Service Requested",
+            consent_scope="Live chat service and conversation continuity",
+        )
+
     # Create a runtime agent profile instance to represent this session's persona.
     # Re-use the nickname already picked for the snapshot so both are consistent.
     if assigned_agent:
@@ -172,6 +184,10 @@ def add_message(
         conversation_doc.confidence = confidence
 
     conversation_doc.save(ignore_permissions=True)
+
+    from digitz_ai_nexus_live.services.chat_realtime import publish_live_message
+
+    publish_live_message(conversation_doc, msg)
 
     return msg
 

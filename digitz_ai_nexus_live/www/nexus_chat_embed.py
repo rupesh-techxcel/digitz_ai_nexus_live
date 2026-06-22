@@ -18,6 +18,7 @@ def get_context(context):
 	context.widget_name = "Nexus AI"
 	context.knowledge_delivery_enabled = 1
 	context.sitename = frappe.local.site
+	context.socketio_port = frappe.conf.socketio_port or 9000
 
 	config = get_external_widget(context.widget_code, context.parent_origin)
 	if not config:

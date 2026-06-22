@@ -160,7 +160,7 @@ When `true`, the `message` field contains the `PUBLIC_IDENTITY_FALLBACK` offer t
     "message": "Nice to meet you, Alex! To help direct your query, please select a topic from the options below.",
     "agent_name": "Aria",
     "categories": [
-        { "category_code": "GENERAL-SUPPORT", "category_label": "General Support", "display_order": 1 }
+        { "category_code": "PRODUCT-ENQUIRY", "category_label": "Product Enquiry", "display_order": 1 }
     ]
 }
 ```
@@ -196,7 +196,7 @@ Fired to human agents when a new escalation is created. Each eligible agent rece
 {
     "conversation_id": "ABC123DEF456",
     "visitor_name": "John",
-    "chat_category": "GENERAL-SUPPORT"
+    "chat_category": "PRODUCT-ENQUIRY"
 }
 ```
 
@@ -289,9 +289,9 @@ Returns the list of chat categories that the current visitor can use on the give
     "identity_type": "Public",
     "categories": [
         {
-            "name": "GENERAL-SUPPORT",
-            "category_code": "GENERAL-SUPPORT",
-            "category_label": "General Support",
+            "name": "PRODUCT-ENQUIRY",
+            "category_code": "PRODUCT-ENQUIRY",
+            "category_label": "Product Enquiry",
             "display_order": 1,
             "description": "...",
             "identity_verification_mode": "None",

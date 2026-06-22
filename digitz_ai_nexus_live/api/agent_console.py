@@ -146,13 +146,13 @@ def agent_send_message(conversation_id, message):
 
     nickname = _get_user_display_name(user)
 
-    msg = frappe.new_doc("Nexus Live Message")
-    msg.conversation = conv_name
-    msg.sender_type = "Human Agent"
-    msg.message = message
-    msg.response_mode = "chat"
-    msg.message_time = now_datetime()
-    msg.insert(ignore_permissions=True)
+    conv = frappe.get_doc("Nexus Live Conversation", conv_name)
+    msg = add_message(
+        conversation=conv,
+        sender_type="Human Agent",
+        message=message,
+        response_mode="chat",
+    )
 
     frappe.db.set_value("Nexus Live Conversation", conv_name, {
         "last_response": message[:140],
@@ -172,7 +172,16 @@ def agent_send_message(conversation_id, message):
     })
 
     frappe.db.commit()
-    return {"success": True}
+    return {
+        "success": True,
+        "message": {
+            "name": msg.name,
+            "sender_type": "Human Agent",
+            "sender_name": nickname,
+            "message": message,
+            "message_time": str(msg.message_time),
+        },
+    }
 
 
 @frappe.whitelist()

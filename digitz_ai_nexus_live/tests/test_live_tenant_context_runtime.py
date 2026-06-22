@@ -141,7 +141,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
         chat_channel.channel_type = "Website Chat"
         chat_channel.enabled = 1
         chat_channel.default_agent = PUBLIC_AGENT
-        chat_channel.public_access = 1
         chat_channel.requires_visitor_email = 0
         chat_channel.agent_based = 1
         chat_channel.save(ignore_permissions=True)
@@ -155,7 +154,6 @@ class TestLiveTenantContextRuntime(unittest.TestCase):
         qa_channel.channel_name = "Synthetic Website Q&A"
         qa_channel.channel_type = "Website Q&A"
         qa_channel.enabled = 1
-        qa_channel.public_access = 1
         qa_channel.requires_visitor_email = 0
         qa_channel.agent_based = 0
         qa_channel.save(ignore_permissions=True)

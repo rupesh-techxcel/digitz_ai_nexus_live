@@ -95,11 +95,8 @@ These records are owned by `digitz_ai_nexus_live` and create the first working c
 
 ### Chat Category
 
-| DocType | Name | Label | Verification |
-|---|---|---|---|
-| Nexus Chat Category | `GENERAL-SUPPORT` | General Support | `None` |
-
-This is the category users can select first when testing a fresh setup.
+No generic chat category is seeded. Create purpose-specific visitor options and
+their identity routes through the Channel Setup Wizard.
 
 ### AI Agent Profile
 
@@ -126,25 +123,15 @@ carries the session nickname shown in the chat widget header.
 
 | DocType | Name | Purpose |
 |---|---|---|
-| Nexus Identity Profile | `DEFAULT-PUBLIC-PROFILE` | Seeded profile for the public category route |
+| Nexus Identity Profile | `DEFAULT-PUBLIC-PROFILE` | Seeded public identity foundation |
 
 The default identity profile maps the `Public` identity type with no knowledge profile
-restriction. It is attached to the seeded public category route so the route resolver can
-confirm a valid identity profile exists for public visitors.
+restriction. It can be attached to purpose-specific public category routes.
 
 ### Category Route
 
-The default runtime route is:
-
-```text
-GENERAL-SUPPORT (channel implied from category: WEBSITE-CHAT)
-    identity_profiles: empty (open to all public visitors)
-    -> AI Agent Profile: PUBLIC-AI-ASSISTANT
-    -> Profile access: Public Access → Public policy
-    -> Identity Profile: DEFAULT-PUBLIC-PROFILE (attached to route)
-```
-
-Use **Nexus Chat Workflow Tester** to verify this route.
+No generic category route is seeded. Configure and verify each purpose-specific route
+with **Nexus Chat Workflow Tester**.
 
 ### Workspace
 
@@ -161,7 +148,7 @@ When testing:
 | Input | Value |
 |---|---|
 | Channel | `WEBSITE-CHAT` |
-| Chat Category | `GENERAL-SUPPORT` |
+| Chat Category | A configured purpose-specific category |
 | Identity Type | `Public` |
 
 Expected chain:

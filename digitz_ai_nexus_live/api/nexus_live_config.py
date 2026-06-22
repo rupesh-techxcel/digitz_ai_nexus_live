@@ -49,7 +49,7 @@ def _check_channels(tenant=None):
         "Nexus Live Channel",
         filters=ch_filters,
         fields=["name", "channel_code", "channel_name", "channel_type",
-                "enabled", "public_access", "default_agent"],
+                "enabled", "default_agent"],
     )
 
     enabled_channels = [c for c in channels if c.enabled]
@@ -94,7 +94,6 @@ def _check_channels(tenant=None):
             "name":       ch.name,
             "label":      ch.channel_name,
             "type":       ch.channel_type,
-            "public":     bool(ch.public_access),
             "categories": cat_items,
             "ready":      ch_ready,
         })

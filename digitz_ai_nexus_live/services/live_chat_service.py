@@ -1267,9 +1267,27 @@ def continue_live_chat(conversation_id, payload):
                 "conversation_id": conversation_id,
             }
 
-        # Challenge present — clear intent so subsequent messages flow normally
-        frappe.db.set_value("Nexus Live Conversation", conversation.name, "intent", "")
-        conversation.intent = ""
+        # Persist the verified address on the conversation and record why it was collected.
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+            "intent": "",
+            "visitor_email": _challenge.email,
+            "resolved_identity_type": _challenge.resolved_identity_type,
+            "identity_registry": _challenge.identity_registry,
+        })
+        conversation.reload()
+        from digitz_ai_nexus_live.services.visitor_data_capture import capture_from_conversation
+
+        capture_from_conversation(
+            conversation,
+            collection_context="Identity Verification",
+            collection_reason="Email collected to verify access to the selected chat option.",
+            source_event="identity_verification_completed",
+            email_verified=True,
+            consent_status="Service Requested",
+            consent_scope="Identity verification and access to the selected chat service",
+            reference_doctype="Nexus Identity Verification Challenge",
+            reference_name=_challenge.name,
+        )
         intent = ""
 
     # Store visitor message for all non-category-click cases

@@ -15,11 +15,11 @@
       knowledge_delivery_enabled: {{ knowledge_delivery_enabled }}
     };
     window.dev_server = {{ dev_server }};
-    window.socketio_port = {{ frappe.socketio_port or 9000 }};
+    window.socketio_port = {{ socketio_port }};
     window.frappe = window.frappe || {};
     frappe.boot = {
       sitename: "{{ sitename }}",
-      socketio_port: {{ frappe.socketio_port or 9000 }}
+      socketio_port: {{ socketio_port }}
     };
     frappe.ready_events = [];
     frappe.ready = function(fn) { frappe.ready_events.push(fn); };

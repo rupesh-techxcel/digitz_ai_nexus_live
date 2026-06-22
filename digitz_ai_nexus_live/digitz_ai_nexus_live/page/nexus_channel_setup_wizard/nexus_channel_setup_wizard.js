@@ -196,7 +196,12 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
                 W.identity_profiles = r.message.identity_profiles || [];
                 W.existing_routes   = r.message.existing_routes || [];
 
-                if (W.tenants.length === 1) W.tenant = W.tenants[0].name;
+                const configuredTenant = r.message.default_tenant || '';
+                if (configuredTenant && W.tenants.some(t => t.name === configuredTenant)) {
+                    W.tenant = configuredTenant;
+                } else if (W.tenants.length === 1) {
+                    W.tenant = W.tenants[0].name;
+                }
                 goToStep(1);
             },
         });
@@ -231,8 +236,11 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
 
         // Existing routes list
         let existingRoutesHtml = '';
-        if (W.existing_routes.length) {
-            const routeCards = W.existing_routes.map(r => {
+        const tenantRoutes = W.tenant
+            ? W.existing_routes.filter(r => r.tenant === W.tenant)
+            : [];
+        if (tenantRoutes.length) {
+            const routeCards = tenantRoutes.map(r => {
                 const ips = r.identity_profiles || [];
                 const accessLabel = ips.length === 0
                     ? '<span class="ncsw-exists-badge">🌐 Open to All</span>'
@@ -300,7 +308,11 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
             </div>
         `);
 
-        $('#ncsw_tenant').on('change', function () { W.tenant = $(this).val(); renderStep1(); });
+        $('#ncsw_tenant').on('change', function () {
+            W.tenant = $(this).val();
+            resetTenantDependentState();
+            renderStep1();
+        });
         $('#ncsw_channel').on('change', function () {
             W.channel = $(this).val();
             W.channel_name = $(this).find('option:selected').text().trim();
@@ -310,6 +322,21 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
         $('#ncsw_content_panel').on('click', '.ncsw-edit-route-btn', function () {
             loadRouteForEdit($(this).data('route'));
         });
+    }
+
+    function resetTenantDependentState() {
+        W.channel = '';
+        W.channel_name = '';
+        W.categories = [];
+        W.category_mode = 'existing';
+        W.category = '';
+        W.category_label = '';
+        W.category_code = '';
+        W.profile_mode = 'existing';
+        W.profile = '';
+        W.profile_name = '';
+        W.route_identity_profiles = [];
+        W.existing_route = null;
     }
 
     // ── Load existing route into wizard ────────────────────────────────────────
@@ -431,7 +458,8 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
 
     // ── Step 3: AI Agent Profile ──────────────────────────────────────────────
     function renderStep3() {
-        const profileOptions = W.profiles.map(p =>
+        const tenantProfiles = W.profiles.filter(p => p.tenant === W.tenant);
+        const profileOptions = tenantProfiles.map(p =>
             `<option value="${esc(p.name)}" ${W.profile === p.name ? 'selected' : ''}>${esc(p.agent_name || p.name)}</option>`
         ).join('');
 
@@ -449,7 +477,7 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
                 ${W.profile_mode === 'existing' ? `
                     <div class="ncsw-field-group">
                         <label>Select Agent Profile <span class="ncsw-req">*</span></label>
-                        ${W.profiles.length
+                        ${tenantProfiles.length
                             ? `<select id="ncsw_prof_select" class="form-control">
                                     <option value="">— Select —</option>${profileOptions}
                                </select>`
@@ -541,6 +569,7 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
 
     // ── Step 4: Identity Route ────────────────────────────────────────────────
     function renderStep4() {
+        const tenantIdentityProfiles = W.identity_profiles.filter(ip => ip.tenant === W.tenant);
         // Pre-fill existing route state
         if (!W.existing_route) {
             const match = W.existing_routes.find(r =>
@@ -559,7 +588,7 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
 
         const isOpenToAll = W.route_identity_profiles.length === 0;
 
-        const ipOptions = W.identity_profiles
+        const ipOptions = tenantIdentityProfiles
             .filter(ip => !W.route_identity_profiles.find(s => s.name === ip.name))
             .map(ip =>
                 `<option value="${esc(ip.name)}">${esc(ip.profile_name || ip.name)}${ip.title ? ' — ' + esc(ip.title) : ''}</option>`
@@ -629,7 +658,7 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
                         ${selectedChips || '<div class="ncsw-ip-placeholder">No profiles selected — route will be open to all visitors.</div>'}
                     </div>
 
-                    ${W.identity_profiles.length ? `
+                    ${tenantIdentityProfiles.length ? `
                         <div style="display:flex; gap:8px; margin-top:10px;">
                             <select id="ncsw_ip_picker" class="form-control" style="flex:1;">
                                 <option value="">— Add Identity Profile —</option>${ipOptions}
@@ -791,6 +820,7 @@ frappe.pages['nexus-channel-setup-wizard'].on_page_load = function (wrapper) {
         frappe.call({
             method: 'digitz_ai_nexus_live.api.nexus_channel_setup_wizard.save_route',
             args: {
+                tenant:            W.tenant,
                 channel:           W.channel,
                 chat_category:     W.category,
                 ai_agent_profile:  W.profile,

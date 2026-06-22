@@ -1,0 +1,40 @@
+{
+  "creation": "2026-06-22 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "domain",
+    "enabled"
+  ],
+  "fields": [
+    {
+      "fieldname": "domain",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Domain (Origin)",
+      "options": "URL",
+      "reqd": 1,
+      "description": "Full origin including scheme — e.g. https://client-site.com"
+    },
+    {
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "default": "1",
+      "in_list_view": 1,
+      "label": "Enabled"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-22 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Channels",
+  "name": "Nexus Widget Allowed Domain",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}
