@@ -135,6 +135,9 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
 
     profile = frappe.get_doc("Nexus AI Agent Profile", route.ai_agent_profile)
 
+    drive_mode = getattr(category, "internal_drive_mode", None) or "None"
+    drive_prompt = getattr(category, "internal_drive_prompt", None) or ""
+
     return _build_behavior_dict(
         profile=profile,
         source="Nexus Category Identity Route",
@@ -144,6 +147,8 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
         channel=category.channel,
         identity_type=identity_type,
         knowledge_profile_names=knowledge_profile_names,
+        category_drive_mode=drive_mode,
+        category_drive_prompt=drive_prompt,
     )
 
 
@@ -183,6 +188,8 @@ def resolve_behavior_from_conversation(conversation):
         channel=getattr(conversation, "channel", None),
         identity_type=getattr(conversation, "resolved_identity_type", None),
         knowledge_profile_names=snapshot.get("knowledge_profile_names") or [],
+        category_drive_mode=snapshot.get("category_drive_mode") or "None",
+        category_drive_prompt=snapshot.get("category_drive_prompt") or "",
     )
 
 
@@ -358,6 +365,8 @@ def _build_behavior_dict(
     channel=None,
     identity_type=None,
     knowledge_profile_names=None,
+    category_drive_mode=None,
+    category_drive_prompt=None,
 ):
     return frappe._dict({
         "source": source,
@@ -379,4 +388,11 @@ def _build_behavior_dict(
         "escalation_policy": profile.escalation_policy if profile else None,
         "do_not_answer_rules": profile.do_not_answer_rules if profile else None,
         "confidence_threshold_source": source,
+        # Profile-level companion settings (carried through so _build_ai_profile_dict can read them)
+        "companion_mode": int(getattr(profile, "companion_mode", 0) or 0) if profile else 0,
+        "companion_playbook": getattr(profile, "companion_playbook", None) if profile else None,
+        "companion_discovery_style": getattr(profile, "companion_discovery_style", None) if profile else None,
+        # Category-level internal drive
+        "category_drive_mode": category_drive_mode or "None",
+        "category_drive_prompt": category_drive_prompt or "",
     })

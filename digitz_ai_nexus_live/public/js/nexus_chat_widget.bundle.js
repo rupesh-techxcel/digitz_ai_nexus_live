@@ -277,6 +277,30 @@
                     </div>
                 </div>
 
+                <!-- Email transcript panel — shown when visitor clicks "Email this conversation" -->
+                <div id="ncw-email-panel" style="display:none;">
+                    <div id="ncw-email-addr-step">
+                        <p class="ncw-email-label">Enter your email to receive a copy of this conversation:</p>
+                        <div class="ncw-email-row">
+                            <input id="ncw-email-addr-input" type="email" placeholder="your@email.com" autocomplete="email" maxlength="120"/>
+                            <button id="ncw-email-send-btn" type="button">Send</button>
+                        </div>
+                        <p id="ncw-email-addr-error" class="ncw-email-error" style="display:none;"></p>
+                    </div>
+                    <div id="ncw-email-otp-step" style="display:none;">
+                        <p class="ncw-email-label" id="ncw-email-otp-label">Enter the 6-digit code sent to your email:</p>
+                        <div class="ncw-email-row">
+                            <input id="ncw-email-otp-input" type="text" placeholder="······" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
+                            <button id="ncw-email-verify-btn" type="button">Verify</button>
+                        </div>
+                        <p id="ncw-email-otp-error" class="ncw-email-error" style="display:none;"></p>
+                        <button id="ncw-email-resend-btn" type="button" class="ncw-email-link">Resend code</button>
+                    </div>
+                    <div id="ncw-email-done-step" style="display:none;">
+                        <p class="ncw-email-label ncw-email-success">&#10003; Sent! Check your inbox for the conversation summary.</p>
+                    </div>
+                </div>
+
                 <div id="ncw-messages"></div>
 
                 <div id="ncw-typing" style="display:none;">
@@ -315,6 +339,7 @@
                     <div id="ncw-brand">
                         <svg id="ncw-brand-spark" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1l1.2 3.8H11L8 7l1.2 3.8L6 8.6 2.8 10.8 4 7 1 4.8h3.8z" fill="url(#ncw-spark-grad)"/><defs><linearGradient id="ncw-spark-grad" x1="1" y1="1" x2="11" y2="11" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2158c7"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs></svg>
                         Powered by <span id="ncw-brand-name">Nexus AI</span>
+                        <button id="ncw-email-transcript-btn" type="button" style="display:none;" aria-label="Email this conversation">&#9993; Email this conversation</button>
                     </div>
                 </div>
             </div>
@@ -465,6 +490,92 @@
             var e = el('ncw-wa-otp-error');
             e.textContent = msg; e.style.display = 'block';
         }
+        // ── Email transcript ───────────────────────────────────────────────────
+
+        el('ncw-email-transcript-btn').addEventListener('click', function () {
+            if (!S.conversation_id) return;
+            var panel = el('ncw-email-panel');
+            var visible = panel.style.display !== 'none';
+            panel.style.display = visible ? 'none' : 'block';
+            if (!visible) el('ncw-email-addr-input').focus();
+        });
+
+        el('ncw-email-send-btn').addEventListener('click', _email_send);
+        el('ncw-email-addr-input').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') _email_send();
+        });
+
+        el('ncw-email-verify-btn').addEventListener('click', _email_verify_otp);
+        el('ncw-email-otp-input').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') _email_verify_otp();
+        });
+
+        el('ncw-email-resend-btn').addEventListener('click', function () {
+            el('ncw-email-otp-step').style.display = 'none';
+            el('ncw-email-otp-error').style.display = 'none';
+            el('ncw-email-addr-step').style.display = 'block';
+            el('ncw-email-addr-input').focus();
+        });
+
+        async function _email_send() {
+            var email = (el('ncw-email-addr-input').value || '').trim();
+            if (!email) { _email_addr_err('Please enter your email address.'); return; }
+            el('ncw-email-send-btn').disabled = true;
+            el('ncw-email-addr-error').style.display = 'none';
+            try {
+                var r = await api('digitz_ai_nexus_live.api.live.request_chat_transcript', {
+                    conversation_id: S.conversation_id,
+                    email: email,
+                    caller_token: _conv_caller_token() || '',
+                });
+                var d = r.message || {};
+                if (d.status === 'sent') {
+                    // Email already verified — transcript sent directly
+                    el('ncw-email-addr-step').style.display = 'none';
+                    el('ncw-email-otp-step').style.display = 'none';
+                    el('ncw-email-done-step').style.display = 'block';
+                } else if (d.status === 'otp_sent') {
+                    var lbl = el('ncw-email-otp-label');
+                    if (lbl && d.email) lbl.textContent = 'Enter the 6-digit code sent to ' + d.email + ':';
+                    el('ncw-email-addr-step').style.display = 'none';
+                    el('ncw-email-otp-step').style.display = 'block';
+                    el('ncw-email-otp-input').focus();
+                }
+            } catch (err) {
+                _email_addr_err((err && err.message) || 'Could not send. Please try again.');
+            } finally {
+                el('ncw-email-send-btn').disabled = false;
+            }
+        }
+
+        async function _email_verify_otp() {
+            var otp = (el('ncw-email-otp-input').value || '').trim();
+            if (!otp) { _email_otp_err('Please enter the verification code.'); return; }
+            el('ncw-email-verify-btn').disabled = true;
+            el('ncw-email-otp-error').style.display = 'none';
+            try {
+                await api('digitz_ai_nexus_live.api.live.verify_chat_transcript_otp', {
+                    conversation_id: S.conversation_id,
+                    otp: otp,
+                    caller_token: _conv_caller_token() || '',
+                });
+                // Success handled via realtime event 'transcript_sent'
+            } catch (err) {
+                _email_otp_err((err && err.message) || 'Incorrect code. Please try again.');
+            } finally {
+                el('ncw-email-verify-btn').disabled = false;
+            }
+        }
+
+        function _email_addr_err(msg) {
+            var e = el('ncw-email-addr-error');
+            e.textContent = msg; e.style.display = 'block';
+        }
+        function _email_otp_err(msg) {
+            var e = el('ncw-email-otp-error');
+            e.textContent = msg; e.style.display = 'block';
+        }
+
         el('ncw-send-btn').addEventListener('click', send_message);
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden && S.open) clear_unread();
@@ -590,9 +701,20 @@
                 return;
             }
 
+            if (data.response_type === 'transcript_sent') {
+                el('ncw-email-addr-step').style.display = 'none';
+                el('ncw-email-otp-step').style.display = 'none';
+                el('ncw-email-done-step').style.display = 'block';
+                el('ncw-email-panel').style.display = 'block';
+                return;
+            }
+
             // Human agent joined notification — render as system message
             if (data.response_type === 'agent_joined') {
                 append_system_message(data.message || data.answer);
+                // Nexy or human agent has joined — show email transcript option
+                var _etb2 = el('ncw-email-transcript-btn');
+                if (_etb2) _etb2.style.display = 'inline-flex';
                 return;
             }
 
@@ -1210,6 +1332,9 @@
                 payload: JSON.stringify(cat_payload),
             });
             _conv_touch();
+            // Reveal "Email this conversation" once a category is chosen
+            var _etb = el('ncw-email-transcript-btn');
+            if (_etb) _etb.style.display = 'inline-flex';
         } catch (_) {
             hide_typing();
             append_error('Could not select category. Please try again.');
@@ -2348,6 +2473,82 @@
     display: block;
 }
 .ncw-wa-success {
+    color: #15803d;
+    font-weight: 600;
+}
+
+/* ── Email transcript ── */
+#ncw-email-transcript-btn {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 0 0 10px;
+    text-decoration: underline;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+#ncw-email-transcript-btn:hover { color: #2158c7; }
+#ncw-email-panel {
+    padding: 10px 14px;
+    background: #f8faff;
+    border-top: 1px solid #e0e7ff;
+    font-size: 13px;
+}
+.ncw-email-label {
+    margin: 0 0 8px;
+    color: #374151;
+    font-size: 12px;
+    line-height: 1.4;
+}
+.ncw-email-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.ncw-email-row input {
+    flex: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+}
+.ncw-email-row input:focus { border-color: #2158c7; }
+.ncw-email-row button {
+    background: #2158c7;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ncw-email-row button:hover { background: #1a46a8; }
+.ncw-email-row button:disabled { opacity: 0.6; cursor: default; }
+.ncw-email-error {
+    color: #dc2626;
+    font-size: 11px;
+    margin: 4px 0 0;
+}
+.ncw-email-link {
+    background: none;
+    border: none;
+    color: #2158c7;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 0 0;
+    text-decoration: underline;
+    display: block;
+}
+.ncw-email-success {
     color: #15803d;
     font-weight: 600;
 }

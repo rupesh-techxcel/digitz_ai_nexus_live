@@ -32,6 +32,8 @@ Enquiry, or Sales.
 | `identity_verification_mode` | Whether the category needs email OTP before chat starts |
 | `allow_public_fallback` | For Registered Email OTP, allow unregistered verified emails to continue as Public |
 | `enabled` | Controls visibility |
+| `internal_drive_mode` | Optional internal business objective: **None** / **Enquiry Conversion** / **Companion Connect** / **Custom**. Invisible to the visitor. See [Category Internal Drive](category-internal-drive.md). |
+| `internal_drive_prompt` | Hidden LLM instruction describing the internal goal. Only shown when `internal_drive_mode` is not None. |
 
 The category does not grant access by itself. It only selects a route.
 

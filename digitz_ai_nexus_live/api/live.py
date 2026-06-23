@@ -408,6 +408,64 @@ def verify_whatsapp_registration(conversation_id=None, otp=None, caller_token=No
     return result
 
 
+@frappe.whitelist(allow_guest=True)
+def request_chat_transcript(conversation_id=None, email=None, caller_token=None):
+    """
+    Request an email copy of the conversation.
+
+    If the supplied email matches the already-verified visitor_email on the
+    conversation, the transcript is sent immediately (no OTP).
+    Otherwise a 6-digit OTP is emailed to the address for verification.
+    """
+    if not conversation_id or not email:
+        frappe.throw("Conversation ID and email are required.")
+
+    conversation = get_conversation(conversation_id)
+    if not conversation:
+        frappe.throw("Conversation not found.")
+    if conversation.user_type == "Guest":
+        if not caller_token or caller_token != conversation.caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+
+    check_rate_limit(
+        f"transcript_req:{get_caller_ip()}",
+        max_calls=5, window_seconds=300,
+        throw_message="Too many requests. Please wait before requesting again.",
+    )
+
+    from digitz_ai_nexus_live.services.chat_transcript_service import request_chat_transcript as _request
+    return _request(conversation_id, email)
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_chat_transcript_otp(conversation_id=None, otp=None, caller_token=None):
+    """
+    Verify the transcript OTP and deliver the email copy on success.
+    """
+    if not conversation_id or not otp:
+        frappe.throw("Conversation ID and OTP are required.")
+
+    conversation = get_conversation(conversation_id)
+    if not conversation:
+        frappe.throw("Conversation not found.")
+    if conversation.user_type == "Guest":
+        if not caller_token or caller_token != conversation.caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+
+    from digitz_ai_nexus_live.services.chat_transcript_service import verify_chat_transcript_otp as _verify
+    result = _verify(conversation_id, otp)
+
+    if result.get("status") == "sent":
+        from digitz_ai_nexus_live.services.chat_realtime import publish_chat_response
+        publish_chat_response(conversation_id, {
+            "status": "success",
+            "response_type": "transcript_sent",
+            "email": result.get("email"),
+        })
+
+    return result
+
+
 def _get_human_assignment(user):
     """Return active assignment if user can handle escalations but is not System Manager."""
     if not user or user == "Guest":

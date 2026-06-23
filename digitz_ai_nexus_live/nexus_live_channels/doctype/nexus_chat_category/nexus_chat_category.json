@@ -24,7 +24,10 @@
     "enable_escalation",
     "use_for_nexy",
     "section_faq",
-    "faq_questions"
+    "faq_questions",
+    "section_drive",
+    "internal_drive_mode",
+    "internal_drive_prompt"
   ],
   "fields": [
     {
@@ -153,6 +156,27 @@
       "fieldtype": "Table",
       "label": "FAQ Questions",
       "options": "Nexus Chat Category FAQ"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_drive",
+      "fieldtype": "Section Break",
+      "label": "Internal Drive"
+    },
+    {
+      "default": "None",
+      "description": "Optional internal business objective the AI works toward while serving the visitor. Not visible to the visitor. Leave as None for pure knowledge delivery (e.g. Internal Training).",
+      "fieldname": "internal_drive_mode",
+      "fieldtype": "Select",
+      "label": "Internal Drive Mode",
+      "options": "None\nEnquiry Conversion\nCompanion Connect\nCustom"
+    },
+    {
+      "depends_on": "eval:doc.internal_drive_mode && doc.internal_drive_mode !== 'None'",
+      "description": "Instruction to the LLM describing the internal goal. Injected as a hidden system directive — the visitor never sees this.",
+      "fieldname": "internal_drive_prompt",
+      "fieldtype": "Long Text",
+      "label": "Drive Prompt"
     }
   ],
   "index_web_pages_for_search": 1,

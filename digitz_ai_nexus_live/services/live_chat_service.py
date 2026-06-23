@@ -352,6 +352,14 @@ def _build_ai_profile_dict(behavior):
     if not behavior:
         return {}
 
+    drive_mode = getattr(behavior, "category_drive_mode", None) or "None"
+    drive_prompt = getattr(behavior, "category_drive_prompt", None) or ""
+
+    # "Companion Connect" drive activates the full companion framework even if
+    # the AI Agent Profile doesn't have companion_mode set directly.
+    profile_companion_mode = int(getattr(behavior, "companion_mode", 0) or 0)
+    effective_companion_mode = 1 if (profile_companion_mode or drive_mode == "Companion Connect") else 0
+
     return {
         "name": behavior.profile_name or "",
         "knowledge_profile_names": list(behavior.knowledge_profile_names or []),
@@ -368,9 +376,11 @@ def _build_ai_profile_dict(behavior):
         "default_response_mode": "chat",
         "category_code": behavior.category_code,
         "identity_type": behavior.identity_type,
-        "companion_mode": int(getattr(behavior, "companion_mode", 0) or 0),
+        "companion_mode": effective_companion_mode,
         "companion_playbook": getattr(behavior, "companion_playbook", None),
         "companion_discovery_style": getattr(behavior, "companion_discovery_style", None),
+        "category_drive_mode": drive_mode,
+        "category_drive_prompt": drive_prompt,
     }
 
 
@@ -1119,6 +1129,11 @@ def continue_live_chat(conversation_id, payload):
                         "memory_mode": profile.memory_mode,
                         "default_response_mode": profile.default_response_mode,
                         "collect_visitor_name": getattr(profile, "collect_visitor_name", 0),
+                        "companion_mode": int(getattr(profile, "companion_mode", 0) or 0),
+                        "companion_playbook": getattr(profile, "companion_playbook", None),
+                        "companion_discovery_style": getattr(profile, "companion_discovery_style", None),
+                        "category_drive_mode": getattr(cat, "internal_drive_mode", None) or "None",
+                        "category_drive_prompt": getattr(cat, "internal_drive_prompt", None) or "",
                     }),
                 })
 
