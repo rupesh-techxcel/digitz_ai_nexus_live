@@ -1,0 +1,133 @@
+{
+  "actions": [],
+  "autoname": "hash",
+  "creation": "2026-06-22 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "conversation",
+    "message",
+    "tenant",
+    "hit_time",
+    "chunk",
+    "knowledge_unit",
+    "knowledge_title",
+    "topic",
+    "context_path",
+    "context",
+    "sub_context",
+    "score",
+    "final_score",
+    "origin_host"
+  ],
+  "fields": [
+    {
+      "fieldname": "conversation",
+      "fieldtype": "Link",
+      "label": "Conversation",
+      "options": "Nexus Live Conversation",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "message",
+      "fieldtype": "Link",
+      "label": "Message",
+      "options": "Nexus Live Message"
+    },
+    {
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "label": "Tenant",
+      "options": "Nexus Tenant",
+      "search_index": 1
+    },
+    {
+      "fieldname": "hit_time",
+      "fieldtype": "Datetime",
+      "label": "Hit Time",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "chunk",
+      "fieldtype": "Data",
+      "label": "Knowledge Chunk",
+      "search_index": 1
+    },
+    {
+      "fieldname": "knowledge_unit",
+      "fieldtype": "Data",
+      "label": "Knowledge Unit",
+      "search_index": 1
+    },
+    {
+      "fieldname": "knowledge_title",
+      "fieldtype": "Data",
+      "label": "Knowledge Title"
+    },
+    {
+      "fieldname": "topic",
+      "fieldtype": "Data",
+      "label": "Topic",
+      "search_index": 1
+    },
+    {
+      "fieldname": "context_path",
+      "fieldtype": "Data",
+      "label": "Context Path"
+    },
+    {
+      "fieldname": "context",
+      "fieldtype": "Data",
+      "label": "Context"
+    },
+    {
+      "fieldname": "sub_context",
+      "fieldtype": "Data",
+      "label": "Sub Context"
+    },
+    {
+      "fieldname": "score",
+      "fieldtype": "Float",
+      "label": "Score"
+    },
+    {
+      "fieldname": "final_score",
+      "fieldtype": "Float",
+      "label": "Final Score"
+    },
+    {
+      "fieldname": "origin_host",
+      "fieldtype": "Data",
+      "label": "Origin Host",
+      "hidden": 1,
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 0,
+  "issingle": 0,
+  "links": [],
+  "modified": "2026-06-22 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Live Analytics",
+  "name": "Nexus Knowledge Hit",
+  "naming_rule": "Random",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "hit_time",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

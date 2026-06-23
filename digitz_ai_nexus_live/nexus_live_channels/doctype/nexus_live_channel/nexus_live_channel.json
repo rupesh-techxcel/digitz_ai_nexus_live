@@ -15,7 +15,10 @@
   "requires_visitor_email",
   "description",
   "column_break_lpkp",
-  "agent_based"
+  "agent_based",
+  "section_whatsapp",
+  "whatsapp_account",
+  "whatsapp_phone_display"
  ],
  "fields": [
   {
@@ -44,7 +47,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Channel Type",
-   "options": "Website Q&A\nWebsite Chat\nDesk\nPortal\nAPI\nFuture WhatsApp",
+   "options": "Website Q&A\nWebsite Chat\nDesk\nPortal\nAPI",
    "reqd": 1
   },
   {
@@ -79,6 +82,25 @@
    "fieldname": "agent_based",
    "fieldtype": "Check",
    "label": "Agent Based"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_whatsapp",
+   "fieldtype": "Section Break",
+   "label": "WhatsApp Settings"
+  },
+  {
+   "description": "WhatsApp Account used for inbound routing (cold contacts) and sending replies for this channel",
+   "fieldname": "whatsapp_account",
+   "fieldtype": "Link",
+   "label": "WhatsApp Account",
+   "options": "WhatsApp Account"
+  },
+  {
+   "description": "E.164 phone number shown in the widget 'Continue on WhatsApp' strip, e.g. 919876543210",
+   "fieldname": "whatsapp_phone_display",
+   "fieldtype": "Data",
+   "label": "WhatsApp Phone Number"
   }
  ],
  "index_web_pages_for_search": 1,

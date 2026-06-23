@@ -47,7 +47,11 @@
   "allowed_business_units_json",
   "allowed_projects_json",
   "allowed_contexts_json",
-  "system_notes"
+  "system_notes",
+  "section_companion",
+  "companion_mode",
+  "companion_playbook",
+  "companion_discovery_style"
  ],
  "fields": [
   {
@@ -312,11 +316,39 @@
    "fieldname": "system_notes",
    "fieldtype": "Small Text",
    "label": "System Notes"
+  },
+  {
+   "fieldname": "section_companion",
+   "fieldtype": "Section Break",
+   "label": "Companion Settings"
+  },
+  {
+   "fieldname": "companion_mode",
+   "fieldtype": "Check",
+   "label": "Enable Companion Mode",
+   "default": "0",
+   "description": "Activates the Nexy business companion \u2014 discovery, persona matching, and enquiry tracking"
+  },
+  {
+   "fieldname": "companion_playbook",
+   "fieldtype": "Link",
+   "label": "Companion Playbook",
+   "options": "Nexus Companion Playbook",
+   "description": "Playbook governing discovery questions, escalation thresholds, and communication style",
+   "depends_on": "eval:doc.companion_mode==1"
+  },
+  {
+   "fieldname": "companion_discovery_style",
+   "fieldtype": "Select",
+   "label": "Discovery Style",
+   "options": "\nConversational\nStructured\nMinimal",
+   "default": "Conversational",
+   "depends_on": "eval:doc.companion_mode==1"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-10 09:50:24.351882",
+ "modified": "2026-06-23 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Nexus Live Agents",
  "name": "Nexus AI Agent Profile",

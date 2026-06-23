@@ -5,3 +5,4 @@ Nexus Live Channels
 Nexus Live Escalations
 Nexus Live Analytics
 Nexus Data Analytics
+Nexus Visitor Analytics

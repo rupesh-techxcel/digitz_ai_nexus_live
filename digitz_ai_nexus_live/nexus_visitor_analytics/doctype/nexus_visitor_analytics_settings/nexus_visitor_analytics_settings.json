@@ -1,0 +1,139 @@
+{
+  "actions": [],
+  "creation": "2026-06-22 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "enable_visitor_analytics",
+    "privacy_mode",
+    "section_identity",
+    "enable_persistent_visitor_id",
+    "visitor_cookie_expiry_days",
+    "session_timeout_minutes",
+    "heartbeat_interval_seconds",
+    "section_data",
+    "store_country",
+    "store_city",
+    "geoip_db_path",
+    "section_urls",
+    "strip_url_query_params",
+    "allowed_query_params_json"
+  ],
+  "fields": [
+    {
+      "fieldname": "enable_visitor_analytics",
+      "fieldtype": "Check",
+      "label": "Enable Visitor Analytics",
+      "default": "1",
+      "description": "When disabled, no visitor tracking records are created. All tracking APIs return a safe no-op response."
+    },
+    {
+      "fieldname": "privacy_mode",
+      "fieldtype": "Select",
+      "label": "Privacy Mode",
+      "options": "Balanced\nStrict",
+      "default": "Balanced",
+      "description": "Balanced: persistent anonymous visitor_id across sessions. Strict: session-only, no returning visitor history."
+    },
+    {
+      "fieldname": "section_identity",
+      "fieldtype": "Section Break",
+      "label": "Visitor Identity"
+    },
+    {
+      "fieldname": "enable_persistent_visitor_id",
+      "fieldtype": "Check",
+      "label": "Enable Persistent Visitor ID",
+      "default": "1",
+      "description": "Store visitor_id in a first-party cookie/localStorage for returning visitor recognition. Only applies in Balanced mode."
+    },
+    {
+      "fieldname": "visitor_cookie_expiry_days",
+      "fieldtype": "Int",
+      "label": "Visitor Cookie Expiry (Days)",
+      "default": "365",
+      "description": "How long the anonymous visitor_id cookie persists. Default 365 days."
+    },
+    {
+      "fieldname": "session_timeout_minutes",
+      "fieldtype": "Int",
+      "label": "Session Timeout (Minutes)",
+      "default": "30",
+      "description": "Inactivity period after which a new session is created on next visit."
+    },
+    {
+      "fieldname": "heartbeat_interval_seconds",
+      "fieldtype": "Int",
+      "label": "Heartbeat Interval (Seconds)",
+      "default": "30",
+      "description": "How often the frontend sends active-time heartbeats."
+    },
+    {
+      "fieldname": "section_data",
+      "fieldtype": "Section Break",
+      "label": "Location Data"
+    },
+    {
+      "fieldname": "store_country",
+      "fieldtype": "Check",
+      "label": "Store Approximate Country",
+      "default": "1",
+      "description": "Derive approximate country from request IP (IP is not stored). Requires a local GeoIP database."
+    },
+    {
+      "fieldname": "store_city",
+      "fieldtype": "Check",
+      "label": "Store Approximate City",
+      "default": "1",
+      "description": "Derive approximate city from request IP (IP is not stored). City may be inaccurate."
+    },
+    {
+      "fieldname": "geoip_db_path",
+      "fieldtype": "Data",
+      "label": "GeoIP Database Path",
+      "description": "Absolute path to a local MaxMind GeoLite2-City.mmdb file. Leave blank to skip geo lookup. Install geoip2: pip install geoip2"
+    },
+    {
+      "fieldname": "section_urls",
+      "fieldtype": "Section Break",
+      "label": "URL Handling"
+    },
+    {
+      "fieldname": "strip_url_query_params",
+      "fieldtype": "Check",
+      "label": "Strip Query Parameters from Page URLs",
+      "default": "1",
+      "description": "Recommended. Prevents accidental storage of sensitive query parameters (tokens, emails, etc.)."
+    },
+    {
+      "fieldname": "allowed_query_params_json",
+      "fieldtype": "Code",
+      "label": "Allowed Query Parameters (JSON array)",
+      "options": "JSON",
+      "default": "[\"utm_source\", \"utm_medium\", \"utm_campaign\", \"utm_term\", \"utm_content\"]",
+      "description": "When strip_url_query_params is enabled, only these query parameters are preserved in page_url. UTM params are safe to keep."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 0,
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-06-22 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Visitor Analytics",
+  "name": "Nexus Visitor Analytics Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

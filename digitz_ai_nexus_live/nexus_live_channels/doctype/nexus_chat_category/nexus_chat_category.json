@@ -22,6 +22,7 @@
     "description",
     "section_escalation",
     "enable_escalation",
+    "use_for_nexy",
     "section_faq",
     "faq_questions"
   ],
@@ -134,6 +135,13 @@
       "fieldname": "enable_escalation",
       "fieldtype": "Check",
       "label": "Enable Human Escalation"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, this category is used for Nexy handover. Nexy-flagged categories must have identity verification enabled and at least one published routing.",
+      "fieldname": "use_for_nexy",
+      "fieldtype": "Check",
+      "label": "Use for Nexy"
     },
     {
       "fieldname": "section_faq",

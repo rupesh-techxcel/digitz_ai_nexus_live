@@ -1,251 +1,422 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "autoname": "field:conversation_id",
-  "creation": "2026-05-10 00:00:00.000000",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "conversation_id",
-    "conversation_type",
-    "channel",
-    "chat_category",
-    "resolved_identity_type",
-    "identity_registry",
-    "identity_safeguard_access_json",
-    "visitor_name",
-    "visitor_email",
-    "visitor_phone",
-    "user_type",
-    "assigned_agent",
-    "assigned_agent_type",
-    "assigned_ai_agent_profile",
-    "agent_profile_instance",
-    "ai_profile_snapshot_json",
-    "status",
-    "intent",
-    "last_message",
-    "last_response",
-    "confidence",
-    "escalation_status",
-    "escalated_at",
-    "human_agent",
-    "started_on",
-    "last_message_at",
-    "closed_on",
-    "caller_token"
-  ],
-  "fields": [
-    {
-      "fieldname": "conversation_id",
-      "fieldtype": "Data",
-      "label": "Conversation ID",
-      "reqd": 1,
-      "unique": 1
-    },
-    {
-      "fieldname": "conversation_type",
-      "fieldtype": "Select",
-      "label": "Conversation Type",
-      "reqd": 1,
-      "options": "Q&A\nChat"
-    },
-    {
-      "fieldname": "channel",
-      "fieldtype": "Link",
-      "label": "Channel",
-      "options": "Nexus Live Channel"
-    },
-    {
-      "description": "Chat category selected at conversation start.",
-      "fieldname": "chat_category",
-      "fieldtype": "Link",
-      "label": "Chat Category",
-      "options": "Nexus Chat Category",
-      "read_only": 1
-    },
-    {
-      "description": "Identity type resolved during the opening chat handshake.",
-      "fieldname": "resolved_identity_type",
-      "fieldtype": "Link",
-      "label": "Resolved Identity Type",
-      "options": "Nexus Identity Type",
-      "read_only": 1
-    },
-    {
-      "description": "Identity registry resolved during the opening chat handshake.",
-      "fieldname": "identity_registry",
-      "fieldtype": "Link",
-      "label": "Identity Registry",
-      "options": "Nexus Identity Registry",
-      "read_only": 1
-    },
-    {
-      "description": "Snapshot of registry Safe Guard access categories at conversation start.",
-      "fieldname": "identity_safeguard_access_json",
-      "fieldtype": "Code",
-      "label": "Identity Safe Guard Access (JSON)",
-      "options": "JSON",
-      "read_only": 1
-    },
-    {
-      "fieldname": "visitor_name",
-      "fieldtype": "Data",
-      "label": "Visitor Name"
-    },
-    {
-      "fieldname": "visitor_email",
-      "fieldtype": "Data",
-      "label": "Visitor Email"
-    },
-    {
-      "fieldname": "visitor_phone",
-      "fieldtype": "Data",
-      "label": "Visitor Phone"
-    },
-    {
-      "fieldname": "user_type",
-      "fieldtype": "Select",
-      "label": "User Type",
-      "default": "Guest",
-      "options": "Guest\nWebsite User\nDesk User"
-    },
-    {
-      "fieldname": "assigned_agent",
-      "fieldtype": "Link",
-      "label": "Assigned Agent",
-      "options": "Nexus AI Agent Profile"
-    },
-    {
-      "fieldname": "assigned_agent_type",
-      "fieldtype": "Select",
-      "label": "Assigned Agent Type",
-      "options": "AI\nHuman"
-    },
-    {
-      "description": "AI Agent Profile active at conversation start. Preserved so profile changes do not affect in-progress conversations.",
-      "fieldname": "assigned_ai_agent_profile",
-      "fieldtype": "Link",
-      "label": "Assigned AI Agent Profile",
-      "options": "Nexus AI Agent Profile",
-      "read_only": 1
-    },
-    {
-      "fieldname": "agent_profile_instance",
-      "fieldtype": "Link",
-      "label": "Agent Profile Instance",
-      "options": "Nexus AI Agent Profile Instance",
-      "read_only": 1
-    },
-    {
-      "description": "Serialised snapshot of ai_profile behaviour fields at conversation start.",
-      "fieldname": "ai_profile_snapshot_json",
-      "fieldtype": "Code",
-      "label": "AI Profile Snapshot (JSON)",
-      "options": "JSON",
-      "read_only": 1
-    },
-    {
-      "fieldname": "status",
-      "fieldtype": "Select",
-      "label": "Status",
-      "default": "Open",
-      "options": "Open\nWaiting\nResponding\nEscalated\nHanded Over\nClosed"
-    },
-    {
-      "fieldname": "intent",
-      "fieldtype": "Data",
-      "label": "Intent"
-    },
-    {
-      "fieldname": "last_message",
-      "fieldtype": "Small Text",
-      "label": "Last Message"
-    },
-    {
-      "fieldname": "last_response",
-      "fieldtype": "Small Text",
-      "label": "Last Response"
-    },
-    {
-      "fieldname": "confidence",
-      "fieldtype": "Float",
-      "label": "Confidence"
-    },
-    {
-      "fieldname": "escalation_status",
-      "fieldtype": "Select",
-      "label": "Escalation Status",
-      "options": "None\nPending\nAccepted\nResolved\nRejected",
-      "default": "None"
-    },
-    {
-      "fieldname": "escalated_at",
-      "fieldtype": "Datetime",
-      "label": "Escalated At",
-      "read_only": 1
-    },
-    {
-      "fieldname": "human_agent",
-      "fieldtype": "Link",
-      "label": "Human Agent",
-      "options": "User",
-      "description": "Frappe user who claimed this escalated conversation.",
-      "read_only": 1
-    },
-    {
-      "fieldname": "started_on",
-      "fieldtype": "Datetime",
-      "label": "Started On"
-    },
-    {
-      "fieldname": "last_message_at",
-      "fieldtype": "Datetime",
-      "label": "Last Message At"
-    },
-    {
-      "fieldname": "closed_on",
-      "fieldtype": "Datetime",
-      "label": "Closed On"
-    },
-    {
-      "fieldname": "caller_token",
-      "fieldtype": "Password",
-      "label": "Caller Token",
-      "hidden": 1,
-      "no_copy": 1
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "istable": 0,
-  "links": [],
-  "modified": "2026-06-20 00:00:00.000000",
-  "modified_by": "Administrator",
-  "module": "Nexus Live Conversations",
-  "name": "Nexus Live Conversation",
-  "naming_rule": "",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-    },
-    {
-      "read": 1,
-      "write": 1,
-      "role": "Nexus Live Agent"
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:conversation_id",
+ "creation": "2026-05-10 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "conversation_id",
+  "conversation_type",
+  "channel",
+  "chat_category",
+  "resolved_identity_type",
+  "identity_registry",
+  "identity_safeguard_access_json",
+  "visitor_name",
+  "visitor_email",
+  "visitor_phone",
+  "delivery_method",
+  "wa_otp_phone",
+  "user_type",
+  "assigned_agent",
+  "assigned_agent_type",
+  "assigned_ai_agent_profile",
+  "agent_profile_instance",
+  "ai_profile_snapshot_json",
+  "status",
+  "intent",
+  "last_message",
+  "last_response",
+  "confidence",
+  "escalation_status",
+  "escalated_at",
+  "human_agent",
+  "started_on",
+  "last_message_at",
+  "closed_on",
+  "caller_token",
+  "origin_host",
+  "visitor_id",
+  "web_session_id",
+  "web_visitor",
+  "web_session",
+  "source_page_url",
+  "source_page_title",
+  "visitor_country",
+  "visitor_city",
+  "referrer",
+  "nexy_handover_category",
+  "section_companion_journey",
+  "companion_journey_stage",
+  "companion_persona",
+  "companion_persona_confidence",
+  "column_break_companion",
+  "companion_enquiry",
+  "companion_discovery_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "conversation_id",
+   "fieldtype": "Data",
+   "label": "Conversation ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "conversation_type",
+   "fieldtype": "Select",
+   "label": "Conversation Type",
+   "reqd": 1,
+   "options": "Q&A\nChat"
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Link",
+   "label": "Channel",
+   "options": "Nexus Live Channel"
+  },
+  {
+   "description": "Chat category selected at conversation start.",
+   "fieldname": "chat_category",
+   "fieldtype": "Link",
+   "label": "Chat Category",
+   "options": "Nexus Chat Category",
+   "read_only": 1
+  },
+  {
+   "description": "Identity type resolved during the opening chat handshake.",
+   "fieldname": "resolved_identity_type",
+   "fieldtype": "Link",
+   "label": "Resolved Identity Type",
+   "options": "Nexus Identity Type",
+   "read_only": 1
+  },
+  {
+   "description": "Identity registry resolved during the opening chat handshake.",
+   "fieldname": "identity_registry",
+   "fieldtype": "Link",
+   "label": "Identity Registry",
+   "options": "Nexus Identity Registry",
+   "read_only": 1
+  },
+  {
+   "description": "Snapshot of registry Safe Guard access categories at conversation start.",
+   "fieldname": "identity_safeguard_access_json",
+   "fieldtype": "Code",
+   "label": "Identity Safe Guard Access (JSON)",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "visitor_name",
+   "fieldtype": "Data",
+   "label": "Visitor Name"
+  },
+  {
+   "fieldname": "visitor_email",
+   "fieldtype": "Data",
+   "label": "Visitor Email"
+  },
+  {
+   "fieldname": "visitor_phone",
+   "fieldtype": "Data",
+   "label": "Visitor Phone",
+   "description": "Verified WhatsApp phone. Set after OTP confirmation or for cold WhatsApp contacts."
+  },
+  {
+   "fieldname": "delivery_method",
+   "fieldtype": "Select",
+   "label": "Delivery Method",
+   "options": "Web\nWhatsApp",
+   "default": "Web",
+   "description": "How AI responses are delivered to the visitor. Switches to WhatsApp after phone verification."
+  },
+  {
+   "fieldname": "wa_otp_phone",
+   "fieldtype": "Data",
+   "label": "WhatsApp OTP Phone",
+   "hidden": 1,
+   "no_copy": 1,
+   "description": "Unverified phone number during the OTP registration flow. Cleared after verification."
+  },
+  {
+   "fieldname": "user_type",
+   "fieldtype": "Select",
+   "label": "User Type",
+   "default": "Guest",
+   "options": "Guest\nWebsite User\nDesk User"
+  },
+  {
+   "fieldname": "assigned_agent",
+   "fieldtype": "Link",
+   "label": "Assigned Agent",
+   "options": "Nexus AI Agent Profile"
+  },
+  {
+   "fieldname": "assigned_agent_type",
+   "fieldtype": "Select",
+   "label": "Assigned Agent Type",
+   "options": "AI\nHuman"
+  },
+  {
+   "description": "AI Agent Profile active at conversation start. Preserved so profile changes do not affect in-progress conversations.",
+   "fieldname": "assigned_ai_agent_profile",
+   "fieldtype": "Link",
+   "label": "Assigned AI Agent Profile",
+   "options": "Nexus AI Agent Profile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "agent_profile_instance",
+   "fieldtype": "Link",
+   "label": "Agent Profile Instance",
+   "options": "Nexus AI Agent Profile Instance",
+   "read_only": 1
+  },
+  {
+   "description": "Serialised snapshot of ai_profile behaviour fields at conversation start.",
+   "fieldname": "ai_profile_snapshot_json",
+   "fieldtype": "Code",
+   "label": "AI Profile Snapshot (JSON)",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "default": "Open",
+   "options": "Open\nWaiting\nResponding\nEscalated\nHanded Over\nClosed"
+  },
+  {
+   "fieldname": "intent",
+   "fieldtype": "Data",
+   "label": "Intent"
+  },
+  {
+   "fieldname": "last_message",
+   "fieldtype": "Small Text",
+   "label": "Last Message"
+  },
+  {
+   "fieldname": "last_response",
+   "fieldtype": "Small Text",
+   "label": "Last Response"
+  },
+  {
+   "fieldname": "confidence",
+   "fieldtype": "Float",
+   "label": "Confidence"
+  },
+  {
+   "fieldname": "escalation_status",
+   "fieldtype": "Select",
+   "label": "Escalation Status",
+   "options": "None\nPending\nAccepted\nResolved\nRejected",
+   "default": "None"
+  },
+  {
+   "fieldname": "escalated_at",
+   "fieldtype": "Datetime",
+   "label": "Escalated At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "human_agent",
+   "fieldtype": "Link",
+   "label": "Human Agent",
+   "options": "User",
+   "description": "Frappe user who claimed this escalated conversation.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Started On"
+  },
+  {
+   "fieldname": "last_message_at",
+   "fieldtype": "Datetime",
+   "label": "Last Message At"
+  },
+  {
+   "fieldname": "closed_on",
+   "fieldtype": "Datetime",
+   "label": "Closed On"
+  },
+  {
+   "fieldname": "caller_token",
+   "fieldtype": "Password",
+   "label": "Caller Token",
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "origin_host",
+   "fieldtype": "Data",
+   "label": "Origin Host",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "visitor_id",
+   "fieldtype": "Data",
+   "label": "Visitor ID",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Anonymous visitor identifier from Nexus Web Visitor. Absent for desk users."
+  },
+  {
+   "fieldname": "web_session_id",
+   "fieldtype": "Data",
+   "label": "Web Session ID",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "web_visitor",
+   "fieldtype": "Link",
+   "label": "Web Visitor",
+   "options": "Nexus Web Visitor",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "web_session",
+   "fieldtype": "Link",
+   "label": "Web Session",
+   "options": "Nexus Web Session",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "source_page_url",
+   "fieldtype": "Small Text",
+   "label": "Source Page URL",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Page the visitor was on when they opened the chat widget."
+  },
+  {
+   "fieldname": "source_page_title",
+   "fieldtype": "Data",
+   "label": "Source Page Title",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "visitor_country",
+   "fieldtype": "Data",
+   "label": "Visitor Country",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "visitor_city",
+   "fieldtype": "Data",
+   "label": "Visitor City",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "referrer",
+   "fieldtype": "Small Text",
+   "label": "Referrer",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Page referrer at the time chat was started."
+  },
+  {
+   "description": "Nexy category pending handover. Set when a special intent is detected; cleared once handover completes.",
+   "fieldname": "nexy_handover_category",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Nexy Handover Category",
+   "no_copy": 1,
+   "options": "Nexus Chat Category",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_companion_journey",
+   "fieldtype": "Section Break",
+   "label": "Companion Journey"
+  },
+  {
+   "fieldname": "companion_journey_stage",
+   "fieldtype": "Select",
+   "label": "Journey Stage",
+   "options": "ARRIVED\nGREETING\nDISCOVERY\nENGAGED\nSOLUTION_ALIGNMENT\nINTERESTED\nQUALIFIED\nESCALATED",
+   "default": "ARRIVED",
+   "read_only": 0
+  },
+  {
+   "fieldname": "companion_persona",
+   "fieldtype": "Link",
+   "label": "Matched Persona",
+   "options": "Nexus Companion Persona",
+   "read_only": 1
+  },
+  {
+   "fieldname": "companion_persona_confidence",
+   "fieldtype": "Float",
+   "label": "Persona Confidence (%)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_companion",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "companion_enquiry",
+   "fieldtype": "Link",
+   "label": "Companion Enquiry",
+   "options": "Nexus Companion Enquiry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "companion_discovery_json",
+   "fieldtype": "Code",
+   "label": "Discovery Data (JSON)",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Running visitor context collected through conversation"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 0,
+ "links": [],
+ "modified": "2026-06-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Nexus Live Conversations",
+ "name": "Nexus Live Conversation",
+ "naming_rule": "",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "write": 1,
+   "role": "Nexus Live Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

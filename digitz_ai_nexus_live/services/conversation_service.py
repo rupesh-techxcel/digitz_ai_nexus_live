@@ -8,6 +8,75 @@ def generate_conversation_id():
     return frappe.generate_hash(length=12).upper()
 
 
+def _link_visitor_tracking(conversation):
+    """
+    Resolve Nexus Web Visitor and Nexus Web Session links from visitor_id / web_session_id.
+    Silently skips on any failure — visitor tracking must never break chat creation.
+    """
+    try:
+        vid = getattr(conversation, "visitor_id", None)
+        sid = getattr(conversation, "web_session_id", None)
+        if vid and frappe.db.exists("Nexus Web Visitor", vid):
+            conversation.web_visitor = vid
+            # Also copy country/city from the visitor record to the conversation
+            loc = frappe.db.get_value("Nexus Web Visitor", vid, ["country", "city"], as_dict=True)
+            if loc:
+                conversation.visitor_country = loc.get("country")
+                conversation.visitor_city = loc.get("city")
+        if sid and frappe.db.exists("Nexus Web Session", sid):
+            conversation.web_session = sid
+    except Exception:
+        pass
+
+
+def stamp_email_on_web_visitor(conversation, email, verified=False):
+    """
+    Write a verified email back to the linked Nexus Web Visitor record.
+
+    Only updates the visitor when:
+    - The conversation has a web_visitor link
+    - The email is non-empty
+    - verified=True (only OTP-confirmed addresses should be stored)
+    - The stored email is blank OR the new address is different and verified
+
+    Silently skips on any failure — must never break the chat flow.
+    """
+    if not email or not verified:
+        return
+    try:
+        visitor_name = getattr(conversation, "web_visitor", None)
+        if not visitor_name:
+            # Try resolving from visitor_id if web_visitor not yet set
+            vid = getattr(conversation, "visitor_id", None)
+            if vid and frappe.db.exists("Nexus Web Visitor", vid):
+                visitor_name = vid
+        if not visitor_name:
+            return
+
+        existing = frappe.db.get_value(
+            "Nexus Web Visitor", visitor_name,
+            ["visitor_email", "email_verified"], as_dict=True
+        )
+        if not existing:
+            return
+
+        # Update if: no email yet, OR new verified email differs from stored
+        if not existing.get("visitor_email") or (
+            verified and existing.get("visitor_email") != email
+        ):
+            frappe.db.set_value(
+                "Nexus Web Visitor", visitor_name,
+                {
+                    "visitor_email": email,
+                    "email_verified": 1 if verified else existing.get("email_verified", 0),
+                    "visitor_type": "Known",
+                },
+                update_modified=False,
+            )
+    except Exception:
+        pass
+
+
 def get_agent_nickname(conversation, fallback_agent=None):
     """Return the nickname frozen in the conversation snapshot, or fall back to the profile name."""
     try:
@@ -59,11 +128,32 @@ def create_conversation(payload, assigned_agent=None, ai_profile_override=None):
     conversation.visitor_phone = payload.get("visitor_phone")
     conversation.user_type = payload.get("user_type") or "Guest"
     conversation.intent = payload.get("intent")
+
+    # Visitor tracking fields — set only for non-desk (guest/website) users.
+    # Desk user personal chats must not be stamped with visitor tracking IDs.
+    if conversation.user_type in ("Guest", "Website User"):
+        conversation.visitor_id = (payload.get("visitor_id") or "")[:64] or None
+        conversation.web_session_id = (payload.get("web_session_id") or "")[:64] or None
+        conversation.source_page_url = (payload.get("source_page_url") or "")[:1024] or None
+        conversation.source_page_title = (payload.get("source_page_title") or "")[:512] or None
+        conversation.referrer = (payload.get("referrer") or "")[:1024] or None
+        # Resolve web_visitor / web_session links if the IDs look valid
+        _link_visitor_tracking(conversation)
     conversation.status = "Open"
     conversation.escalation_status = "None"
     conversation.started_on = now_datetime()
     if conversation.user_type in ("Guest", None, ""):
         conversation.caller_token = frappe.generate_hash(length=32)
+    try:
+        req = frappe.local.request
+        origin = (
+            getattr(req, "headers", {}).get("Origin")
+            or getattr(req, "headers", {}).get("Referer")
+            or ""
+        )
+        conversation.origin_host = origin[:255] if origin else None
+    except Exception:
+        pass
 
     if assigned_agent:
         conversation.assigned_agent = assigned_agent.name
@@ -185,11 +275,46 @@ def add_message(
 
     conversation_doc.save(ignore_permissions=True)
 
+    if sender_type == "AI Agent" and sources:
+        _fan_out_knowledge_hits(conversation_doc, msg, sources)
+
     from digitz_ai_nexus_live.services.chat_realtime import publish_live_message
 
     publish_live_message(conversation_doc, msg)
 
     return msg
+
+
+def _fan_out_knowledge_hits(conversation_doc, msg, sources):
+    origin = conversation_doc.get("origin_host") or ""
+    if "127.0.0.1" in origin or "localhost" in origin:
+        return
+    hit_time = msg.message_time
+    for src in sources:
+        chunk_id = src.get("chunk") or src.get("name")
+        if not chunk_id:
+            continue
+        try:
+            hit = frappe.new_doc("Nexus Knowledge Hit")
+            hit.conversation = conversation_doc.name
+            hit.message = msg.name
+            hit.tenant = conversation_doc.get("channel") and frappe.db.get_value(
+                "Nexus Live Channel", conversation_doc.channel, "tenant"
+            ) or None
+            hit.hit_time = hit_time
+            hit.chunk = chunk_id
+            hit.knowledge_unit = src.get("knowledge_unit")
+            hit.knowledge_title = src.get("knowledge_title")
+            hit.topic = src.get("topic")
+            hit.context_path = src.get("context_path")
+            hit.context = src.get("context")
+            hit.sub_context = src.get("sub_context")
+            hit.score = src.get("score")
+            hit.final_score = src.get("final_score")
+            hit.origin_host = origin
+            hit.insert(ignore_permissions=True)
+        except Exception:
+            pass
 
 
 def add_participant(conversation, participant_type, agent=None, user=None):

@@ -256,7 +256,7 @@ def start_chat(payload=None):
         conversation_access = frappe.db.get_value(
             "Nexus Live Conversation",
             {"conversation_id": conv_id},
-            ["user_type", "caller_token"],
+            ["user_type", "caller_token", "channel"],
             as_dict=True,
         )
         if (
@@ -265,6 +265,19 @@ def start_chat(payload=None):
             and conversation_access.caller_token
         ):
             result["caller_token"] = conversation_access.caller_token
+
+        # Expose WhatsApp phone so the widget can show a live "Continue on WhatsApp" link
+        if conversation_access and conversation_access.channel:
+            try:
+                wa_phone = frappe.db.get_value(
+                    "Nexus Live Channel",
+                    conversation_access.channel,
+                    "whatsapp_phone_display",
+                )
+                if wa_phone:
+                    result["whatsapp_phone"] = wa_phone
+            except Exception:
+                pass
 
     return result
 
@@ -330,6 +343,69 @@ def close_chat(conversation_id=None, caller_token=None, widget_code=None):
     )
 
     return {"status": "closed", "conversation_id": conversation.conversation_id}
+
+
+@frappe.whitelist(allow_guest=True)
+def request_whatsapp_registration(conversation_id=None, phone=None, caller_token=None):
+    """
+    Send a WhatsApp OTP to the supplied phone number.
+    Visitor calls this after clicking "Continue on WhatsApp" in the widget.
+    """
+    if not conversation_id or not phone:
+        frappe.throw("Conversation ID and phone number are required.")
+
+    check_rate_limit(
+        f"wa_otp:{get_caller_ip()}",
+        max_calls=5, window_seconds=300,
+        throw_message="Too many OTP requests. Please wait a few minutes.",
+    )
+
+    conversation = get_conversation(conversation_id)
+    if not conversation:
+        frappe.throw("Conversation not found.")
+    if conversation.user_type == "Guest":
+        if not caller_token or caller_token != conversation.caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+
+    from digitz_ai_nexus_live.services.whatsapp_otp_service import request_whatsapp_otp
+    return request_whatsapp_otp(conversation_id, phone)
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_whatsapp_registration(conversation_id=None, otp=None, caller_token=None):
+    """
+    Verify the WhatsApp OTP entered by the visitor.
+    On success switches conversation delivery to WhatsApp and fires a realtime
+    confirmation event so the widget can update its UI.
+    """
+    if not conversation_id or not otp:
+        frappe.throw("Conversation ID and OTP are required.")
+
+    conversation = get_conversation(conversation_id)
+    if not conversation:
+        frappe.throw("Conversation not found.")
+    if conversation.user_type == "Guest":
+        if not caller_token or caller_token != conversation.caller_token:
+            frappe.throw("Access denied.", frappe.PermissionError)
+
+    from digitz_ai_nexus_live.services.whatsapp_otp_service import verify_whatsapp_otp
+    result = verify_whatsapp_otp(conversation_id, otp)
+
+    # Notify the widget via realtime so it can update UI without polling
+    if result.get("status") == "verified":
+        from digitz_ai_nexus_live.services.chat_realtime import publish_chat_response
+        publish_chat_response(conversation_id, {
+            "status": "success",
+            "response_type": "whatsapp_registered",
+            "phone": result.get("phone"),
+            "message": (
+                "Your WhatsApp is now connected. "
+                "Replies from Nexy will be delivered to your WhatsApp. "
+                "You can close this window and continue the conversation there."
+            ),
+        })
+
+    return result
 
 
 def _get_human_assignment(user):

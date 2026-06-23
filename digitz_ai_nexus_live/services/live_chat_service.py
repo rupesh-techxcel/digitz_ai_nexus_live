@@ -368,6 +368,9 @@ def _build_ai_profile_dict(behavior):
         "default_response_mode": "chat",
         "category_code": behavior.category_code,
         "identity_type": behavior.identity_type,
+        "companion_mode": int(getattr(behavior, "companion_mode", 0) or 0),
+        "companion_playbook": getattr(behavior, "companion_playbook", None),
+        "companion_discovery_style": getattr(behavior, "companion_discovery_style", None),
     }
 
 
@@ -1276,6 +1279,7 @@ def continue_live_chat(conversation_id, payload):
         })
         conversation.reload()
         from digitz_ai_nexus_live.services.visitor_data_capture import capture_from_conversation
+        from digitz_ai_nexus_live.services.conversation_service import stamp_email_on_web_visitor
 
         capture_from_conversation(
             conversation,
@@ -1288,6 +1292,112 @@ def continue_live_chat(conversation_id, payload):
             reference_doctype="Nexus Identity Verification Challenge",
             reference_name=_challenge.name,
         )
+
+        # Write the verified email back to the linked Nexus Web Visitor record
+        # so visitor analytics show the identified email alongside anonymous tracking data.
+        stamp_email_on_web_visitor(conversation, _challenge.email, verified=True)
+
+        intent = ""
+
+    # ── Nexy handover verification ─────────────────────────────────────────────
+    if intent == "await_nexy_verification":
+        from digitz_ai_nexus_live.services.identity_verification import (
+            get_verified_challenge,
+        )
+        from digitz_ai_nexus_live.services.nexy_handover_service import complete_nexy_handover
+        from digitz_ai_nexus_live.services.conversation_service import stamp_email_on_web_visitor
+
+        _nexy_cat = getattr(conversation, "nexy_handover_category", None)
+        _challenge = get_verified_challenge(
+            challenge_token=payload.get("identity_verification_challenge"),
+            chat_category=_nexy_cat,
+        ) if _nexy_cat else None
+
+        if not _challenge:
+            _cat_label = (
+                frappe.db.get_value("Nexus Chat Category", _nexy_cat, "category_label")
+                if _nexy_cat else "Nexy"
+            )
+            nudge = (
+                f"To connect with {_cat_label}, please verify your identity. "
+                "Enter your email address and we'll send you a quick verification code."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=nudge,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "await_nexy_verification",
+                "response_type": "message",
+                "message": nudge,
+                "answer": nudge,
+                "confidence": 1.0,
+                "access_status": "awaiting_verification",
+                "sources": [],
+                "identity_verification_offer": True,
+            })
+            return {
+                "status": "await_nexy_verification",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
+        # Challenge verified — stamp email and complete handover
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+            "visitor_email": _challenge.email,
+            "resolved_identity_type": _challenge.resolved_identity_type,
+            "identity_registry": _challenge.identity_registry,
+        })
+        conversation.reload()
+
+        stamp_email_on_web_visitor(conversation, _challenge.email, verified=True)
+
+        payload["visitor_email"] = _challenge.email
+        payload["identity_type"] = _challenge.resolved_identity_type
+
+        handover_result = complete_nexy_handover(conversation, payload)
+        if not handover_result:
+            # Nexy profile could not be resolved — fall through to normal AI
+            pass
+        else:
+            # Announce the handover to the visitor
+            _nexy_label = (
+                frappe.db.get_value(
+                    "Nexus Chat Category",
+                    getattr(conversation, "chat_category", None),
+                    "category_label",
+                ) or "Nexy"
+            )
+            handover_msg = (
+                f"Identity verified. You're now connected to {_nexy_label}. "
+                "How can I help you today?"
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=handover_msg,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "nexy_handover_complete",
+                "response_type": "message",
+                "message": handover_msg,
+                "answer": handover_msg,
+                "agent_name": get_agent_nickname(conversation),
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+            })
+            return {
+                "status": "nexy_handover_complete",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
         intent = ""
 
     # Store visitor message for all non-category-click cases
@@ -1399,6 +1509,90 @@ def continue_live_chat(conversation_id, payload):
             "conversation_id": conversation_id,
         }
 
+    # ── Nexy intent detection ──────────────────────────────────────────────────
+    # Check if the visitor's message signals a Nexy-triggering intent (price, demo,
+    # consultancy, etc.) and the current category is not already a Nexy category.
+    _should_check_nexy = (
+        not getattr(conversation, "nexy_handover_category", None)
+        and conversation.chat_category
+    )
+    if _should_check_nexy:
+        from digitz_ai_nexus_live.services.nexy_handover_service import (
+            detect_nexy_intent,
+            initiate_nexy_handover,
+            _is_already_nexy,
+        )
+        if detect_nexy_intent(message) and not _is_already_nexy(conversation):
+            handover_status = initiate_nexy_handover(conversation, payload)
+            if handover_status == "await_nexy_verification":
+                _nexy_cat_name = getattr(conversation, "nexy_handover_category", None)
+                _nexy_label = (
+                    frappe.db.get_value("Nexus Chat Category", _nexy_cat_name, "category_label")
+                    if _nexy_cat_name else "Nexy"
+                )
+                verification_prompt = (
+                    f"I can connect you to **{_nexy_label}** for a more personalised response. "
+                    "To proceed, please verify your identity — enter your email address below."
+                )
+                add_message(
+                    conversation=conversation,
+                    sender_type="AI Agent",
+                    message=verification_prompt,
+                    response_mode="chat",
+                )
+                _touch_last_message_at(conversation)
+                publish_chat_response(conversation.conversation_id, {
+                    "status": "await_nexy_verification",
+                    "response_type": "message",
+                    "message": verification_prompt,
+                    "answer": verification_prompt,
+                    "agent_name": get_agent_nickname(conversation),
+                    "confidence": 1.0,
+                    "access_status": "awaiting_verification",
+                    "sources": [],
+                    "identity_verification_offer": True,
+                })
+                return {
+                    "status": "await_nexy_verification",
+                    "conversation": conversation.name,
+                    "conversation_id": conversation_id,
+                }
+            elif handover_status == "nexy_handover_complete":
+                # No verification needed — handover completed immediately
+                _nexy_label = (
+                    frappe.db.get_value(
+                        "Nexus Chat Category",
+                        getattr(conversation, "chat_category", None),
+                        "category_label",
+                    ) or "Nexy"
+                )
+                handover_msg = (
+                    f"You've been connected to **{_nexy_label}**. "
+                    "How can I help you today?"
+                )
+                add_message(
+                    conversation=conversation,
+                    sender_type="AI Agent",
+                    message=handover_msg,
+                    response_mode="chat",
+                )
+                _touch_last_message_at(conversation)
+                publish_chat_response(conversation.conversation_id, {
+                    "status": "nexy_handover_complete",
+                    "response_type": "message",
+                    "message": handover_msg,
+                    "answer": handover_msg,
+                    "agent_name": get_agent_nickname(conversation),
+                    "confidence": 1.0,
+                    "access_status": "conversational",
+                    "sources": [],
+                })
+                return {
+                    "status": "nexy_handover_complete",
+                    "conversation": conversation.name,
+                    "conversation_id": conversation_id,
+                }
+
     # ── AI processing ───────────────────────────────────────────────────────────
     _enqueue_ai_response(conversation.conversation_id, payload)
 
@@ -1456,6 +1650,19 @@ def _process_ai_response(conversation_id, payload_json):
             core_payload = try_enrich_with_companion_context(conversation, agent, core_payload)
         except Exception:
             pass
+
+        # Nexus Companion enrichment — injects business companion context when companion_mode is active
+        core_payload["conversation_name"] = conversation.name
+        if int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0):
+            try:
+                from digitz_ai_nexus.nexus_companion.services.companion_context_service import build_companion_context
+                _companion_tenant = payload.get("tenant") or getattr(conversation, "tenant", "")
+                core_payload["companion_context"] = build_companion_context(
+                    conversation, agent, _companion_tenant
+                )
+                core_payload["response_mode"] = "companion_advisor"
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Nexus Companion: build_companion_context failed")
 
         try:
             core_response = answer_query(core_payload)
@@ -1549,6 +1756,68 @@ def _process_ai_response(conversation_id, payload_json):
             remarks="Waiting for next visitor message.",
         )
 
+        _companion_conversion_action = None
+
+        # Companion journey: classify visitor signal, update enquiry, advance stage
+        if int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0):
+            try:
+                from digitz_ai_nexus.nexus_companion.services.signal_classifier import classify_signal
+                from digitz_ai_nexus.nexus_companion.services.enquiry_service import (
+                    update_enquiry,
+                    advance_journey_stage_from_signal,
+                    advance_journey_stage,
+                    check_escalation_threshold,
+                    check_trigger_keywords,
+                    get_or_create_enquiry,
+                    get_conversion_action,
+                )
+                conversation.reload()
+
+                _visitor_message = payload.get("message") or payload.get("query") or ""
+                _companion_playbook = (core_payload.get("ai_profile") or {}).get("companion_playbook")
+
+                # Ensure the enquiry exists
+                get_or_create_enquiry(conversation)
+
+                # Classify the visitor's signal
+                _conv_context = core_payload.get("conversation_context") or ""
+                _signal = classify_signal(_visitor_message, _conv_context)
+
+                # Update the enquiry: stamp signal, re-score, re-match persona
+                update_enquiry(conversation, discovery_delta={}, signal=_signal)
+
+                # Advance stage based on the classified signal
+                advance_journey_stage_from_signal(conversation, _signal.get("signal_type", "CURIOUS"))
+
+                # Score-based fallback advancement (safety net)
+                conversation.reload()
+                advance_journey_stage(conversation)
+
+                # Fetch conversion action if stage landed on CONVERTING
+                conversation.reload()
+                _companion_conversion_action = get_conversion_action(conversation)
+
+                # Escalation: keyword trigger or threshold
+                if check_escalation_threshold(conversation, _companion_playbook) or (
+                    _companion_playbook and check_trigger_keywords(_visitor_message, _companion_playbook)
+                ):
+                    frappe.db.set_value(
+                        "Nexus Live Conversation",
+                        conversation.name,
+                        "companion_journey_stage",
+                        "ESCALATED",
+                        update_modified=False,
+                    )
+                    if conversation.companion_enquiry:
+                        frappe.db.set_value(
+                            "Nexus Companion Enquiry",
+                            conversation.companion_enquiry,
+                            "enquiry_stage",
+                            "ESCALATED",
+                        )
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Nexus Companion: signal/stage update failed")
+
         escalation_enabled = (
             bool(behavior.escalation_enabled)
             if behavior and behavior.escalation_enabled is not None
@@ -1623,11 +1892,27 @@ def _process_ai_response(conversation_id, payload_json):
             "email_followup_offer": bool(core_response.get("email_followup_offer")),
             "gap_name": core_response.get("gap_name") or None,
 
+            "conversion_action": _companion_conversion_action,
+
             "tenant": payload.get("tenant"),
             "channel": payload.get("channel"),
             "resolved_tenant_context": resolved_context,
             "debug_info": debug_info,
         })
+
+        # WhatsApp delivery fork — send answer directly to visitor's phone when
+        # the conversation is on a WhatsApp channel.  The realtime publish above
+        # still fires so the desk console can observe the transcript.
+        try:
+            from digitz_ai_nexus_live.services.whatsapp_service import (
+                get_whatsapp_delivery_for_conversation,
+                send_whatsapp_reply,
+            )
+            _wa_account, _wa_phone = get_whatsapp_delivery_for_conversation(conversation)
+            if _wa_account and _wa_phone:
+                send_whatsapp_reply(_wa_phone, answer, _wa_account)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Nexus WhatsApp: outbound delivery failed")
 
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Nexus Live Chat Background Processing Failed")

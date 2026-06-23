@@ -1,0 +1,239 @@
+{
+  "actions": [],
+  "autoname": "field:session_id",
+  "creation": "2026-06-22 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "tenant",
+    "session_id",
+    "visitor",
+    "status",
+    "section_timeline",
+    "started_on",
+    "ended_on",
+    "last_activity_on",
+    "section_journey",
+    "landing_page",
+    "exit_page",
+    "referrer",
+    "section_utm",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "section_location",
+    "country",
+    "city",
+    "section_device",
+    "device_type",
+    "browser",
+    "os",
+    "section_metrics",
+    "page_count",
+    "total_duration_seconds",
+    "active_duration_seconds"
+  ],
+  "fields": [
+    {
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "label": "Tenant",
+      "options": "Nexus Tenant",
+      "in_list_view": 0,
+      "search_index": 1
+    },
+    {
+      "fieldname": "session_id",
+      "fieldtype": "Data",
+      "label": "Session ID",
+      "reqd": 1,
+      "unique": 1,
+      "read_only": 1,
+      "in_list_view": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "visitor",
+      "fieldtype": "Link",
+      "label": "Visitor",
+      "options": "Nexus Web Visitor",
+      "reqd": 1,
+      "in_list_view": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Active\nCompleted\nAbandoned",
+      "default": "Active",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_timeline",
+      "fieldtype": "Section Break",
+      "label": "Timeline"
+    },
+    {
+      "fieldname": "started_on",
+      "fieldtype": "Datetime",
+      "label": "Started On",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "ended_on",
+      "fieldtype": "Datetime",
+      "label": "Ended On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_activity_on",
+      "fieldtype": "Datetime",
+      "label": "Last Activity On",
+      "read_only": 1,
+      "description": "Updated on each heartbeat. Used to detect session timeout."
+    },
+    {
+      "fieldname": "section_journey",
+      "fieldtype": "Section Break",
+      "label": "Journey"
+    },
+    {
+      "fieldname": "landing_page",
+      "fieldtype": "Small Text",
+      "label": "Landing Page"
+    },
+    {
+      "fieldname": "exit_page",
+      "fieldtype": "Small Text",
+      "label": "Exit Page"
+    },
+    {
+      "fieldname": "referrer",
+      "fieldtype": "Small Text",
+      "label": "Referrer",
+      "description": "Domain-level referrer only. Full referrer URL is not stored."
+    },
+    {
+      "fieldname": "section_utm",
+      "fieldtype": "Section Break",
+      "label": "UTM Parameters"
+    },
+    {
+      "fieldname": "utm_source",
+      "fieldtype": "Data",
+      "label": "UTM Source"
+    },
+    {
+      "fieldname": "utm_medium",
+      "fieldtype": "Data",
+      "label": "UTM Medium"
+    },
+    {
+      "fieldname": "utm_campaign",
+      "fieldtype": "Data",
+      "label": "UTM Campaign"
+    },
+    {
+      "fieldname": "utm_term",
+      "fieldtype": "Data",
+      "label": "UTM Term"
+    },
+    {
+      "fieldname": "utm_content",
+      "fieldtype": "Data",
+      "label": "UTM Content"
+    },
+    {
+      "fieldname": "section_location",
+      "fieldtype": "Section Break",
+      "label": "Approximate Location"
+    },
+    {
+      "fieldname": "country",
+      "fieldtype": "Data",
+      "label": "Country",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "city",
+      "fieldtype": "Data",
+      "label": "City"
+    },
+    {
+      "fieldname": "section_device",
+      "fieldtype": "Section Break",
+      "label": "Device & Browser"
+    },
+    {
+      "fieldname": "device_type",
+      "fieldtype": "Select",
+      "label": "Device Type",
+      "options": "\nDesktop\nMobile\nTablet\nBot\nUnknown"
+    },
+    {
+      "fieldname": "browser",
+      "fieldtype": "Select",
+      "label": "Browser",
+      "options": "\nChrome\nSafari\nFirefox\nEdge\nUnknown"
+    },
+    {
+      "fieldname": "os",
+      "fieldtype": "Select",
+      "label": "Operating System",
+      "options": "\nWindows\nmacOS\nLinux\nAndroid\niOS\nUnknown"
+    },
+    {
+      "fieldname": "section_metrics",
+      "fieldtype": "Section Break",
+      "label": "Session Metrics"
+    },
+    {
+      "fieldname": "page_count",
+      "fieldtype": "Int",
+      "label": "Pages Visited",
+      "default": "0"
+    },
+    {
+      "fieldname": "total_duration_seconds",
+      "fieldtype": "Int",
+      "label": "Total Duration (Seconds)",
+      "default": "0"
+    },
+    {
+      "fieldname": "active_duration_seconds",
+      "fieldtype": "Int",
+      "label": "Active Duration (Seconds)",
+      "default": "0",
+      "description": "Time when the tab was visible and the visitor was active."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 0,
+  "issingle": 0,
+  "links": [],
+  "modified": "2026-06-22 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Visitor Analytics",
+  "name": "Nexus Web Session",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "started_on",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

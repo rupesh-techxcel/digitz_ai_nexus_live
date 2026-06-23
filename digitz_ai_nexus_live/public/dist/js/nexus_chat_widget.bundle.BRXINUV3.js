@@ -22,7 +22,8 @@
       show_correlated_on_desk: false,
       _realtime_bound: false,
       visitor_email: null,
-      identity_verification_challenge: null
+      identity_verification_challenge: null,
+      whatsapp_phone: null
     };
     function is_desk() {
       return !!(global.frappe && frappe.boot && frappe.boot.user && frappe.boot.user.name && frappe.boot.user.name !== "Guest");
@@ -238,17 +239,33 @@
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
                         <path d="M12 0C5.373 0 0 5.373 0 12c0 2.118.554 4.107 1.523 5.834L.057 23.882l6.239-1.637A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.007-1.375l-.36-.214-3.702.971.988-3.61-.235-.372A9.794 9.794 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/>
                     </svg>
-                    <span id="ncw-wa-text">Continue this conversation on WhatsApp</span>
+                    <span id="ncw-wa-text">Continue on WhatsApp</span>
                     <span id="ncw-wa-arrow">\u2192</span>
                     <button id="ncw-wa-dismiss" aria-label="Dismiss WhatsApp prompt">\xD7</button>
                 </div>
 
-                <div id="ncw-wa-info" style="display:none;">
-                    <svg viewBox="0 0 16 16" fill="none" width="14" height="14" style="flex-shrink:0;color:#25D366;" aria-hidden="true">
-                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
-                        <path d="M8 7v4M8 5.5v.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                    </svg>
-                    <span><strong>Coming soon!</strong> WhatsApp sync is an upcoming feature \u2014 we're currently awaiting workflow approval from Meta to bring it live.</span>
+                <!-- WhatsApp registration panel \u2014 shown when visitor clicks the strip -->
+                <div id="ncw-wa-panel" style="display:none;">
+                    <div id="ncw-wa-phone-step">
+                        <p class="ncw-wa-label">Enter your WhatsApp number to receive replies there:</p>
+                        <div class="ncw-wa-row">
+                            <input id="ncw-wa-phone-input" type="tel" placeholder="+91 98765 43210" autocomplete="tel" maxlength="20"/>
+                            <button id="ncw-wa-send-otp-btn" type="button">Send code</button>
+                        </div>
+                        <p id="ncw-wa-phone-error" class="ncw-wa-error" style="display:none;"></p>
+                    </div>
+                    <div id="ncw-wa-otp-step" style="display:none;">
+                        <p class="ncw-wa-label" id="ncw-wa-otp-label">Enter the 6-digit code sent to your WhatsApp:</p>
+                        <div class="ncw-wa-row">
+                            <input id="ncw-wa-otp-input" type="text" placeholder="\xB7\xB7\xB7\xB7\xB7\xB7" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
+                            <button id="ncw-wa-verify-btn" type="button">Verify</button>
+                        </div>
+                        <p id="ncw-wa-otp-error" class="ncw-wa-error" style="display:none;"></p>
+                        <button id="ncw-wa-resend-btn" type="button" class="ncw-wa-link">Resend code</button>
+                    </div>
+                    <div id="ncw-wa-done-step" style="display:none;">
+                        <p class="ncw-wa-label ncw-wa-success">&#10003; WhatsApp connected! Nexy will now reply to your phone. You can close this window.</p>
+                    </div>
                 </div>
 
                 <div id="ncw-messages"></div>
@@ -349,20 +366,89 @@
         el("ncw-wa-strip").style.display = "none";
         el("ncw-wa-info").style.display = "none";
       });
-      var _wa_info_timer = null;
       el("ncw-wa-strip").addEventListener("click", function(e) {
         if (e.target === el("ncw-wa-dismiss"))
           return;
-        var info = el("ncw-wa-info");
-        var visible = info.style.display !== "none";
-        info.style.display = visible ? "none" : "flex";
-        if (!visible) {
-          clearTimeout(_wa_info_timer);
-          _wa_info_timer = setTimeout(function() {
-            el("ncw-wa-info").style.display = "none";
-          }, 6e3);
-        }
+        if (!S.conversation_id)
+          return;
+        var panel = el("ncw-wa-panel");
+        var visible = panel.style.display !== "none";
+        panel.style.display = visible ? "none" : "block";
       });
+      el("ncw-wa-send-otp-btn").addEventListener("click", _wa_send_otp);
+      el("ncw-wa-phone-input").addEventListener("keydown", function(e) {
+        if (e.key === "Enter")
+          _wa_send_otp();
+      });
+      el("ncw-wa-verify-btn").addEventListener("click", _wa_verify_otp);
+      el("ncw-wa-otp-input").addEventListener("keydown", function(e) {
+        if (e.key === "Enter")
+          _wa_verify_otp();
+      });
+      el("ncw-wa-resend-btn").addEventListener("click", function() {
+        el("ncw-wa-otp-step").style.display = "none";
+        el("ncw-wa-phone-step").style.display = "block";
+        el("ncw-wa-otp-error").style.display = "none";
+      });
+      async function _wa_send_otp() {
+        var phone = (el("ncw-wa-phone-input").value || "").trim();
+        if (!phone) {
+          _wa_phone_err("Please enter your WhatsApp number.");
+          return;
+        }
+        el("ncw-wa-send-otp-btn").disabled = true;
+        el("ncw-wa-phone-error").style.display = "none";
+        try {
+          var r = await api("digitz_ai_nexus_live.api.live.request_whatsapp_registration", {
+            conversation_id: S.conversation_id,
+            phone,
+            caller_token: _conv_caller_token() || ""
+          });
+          var d = r.message || {};
+          if (d.status === "sent") {
+            var lbl = el("ncw-wa-otp-label");
+            if (lbl && d.phone)
+              lbl.textContent = "Enter the 6-digit code sent to WhatsApp " + d.phone + ":";
+            el("ncw-wa-phone-step").style.display = "none";
+            el("ncw-wa-otp-step").style.display = "block";
+            el("ncw-wa-otp-input").focus();
+          }
+        } catch (err) {
+          _wa_phone_err(err && err.message || "Could not send code. Please try again.");
+        } finally {
+          el("ncw-wa-send-otp-btn").disabled = false;
+        }
+      }
+      async function _wa_verify_otp() {
+        var otp = (el("ncw-wa-otp-input").value || "").trim();
+        if (!otp) {
+          _wa_otp_err("Please enter the verification code.");
+          return;
+        }
+        el("ncw-wa-verify-btn").disabled = true;
+        el("ncw-wa-otp-error").style.display = "none";
+        try {
+          await api("digitz_ai_nexus_live.api.live.verify_whatsapp_registration", {
+            conversation_id: S.conversation_id,
+            otp,
+            caller_token: _conv_caller_token() || ""
+          });
+        } catch (err) {
+          _wa_otp_err(err && err.message || "Incorrect code. Please try again.");
+        } finally {
+          el("ncw-wa-verify-btn").disabled = false;
+        }
+      }
+      function _wa_phone_err(msg) {
+        var e = el("ncw-wa-phone-error");
+        e.textContent = msg;
+        e.style.display = "block";
+      }
+      function _wa_otp_err(msg) {
+        var e = el("ncw-wa-otp-error");
+        e.textContent = msg;
+        e.style.display = "block";
+      }
       el("ncw-send-btn").addEventListener("click", send_message);
       document.addEventListener("visibilitychange", function() {
         if (!document.hidden && S.open)
@@ -466,6 +552,14 @@
         }
         if (data.response_type === "visitor_message")
           return;
+        if (data.response_type === "whatsapp_registered") {
+          el("ncw-wa-phone-step").style.display = "none";
+          el("ncw-wa-otp-step").style.display = "none";
+          el("ncw-wa-done-step").style.display = "block";
+          el("ncw-wa-panel").style.display = "block";
+          el("ncw-wa-strip").style.display = "none";
+          return;
+        }
         if (data.response_type === "agent_joined") {
           append_system_message(data.message || data.answer);
           return;
@@ -498,12 +592,16 @@
         var _rt_faq = data.faq_questions || [];
         var _rt_related = data.correlated_questions || [];
         var _rt_debug = data.debug_info || null;
+        var _rt_conversion = data.conversion_action || null;
         typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
           if (_rt_offer && !is_desk()) {
             render_identity_verification_prompt();
           }
           if (_rt_email_offer && _rt_gap_name && !is_desk()) {
             render_email_followup_prompt(_rt_gap_name);
+          }
+          if (_rt_conversion && !is_desk()) {
+            render_conversion_card(_rt_conversion);
           }
           if (_rt_faq.length) {
             render_faq_chips(_rt_faq);
@@ -732,6 +830,17 @@
           base.roles = ["Guest"];
           if (S.widget_code)
             base.widget_code = S.widget_code;
+          try {
+            var _nctx = (typeof getNexusVisitorContext === "function" ? getNexusVisitorContext() : window.NexusContext) || {};
+            if (_nctx.visitor_id)
+              base.visitor_id = _nctx.visitor_id;
+            if (_nctx.session_id)
+              base.web_session_id = _nctx.session_id;
+            base.source_page_url = window.location.href || null;
+            base.source_page_title = document.title || null;
+            base.referrer = document.referrer || null;
+          } catch (_) {
+          }
         }
         const r = await api("digitz_ai_nexus_live.api.live.start_chat", {
           payload: JSON.stringify(base)
@@ -758,6 +867,7 @@
         S.agent_instance = data.agent_instance || null;
         S.agent_name = data.agent_name || null;
         S.show_correlated_on_desk = !!data.show_correlated_on_desk;
+        S.whatsapp_phone = data.whatsapp_phone || null;
         set_header(S.agent_name || "AI Assistant", "AI Assistant \xB7 Online");
         set_input_placeholder("Type a message\u2026");
         _conv_save(data.caller_token || null);
@@ -1078,6 +1188,81 @@
         }
       });
       document.getElementById("ncw-verify-email").focus();
+    }
+    function render_conversion_card(action) {
+      if (!action || !action.type)
+        return;
+      var msgs = el("ncw-messages");
+      var card = document.createElement("div");
+      card.className = "ncw-conversion-card";
+      var icons = {
+        "Meeting Booking": "\u{1F4C5}",
+        "Lead Capture": "\u2709\uFE0F",
+        "Direct Purchase": "\u{1F6D2}",
+        "Subscription": "\u{1F514}",
+        "Trial Activation": "\u{1F680}",
+        "Download Gate": "\u2B07\uFE0F",
+        "Human Handoff": "\u{1F91D}",
+        "Webhook": "\u26A1"
+      };
+      var icon = icons[action.type] || "\u27A1\uFE0F";
+      var label_map = {
+        "Meeting Booking": "Book a Meeting",
+        "Lead Capture": "Get in Touch",
+        "Direct Purchase": "Get Started",
+        "Subscription": "Subscribe",
+        "Trial Activation": "Start Free Trial",
+        "Download Gate": "Download Now",
+        "Human Handoff": "Speak with the Team",
+        "Webhook": "Take the Next Step"
+      };
+      var btn_label = label_map[action.type] || "Take the Next Step";
+      var email_capture_types = ["Lead Capture", "Download Gate", "Trial Activation"];
+      var is_email_capture = email_capture_types.indexOf(action.type) !== -1 && !action.url;
+      var uid = "ncw-conv-" + Date.now();
+      if (is_email_capture) {
+        let _submit_lead_email = function() {
+          var email = (email_input.value || "").trim();
+          if (!email || !email.includes("@")) {
+            msg_el.textContent = "Please enter a valid email address.";
+            msg_el.style.display = "block";
+            return;
+          }
+          submit_btn.disabled = true;
+          submit_btn.textContent = "Sending\u2026";
+          api("digitz_ai_nexus_live.api.live_chat.send_message", {
+            conversation_id: S.conversation_id,
+            message: "__visitor_email__:" + email,
+            visitor_id: S.visitor_id
+          }, function(r) {
+            card.innerHTML = `<div class="ncw-conv-icon">\u2705</div><div class="ncw-conv-body"><div class="ncw-conv-type">Thanks!</div><div style="font-size:.82rem;color:#374151;margin-top:4px;">We'll be in touch at <strong>` + email + "</strong>.</div></div>";
+            scroll_bottom();
+          }, function() {
+            submit_btn.disabled = false;
+            submit_btn.textContent = btn_label;
+            msg_el.textContent = "Something went wrong. Please try again.";
+            msg_el.style.display = "block";
+          });
+        };
+        card.innerHTML = '<div class="ncw-conv-icon">' + icon + '</div><div class="ncw-conv-body"><div class="ncw-conv-type">' + action.type + "</div>" + (action.product ? '<div class="ncw-conv-product">' + action.product + "</div>" : "") + '<div class="ncw-verify-row" style="margin-top:10px;"><input type="email" class="ncw-verify-input" id="' + uid + '-email" placeholder="your@email.com" autocomplete="email"><button class="ncw-conv-btn" id="' + uid + '-btn">' + btn_label + '</button></div><div class="ncw-verify-msg" id="' + uid + '-msg" style="display:none;"></div></div>';
+        msgs.appendChild(card);
+        scroll_bottom();
+        var email_input = document.getElementById(uid + "-email");
+        var submit_btn = document.getElementById(uid + "-btn");
+        var msg_el = document.getElementById(uid + "-msg");
+        submit_btn.addEventListener("click", _submit_lead_email);
+        email_input.addEventListener("keydown", function(e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            _submit_lead_email();
+          }
+        });
+        email_input.focus();
+      } else if (action.url) {
+        card.innerHTML = '<div class="ncw-conv-icon">' + icon + '</div><div class="ncw-conv-body"><div class="ncw-conv-type">' + action.type + "</div>" + (action.product ? '<div class="ncw-conv-product">' + action.product + "</div>" : "") + '<a href="' + action.url + '" target="_blank" rel="noopener" class="ncw-conv-btn ncw-conv-link">' + btn_label + " \u2197</a></div>";
+        msgs.appendChild(card);
+        scroll_bottom();
+      }
     }
     function render_email_followup_prompt(gap_name) {
       var uid = "ncw-efp-" + Date.now();
@@ -1759,18 +1944,75 @@
     transition: background .15s;
 }
 #ncw-wa-dismiss:hover { background: rgba(0,0,0,.28); }
-#ncw-wa-info {
-    display: none;
-    align-items: flex-start;
-    gap: 9px;
-    padding: 10px 14px;
+/* \u2500\u2500 WhatsApp registration panel \u2500\u2500 */
+#ncw-wa-panel {
+    padding: 12px 14px;
     background: #f0fdf4;
     border-bottom: 1px solid #bbf7d0;
+    flex-shrink: 0;
+}
+.ncw-wa-label {
     font-size: 11.5px;
-    line-height: 1.55;
     color: #166534;
     font-weight: 500;
+    margin: 0 0 8px;
+    line-height: 1.5;
+}
+.ncw-wa-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+#ncw-wa-phone-input,
+#ncw-wa-otp-input {
+    flex: 1;
+    border: 1px solid #86efac;
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+    min-width: 0;
+    transition: border-color .15s;
+}
+#ncw-wa-phone-input:focus,
+#ncw-wa-otp-input:focus { border-color: #22c35e; }
+#ncw-wa-send-otp-btn,
+#ncw-wa-verify-btn {
+    padding: 6px 12px;
+    background: #22c35e;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
     flex-shrink: 0;
+}
+#ncw-wa-send-otp-btn:hover,
+#ncw-wa-verify-btn:hover { background: #1a9e4a; }
+#ncw-wa-send-otp-btn:disabled,
+#ncw-wa-verify-btn:disabled { opacity: .55; cursor: default; }
+.ncw-wa-error {
+    font-size: 11px;
+    color: #b91c1c;
+    margin: 5px 0 0;
+}
+.ncw-wa-link {
+    background: none;
+    border: none;
+    color: #166534;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 0 0;
+    text-decoration: underline;
+    display: block;
+}
+.ncw-wa-success {
+    color: #15803d;
+    font-weight: 600;
 }
 
 /* \u2500\u2500 Maximised panel \u2500\u2500 */
@@ -2107,6 +2349,60 @@
 .ncw-verify-success { color: #276749; font-weight: 500; }
 .ncw-verify-success strong { color: #22543d; }
 
+/* \u2500\u2500 Conversion action card \u2500\u2500 */
+.ncw-conversion-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+    border: 1px solid #c7d7fb;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 8px 0 4px;
+    max-width: 88%;
+}
+.ncw-conv-icon {
+    font-size: 1.4rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.ncw-conv-body {
+    flex: 1;
+    min-width: 0;
+}
+.ncw-conv-type {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #3b5ce6;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 2px;
+}
+.ncw-conv-product {
+    font-size: 0.82rem;
+    color: #1e293b;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.ncw-conv-btn {
+    display: inline-block;
+    margin-top: 10px;
+    background: #3b5ce6;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    text-decoration: none;
+}
+.ncw-conv-btn:hover { background: #2a4bc8; color: #fff; }
+.ncw-conv-btn:disabled { background: #a0aec0; cursor: not-allowed; }
+.ncw-conv-link { display: inline-block; }
+
 /* \u2500\u2500 Footer \u2500\u2500 */
 #ncw-nexy-sticky {
     flex-shrink: 0;
@@ -2352,4 +2648,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.4I6MA5GO.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.BRXINUV3.js.map

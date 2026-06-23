@@ -1,0 +1,183 @@
+{
+  "actions": [],
+  "autoname": "hash",
+  "creation": "2026-06-22 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "tenant",
+    "visitor",
+    "session",
+    "status",
+    "section_page",
+    "page_url",
+    "page_path",
+    "page_title",
+    "previous_page_url",
+    "referrer",
+    "section_timing",
+    "started_on",
+    "ended_on",
+    "last_heartbeat_on",
+    "heartbeat_count",
+    "duration_seconds",
+    "active_duration_seconds",
+    "section_location",
+    "country",
+    "city"
+  ],
+  "fields": [
+    {
+      "fieldname": "tenant",
+      "fieldtype": "Link",
+      "label": "Tenant",
+      "options": "Nexus Tenant",
+      "in_list_view": 0,
+      "search_index": 1
+    },
+    {
+      "fieldname": "visitor",
+      "fieldtype": "Link",
+      "label": "Visitor",
+      "options": "Nexus Web Visitor",
+      "search_index": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "session",
+      "fieldtype": "Link",
+      "label": "Session",
+      "options": "Nexus Web Session",
+      "reqd": 1,
+      "search_index": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Started\nActive\nCompleted\nAbandoned",
+      "default": "Started",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_page",
+      "fieldtype": "Section Break",
+      "label": "Page Details"
+    },
+    {
+      "fieldname": "page_url",
+      "fieldtype": "Small Text",
+      "label": "Page URL",
+      "description": "Query parameters are stripped by default. Only approved UTM params are kept.",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "page_path",
+      "fieldtype": "Data",
+      "label": "Page Path",
+      "search_index": 1
+    },
+    {
+      "fieldname": "page_title",
+      "fieldtype": "Data",
+      "label": "Page Title"
+    },
+    {
+      "fieldname": "previous_page_url",
+      "fieldtype": "Small Text",
+      "label": "Previous Page URL",
+      "description": "The page visited immediately before this one in the same session."
+    },
+    {
+      "fieldname": "referrer",
+      "fieldtype": "Small Text",
+      "label": "Referrer",
+      "description": "Domain of external referrer. Full referrer URL is not stored."
+    },
+    {
+      "fieldname": "section_timing",
+      "fieldtype": "Section Break",
+      "label": "Timing"
+    },
+    {
+      "fieldname": "started_on",
+      "fieldtype": "Datetime",
+      "label": "Started On",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "ended_on",
+      "fieldtype": "Datetime",
+      "label": "Ended On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_heartbeat_on",
+      "fieldtype": "Datetime",
+      "label": "Last Heartbeat On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "heartbeat_count",
+      "fieldtype": "Int",
+      "label": "Heartbeat Count",
+      "default": "0"
+    },
+    {
+      "fieldname": "duration_seconds",
+      "fieldtype": "Int",
+      "label": "Duration (Seconds)",
+      "default": "0"
+    },
+    {
+      "fieldname": "active_duration_seconds",
+      "fieldtype": "Int",
+      "label": "Active Duration (Seconds)",
+      "default": "0",
+      "description": "Time the tab was visible and visitor was active. Calculated from frontend heartbeats."
+    },
+    {
+      "fieldname": "section_location",
+      "fieldtype": "Section Break",
+      "label": "Approximate Location"
+    },
+    {
+      "fieldname": "country",
+      "fieldtype": "Data",
+      "label": "Country"
+    },
+    {
+      "fieldname": "city",
+      "fieldtype": "Data",
+      "label": "City"
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "istable": 0,
+  "issingle": 0,
+  "links": [],
+  "modified": "2026-06-22 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Nexus Visitor Analytics",
+  "name": "Nexus Web Page Visit",
+  "naming_rule": "Random",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "started_on",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

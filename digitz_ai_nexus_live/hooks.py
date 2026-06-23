@@ -26,11 +26,17 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/digitz_ai_nexus_live/css/digitz_ai_nexus_live.css"
-app_include_js = "nexus_chat_widget.bundle.js"
+app_include_js = [
+    "nexus_chat_widget.bundle.js",
+    "/assets/digitz_ai_nexus_live/js/nexus_desk.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/digitz_ai_nexus_live/css/digitz_ai_nexus_live.css"
-web_include_js = "nexus_chat_widget.bundle.js"
+web_include_js = [
+    "nexus_visitor_tracker.js",
+    "nexus_chat_widget.bundle.js",
+]
 
 # include custom scss in every website theme (without file extension ".scss")
 # website_theme_scss = "digitz_ai_nexus_live/public/scss/website"
@@ -156,20 +162,21 @@ after_install = "digitz_ai_nexus_live.setup.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "WhatsApp Message": {
+        "after_insert": "digitz_ai_nexus_live.services.whatsapp_service.on_whatsapp_message",
+    }
+}
 
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
     "all": [
-        "digitz_ai_nexus_live.services.live_chat_service.close_idle_conversations"
+        "digitz_ai_nexus_live.services.live_chat_service.close_idle_conversations",
+    ],
+    "hourly": [
+        "digitz_ai_nexus_live.services.visitor_tracking_service.close_abandoned_sessions",
     ],
 }
 
@@ -221,7 +228,7 @@ scheduler_events = {
 
 # Request Events
 # ----------------
-# before_request = ["digitz_ai_nexus_live.utils.before_request"]
+before_request = ["digitz_ai_nexus_live.embed.handle_options_preflight"]
 after_request = ["digitz_ai_nexus_live.embed.set_embed_headers"]
 
 # Job Events
