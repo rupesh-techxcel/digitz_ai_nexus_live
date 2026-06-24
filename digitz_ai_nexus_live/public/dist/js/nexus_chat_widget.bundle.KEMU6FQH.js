@@ -25,6 +25,9 @@
       identity_verification_challenge: null,
       whatsapp_phone: null
     };
+    var _nexy_cats = [];
+    var _category_selected = false;
+    var _nexy_click_count = 0;
     function is_desk() {
       return !!(global.frappe && frappe.boot && frappe.boot.user && frappe.boot.user.name && frappe.boot.user.name !== "Guest");
     }
@@ -300,12 +303,12 @@
                     </div>
                 </div>
 
-                <div id="ncw-nexy-sticky">
-                    <button id="ncw-nexy-connect-btn" type="button" aria-label="Connect with Nexy, Companion, the Agentic AI with many roles">
+                <div id="ncw-nexy-sticky" style="display:none;">
+                    <button id="ncw-nexy-connect-btn" type="button" aria-label="Connect with Nexy, your AI-driven companion for everything in the Nexus Platform">
                         <span id="ncw-nexy-mark" aria-hidden="true">N</span>
                         <span id="ncw-nexy-copy">
                             <strong>Connect with Nexy</strong>
-                            <small>Companion - The Agentic AI with many roles</small>
+                            <small>The AI-driven companion for everything in the Nexus Platform</small>
                         </span>
                         <span id="ncw-nexy-arrow" aria-hidden="true">&#8594;</span>
                     </button>
@@ -563,6 +566,16 @@
         e.style.display = "block";
       }
       el("ncw-send-btn").addEventListener("click", send_message);
+      el("ncw-nexy-connect-btn").addEventListener("click", function() {
+        if (!_nexy_cats || !_nexy_cats.length)
+          return;
+        _nexy_click_count++;
+        el("ncw-nexy-sticky").style.display = "none";
+        el("ncw-messages").querySelectorAll(".ncw-category-picker").forEach(function(p) {
+          p.remove();
+        });
+        render_category_picker(_nexy_cats, true);
+      });
       document.addEventListener("visibilitychange", function() {
         if (!document.hidden && S.open)
           clear_unread();
@@ -651,10 +664,15 @@
         }
         var _rt_agent_lbl = data.agent_name || S.agent_name || null;
         if (data.response_type === "category_picker") {
-          var _rt_cats = data.categories || [];
-          typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
-            render_category_picker(_rt_cats);
-          });
+          if (!_category_selected) {
+            var _rt_cats = data.categories || [];
+            var _snap_nexy = _nexy_click_count;
+            typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
+              if (!_category_selected && _nexy_click_count === _snap_nexy) {
+                render_category_picker(_rt_cats);
+              }
+            });
+          }
           return;
         }
         if (data.status === "closed" || data.response_type === "conversation_closed") {
@@ -808,6 +826,11 @@
       _conv_close();
       hide_typing();
       reset_messages();
+      _nexy_cats = [];
+      _category_selected = false;
+      _nexy_click_count = 0;
+      if (!is_desk())
+        el("ncw-nexy-sticky").style.display = "none";
       S.open = false;
       S.sending = false;
       S.conversation_id = null;
@@ -1153,11 +1176,32 @@
         S.sending = false;
       }
     }
-    function render_category_picker(categories) {
+    function render_category_picker(categories, is_nexy_picker) {
       const msgs = el("ncw-messages");
+      msgs.querySelectorAll(".ncw-category-picker").forEach(function(p) {
+        p.remove();
+      });
+      var display_cats;
+      if (is_nexy_picker) {
+        display_cats = categories;
+      } else {
+        var nexy = categories.filter(function(c) {
+          return c.use_for_nexy;
+        });
+        var regular = categories.filter(function(c) {
+          return !c.use_for_nexy;
+        });
+        if (nexy.length && !is_desk()) {
+          _nexy_cats = nexy;
+          el("ncw-nexy-sticky").style.display = "flex";
+        }
+        display_cats = regular;
+      }
+      if (!display_cats.length)
+        return;
       const picker = document.createElement("div");
       picker.className = "ncw-category-picker";
-      categories.forEach(function(c) {
+      display_cats.forEach(function(c) {
         const btn = document.createElement("button");
         btn.className = "ncw-cat-btn";
         btn.dataset.code = c.category_code;
@@ -1169,11 +1213,17 @@
       });
       msgs.appendChild(picker);
       scroll_bottom();
+      if (!is_nexy_picker) {
+        lock_input_for_category();
+      }
     }
     async function select_category(code, label, faq_questions) {
+      _category_selected = true;
+      unlock_input();
       el("ncw-messages").querySelectorAll(".ncw-category-picker").forEach(function(p) {
         p.remove();
       });
+      el("ncw-nexy-sticky").style.display = "none";
       const chip = document.createElement("div");
       chip.className = "ncw-msg ncw-msg-visitor";
       chip.innerHTML = '<div class="ncw-bubble ncw-bubble-category">' + escape_html(label) + "</div>";
@@ -1772,6 +1822,12 @@
     }
     function set_input_placeholder(ph) {
       el("ncw-input").placeholder = ph;
+    }
+    function lock_input_for_category() {
+      const input = el("ncw-input");
+      input.disabled = true;
+      input.placeholder = "Select a topic above to continue\u2026";
+      el("ncw-send-btn").disabled = true;
     }
     function set_header(title, sub) {
       text("ncw-htitle", title || "AI Assistant");
@@ -2850,4 +2906,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.QRGVAPX5.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.KEMU6FQH.js.map

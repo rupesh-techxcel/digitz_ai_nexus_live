@@ -103,7 +103,9 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
                 f"No route configured for category '{category.category_label}'. "
                 "Please contact support or try a different option."
             )
-        knowledge_profile_names = []
+        # Use the route's public knowledge profile if one is configured
+        _pub_kp = frappe.db.get_value("Nexus Category Identity Route", route.name, "public_knowledge_profile")
+        knowledge_profile_names = [_pub_kp] if _pub_kp else []
 
     elif identity_type in ("Admin", "Internal"):
         # Try registry-based routing first — desk users may have configured Identity Profiles

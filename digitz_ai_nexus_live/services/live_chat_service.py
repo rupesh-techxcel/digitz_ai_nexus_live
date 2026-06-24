@@ -174,7 +174,7 @@ def _send_category_picker(conversation, greeting_name=None, publish=True, is_int
     categories = frappe.get_all(
         "Nexus Chat Category",
         filters=cat_filters,
-        fields=["name", "channel", "category_code", "category_label", "description", "display_order"],
+        fields=["name", "channel", "category_code", "category_label", "description", "display_order", "use_for_nexy"],
         order_by="display_order asc",
     )
 
@@ -1286,12 +1286,64 @@ def continue_live_chat(conversation_id, payload):
             }
 
         # Persist the verified address on the conversation and record why it was collected.
-        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+        _verified_identity_type = _challenge.resolved_identity_type
+        _verified_identity_registry = _challenge.identity_registry
+        _verified_updates = {
             "intent": "",
             "visitor_email": _challenge.email,
-            "resolved_identity_type": _challenge.resolved_identity_type,
-            "identity_registry": _challenge.identity_registry,
-        })
+            "resolved_identity_type": _verified_identity_type,
+            "identity_registry": _verified_identity_registry,
+        }
+
+        # Stamp the AI profile snapshot now that identity is confirmed — the
+        # category selection intentionally deferred this until verification was done.
+        _vcat_name = payload.get("chat_category") or getattr(conversation, "chat_category", None)
+        if _vcat_name and not getattr(conversation, "assigned_ai_agent_profile", None):
+            _is_authenticated = (
+                (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
+                or frappe.session.user not in ("Guest", None, "")
+            )
+            _post_verify_behavior = resolve_behavior_from_chat_category(
+                _vcat_name, _verified_identity_type, _is_authenticated,
+                payload={**payload, "identity_type": _verified_identity_type},
+            )
+            if _post_verify_behavior and _post_verify_behavior.profile_name:
+                _pv_profile = frappe.get_doc("Nexus AI Agent Profile", _post_verify_behavior.profile_name)
+                _pv_cat = frappe.get_doc("Nexus Chat Category", _vcat_name)
+                _verified_updates.update({
+                    "assigned_agent": _pv_profile.name,
+                    "assigned_agent_type": "AI",
+                    "assigned_ai_agent_profile": _pv_profile.name,
+                    "ai_profile_snapshot_json": json.dumps({
+                        "name": _pv_profile.name,
+                        "nickname": getattr(_pv_profile, "display_name", None) or getattr(_pv_profile, "agent_name", None),
+                        "chat_category": _vcat_name,
+                        "category_code": _pv_cat.category_code,
+                        "category_label": _pv_cat.category_label,
+                        "identity_type": _verified_identity_type,
+                        "identity_registry": _verified_identity_registry,
+                        "knowledge_profile_names": _post_verify_behavior.knowledge_profile_names or [],
+                        "behavior_prompt": _pv_profile.behavior_prompt,
+                        "tone": _pv_profile.tone,
+                        "response_style": _pv_profile.response_style,
+                        "welcome_message": _pv_profile.welcome_message,
+                        "fallback_message": _pv_profile.fallback_message,
+                        "do_not_answer_rules": _pv_profile.do_not_answer_rules,
+                        "confidence_threshold": _pv_profile.confidence_threshold,
+                        "escalation_enabled": _pv_profile.escalation_enabled,
+                        "escalation_policy": _pv_profile.escalation_policy,
+                        "memory_mode": _pv_profile.memory_mode,
+                        "default_response_mode": _pv_profile.default_response_mode,
+                        "collect_visitor_name": int(getattr(_pv_profile, "collect_visitor_name", 0) or 0),
+                        "companion_mode": int(getattr(_pv_profile, "companion_mode", 0) or 0),
+                        "companion_playbook": getattr(_pv_profile, "companion_playbook", None),
+                        "companion_discovery_style": getattr(_pv_profile, "companion_discovery_style", None),
+                        "category_drive_mode": getattr(_pv_cat, "internal_drive_mode", None) or "None",
+                        "category_drive_prompt": getattr(_pv_cat, "internal_drive_prompt", None) or "",
+                    }),
+                })
+
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, _verified_updates)
         conversation.reload()
         from digitz_ai_nexus_live.services.visitor_data_capture import capture_from_conversation
         from digitz_ai_nexus_live.services.conversation_service import stamp_email_on_web_visitor

@@ -15,6 +15,8 @@
     "published",
     "section_identity_profiles",
     "identity_profiles",
+    "section_public_knowledge",
+    "public_knowledge_profile",
     "section_meta",
     "priority",
     "description"
@@ -85,6 +87,18 @@
       "fieldtype": "Table",
       "label": "Permitted Identity Profiles",
       "options": "Nexus Route Identity Profile"
+    },
+    {
+      "fieldname": "section_public_knowledge",
+      "fieldtype": "Section Break",
+      "label": "Public Visitor Knowledge"
+    },
+    {
+      "description": "Knowledge Profile to grant Public (unregistered) visitors when they use this route. Leave blank to give no knowledge access to Public visitors.",
+      "fieldname": "public_knowledge_profile",
+      "fieldtype": "Link",
+      "label": "Public Knowledge Profile",
+      "options": "Knowledge Profile"
     },
     {
       "fieldname": "section_meta",

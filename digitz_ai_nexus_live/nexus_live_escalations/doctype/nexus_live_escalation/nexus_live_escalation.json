@@ -36,13 +36,13 @@
       "fieldname": "from_agent",
       "fieldtype": "Link",
       "label": "From Agent",
-      "options": "Nexus Live Agent"
+      "options": "Nexus AI Agent Profile"
     },
     {
       "fieldname": "to_agent",
       "fieldtype": "Link",
       "label": "To Agent",
-      "options": "Nexus Live Agent"
+      "options": "Nexus AI Agent Profile"
     },
     {
       "fieldname": "to_queue",

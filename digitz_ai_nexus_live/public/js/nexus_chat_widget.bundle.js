@@ -41,6 +41,20 @@
         whatsapp_phone:   null,
     };
 
+    // Nexy-specific categories stored when the category picker arrives;
+    // rendered separately when the visitor clicks "Connect with Nexy".
+    var _nexy_cats = [];
+
+    // Set to true when the visitor selects an actual category (select_category).
+    // Suppresses any category_picker realtime events that arrive after selection.
+    var _category_selected = false;
+
+    // Incremented each time the visitor clicks "Connect with Nexy".
+    // Typewriter callbacks capture a snapshot of this counter; if the counter
+    // has changed by the time the callback fires, the user already clicked Nexy
+    // so we skip re-rendering the regular category picker over the Nexy one.
+    var _nexy_click_count = 0;
+
     // ── Context ────────────────────────────────────────────────────────────────
 
     function is_desk() {
@@ -309,12 +323,12 @@
                     </div>
                 </div>
 
-                <div id="ncw-nexy-sticky">
-                    <button id="ncw-nexy-connect-btn" type="button" aria-label="Connect with Nexy, Companion, the Agentic AI with many roles">
+                <div id="ncw-nexy-sticky" style="display:none;">
+                    <button id="ncw-nexy-connect-btn" type="button" aria-label="Connect with Nexy, your AI-driven companion for everything in the Nexus Platform">
                         <span id="ncw-nexy-mark" aria-hidden="true">N</span>
                         <span id="ncw-nexy-copy">
                             <strong>Connect with Nexy</strong>
-                            <small>Companion - The Agentic AI with many roles</small>
+                            <small>The AI-driven companion for everything in the Nexus Platform</small>
                         </span>
                         <span id="ncw-nexy-arrow" aria-hidden="true">&#8594;</span>
                     </button>
@@ -577,6 +591,16 @@
         }
 
         el('ncw-send-btn').addEventListener('click', send_message);
+
+        el('ncw-nexy-connect-btn').addEventListener('click', function () {
+            if (!_nexy_cats || !_nexy_cats.length) return;
+            _nexy_click_count++;
+            el('ncw-nexy-sticky').style.display = 'none';
+            // Remove any existing category pickers so only the Nexy picker is shown
+            el('ncw-messages').querySelectorAll('.ncw-category-picker').forEach(function (p) { p.remove(); });
+            render_category_picker(_nexy_cats, true);
+        });
+
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden && S.open) clear_unread();
         });
@@ -674,10 +698,17 @@
             var _rt_agent_lbl = data.agent_name || S.agent_name || null;
 
             if (data.response_type === 'category_picker') {
-                var _rt_cats = data.categories || [];
-                typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
-                    render_category_picker(_rt_cats);
-                });
+                if (!_category_selected) {
+                    var _rt_cats = data.categories || [];
+                    var _snap_nexy = _nexy_click_count;
+                    typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
+                        // Skip if: (a) category already selected, or (b) user clicked
+                        // "Connect with Nexy" while the typewriter was running
+                        if (!_category_selected && _nexy_click_count === _snap_nexy) {
+                            render_category_picker(_rt_cats);
+                        }
+                    });
+                }
                 return;
             }
 
@@ -852,6 +883,10 @@
         _conv_close();
         hide_typing();
         reset_messages();
+        _nexy_cats = [];
+        _category_selected = false;
+        _nexy_click_count = 0;
+        if (!is_desk()) el('ncw-nexy-sticky').style.display = 'none';
         S.open = false;
         S.sending = false;
         S.conversation_id = null;
@@ -1278,13 +1313,36 @@
 
     // ── Category picker ────────────────────────────────────────────────────────
 
-    function render_category_picker(categories) {
+    function render_category_picker(categories, is_nexy_picker) {
         const msgs = el('ncw-messages');
+
+        // Always clear any existing pickers before rendering a new one
+        msgs.querySelectorAll('.ncw-category-picker').forEach(function (p) { p.remove(); });
+
+        var display_cats;
+        if (is_nexy_picker) {
+            // Called directly from the Nexy button — show all passed categories as-is
+            display_cats = categories;
+        } else {
+            // Split: Nexy-specific categories are hidden from the main picker
+            // and revealed only when the visitor clicks "Connect with Nexy"
+            var nexy = categories.filter(function (c) { return c.use_for_nexy; });
+            var regular = categories.filter(function (c) { return !c.use_for_nexy; });
+
+            if (nexy.length && !is_desk()) {
+                _nexy_cats = nexy;
+                el('ncw-nexy-sticky').style.display = 'flex';
+            }
+
+            display_cats = regular;
+        }
+
+        if (!display_cats.length) return;
 
         const picker = document.createElement('div');
         picker.className = 'ncw-category-picker';
 
-        categories.forEach(function (c) {
+        display_cats.forEach(function (c) {
             const btn = document.createElement('button');
             btn.className = 'ncw-cat-btn';
             btn.dataset.code = c.category_code;
@@ -1301,13 +1359,21 @@
 
         msgs.appendChild(picker);
         scroll_bottom();
+
+        // Lock the text input until the visitor selects a category
+        if (!is_nexy_picker) {
+            lock_input_for_category();
+        }
     }
 
     async function select_category(code, label, faq_questions) {
-        // Remove all pickers
+        _category_selected = true;
+        unlock_input();
+        // Remove all pickers and hide the Nexy sticky
         el('ncw-messages').querySelectorAll('.ncw-category-picker').forEach(function (p) {
             p.remove();
         });
+        el('ncw-nexy-sticky').style.display = 'none';
 
         // Show visitor's selection as a labelled chip
         const chip = document.createElement('div');
@@ -2101,6 +2167,13 @@
 
     function set_input_placeholder(ph) {
         el('ncw-input').placeholder = ph;
+    }
+
+    function lock_input_for_category() {
+        const input = el('ncw-input');
+        input.disabled = true;
+        input.placeholder = 'Select a topic above to continue…';
+        el('ncw-send-btn').disabled = true;
     }
 
     // ── Header ─────────────────────────────────────────────────────────────────
