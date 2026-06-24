@@ -5,10 +5,6 @@ from digitz_ai_nexus_live.services.conversation_service import (
     mark_escalated,
 )
 
-from digitz_ai_nexus_live.services.agent_service import (
-    set_agent_status,
-)
-
 
 DEFAULT_CONFIDENCE_THRESHOLD = 0.65
 
@@ -112,6 +108,55 @@ def find_escalation_target(rule):
     return {"agent": None, "queue": None}
 
 
+def mark_escalation_requested(conversation):
+    """Mark conversation as having a pending escalation request awaiting desk approval."""
+    conversation_doc = (
+        conversation
+        if hasattr(conversation, "doctype")
+        else frappe.get_doc("Nexus Live Conversation", conversation)
+    )
+    conversation_doc.escalation_status = "Requested"
+    conversation_doc.escalated_at = now_datetime()
+    conversation_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+
+def _complete_approved_escalation(conversation_name):
+    """Promote a desk-approved, email-verified escalation to active Escalated status."""
+    conversation_doc = frappe.get_doc("Nexus Live Conversation", conversation_name)
+
+    # Promote conversation to fully Escalated (status="Escalated", escalation_status="Pending")
+    mark_escalated(conversation_doc)
+
+    # Promote any "Requested" escalation records to "Pending" so agents can claim them
+    for esc_name in frappe.get_all(
+        "Nexus Live Escalation",
+        filters={"conversation": conversation_name, "status": "Requested"},
+        pluck="name",
+    ):
+        frappe.db.set_value("Nexus Live Escalation", esc_name, "status", "Pending")
+
+    frappe.db.commit()
+
+    try:
+        from digitz_ai_nexus_live.services.chat_realtime import (
+            publish_escalation_alert,
+            publish_chat_response,
+        )
+        fresh_conv = frappe.get_doc("Nexus Live Conversation", conversation_name)
+        publish_escalation_alert(fresh_conv, requires_approval=False)
+        publish_chat_response(
+            conversation_id=conversation_name,
+            message=(
+                "Your email has been verified. You've been connected to our support team — "
+                "an agent will be with you shortly."
+            ),
+            response_type="system_message",
+        )
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Nexus Escalation Complete Failed")
+
+
 def create_escalation(
     conversation,
     reason,
@@ -119,7 +164,7 @@ def create_escalation(
     confidence=None,
     remarks=None,
 ):
-    """Create Nexus Live Escalation record."""
+    """Create an escalation request awaiting desk approval."""
     conversation_doc = (
         conversation
         if hasattr(conversation, "doctype")
@@ -145,27 +190,20 @@ def create_escalation(
     escalation.from_agent = from_agent_doc.name if from_agent_doc else None
     escalation.to_agent = target["agent"].name if target["agent"] else None
     escalation.to_queue = target["queue"]
-    escalation.status = "Pending"
+    escalation.status = "Requested"
     escalation.confidence = confidence
     escalation.remarks = remarks
     escalation.created_on = now_datetime()
 
     escalation.insert(ignore_permissions=True)
 
-    mark_escalated(conversation_doc)
-
-    if from_agent_doc:
-        set_agent_status(
-            from_agent_doc,
-            "Waiting",
-            conversation=conversation_doc.name,
-            remarks="Conversation escalated.",
-        )
+    # Mark conversation as escalation requested — NOT yet approved or claimed
+    mark_escalation_requested(conversation_doc)
 
     try:
         from digitz_ai_nexus_live.services.chat_realtime import publish_escalation_alert
         fresh_conv = frappe.get_doc("Nexus Live Conversation", conversation_doc.name)
-        publish_escalation_alert(fresh_conv)
+        publish_escalation_alert(fresh_conv, requires_approval=True)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Nexus Escalation Alert Failed")
 

@@ -1467,6 +1467,65 @@ def continue_live_chat(conversation_id, payload):
 
         intent = ""
 
+    # ── Escalation approval email verification ─────────────────────────────────
+    # Set when a desk agent approves an escalation request but the visitor has
+    # not yet verified their email. Cleared once OTP is confirmed.
+    if intent == "await_escalation_verification":
+        from digitz_ai_nexus_live.services.identity_verification import get_verified_challenge
+        from digitz_ai_nexus_live.services.escalation_service import _complete_approved_escalation
+        from digitz_ai_nexus_live.services.conversation_service import stamp_email_on_web_visitor
+
+        _esc_cat = getattr(conversation, "chat_category", None)
+        _esc_challenge = get_verified_challenge(
+            challenge_token=payload.get("identity_verification_challenge"),
+            chat_category=_esc_cat,
+        ) if _esc_cat else None
+
+        if not _esc_challenge:
+            nudge = (
+                "To complete your escalation request, please verify your email address. "
+                "Enter your email and we'll send you a quick verification code."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=nudge,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "await_escalation_verification",
+                "response_type": "message",
+                "message": nudge,
+                "answer": nudge,
+                "confidence": 1.0,
+                "access_status": "awaiting_verification",
+                "sources": [],
+                "identity_verification_offer": True,
+            })
+            return {
+                "status": "await_escalation_verification",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
+        # Challenge verified — stamp email and promote escalation to active
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+            "visitor_email": _esc_challenge.email,
+            "intent": "",
+        })
+        conversation.reload()
+
+        stamp_email_on_web_visitor(conversation, _esc_challenge.email, verified=True)
+
+        _complete_approved_escalation(conversation.name)
+
+        return {
+            "status": "escalation_verified",
+            "conversation": conversation.name,
+            "conversation_id": conversation_id,
+        }
+
     # Store visitor message for all non-category-click cases
     add_message(
         conversation=conversation,
@@ -1892,8 +1951,10 @@ def _process_ai_response(conversation_id, payload_json):
         )
 
         escalation_created = None
+        _esc_notice = None
 
-        # Only escalate to human if the category has enable_escalation checked
+        # Only escalate to human if the category has enable_escalation checked.
+        # All categories (including Nexy) can escalate — approval gate applies universally.
         category_allows_escalation = False
         if conversation.chat_category:
             category_allows_escalation = bool(
@@ -1904,14 +1965,23 @@ def _process_ai_response(conversation_id, payload_json):
                 )
             )
 
+        # Prevent re-triggering while an escalation request is already in flight
+        _current_esc_status = getattr(conversation, "escalation_status", None) or "None"
+        already_pending = _current_esc_status in ("Requested", "Pending", "Accepted")
+
         user_requested_human = bool(core_response.get("user_requested_human"))
         no_knowledge = bool(core_response.get("fallback_used") and not core_response.get("answer"))
 
-        if escalation_enabled and category_allows_escalation and should_escalate(
-            confidence=confidence,
-            no_knowledge=no_knowledge,
-            user_requested_human=user_requested_human,
-            threshold=threshold,
+        if (
+            not already_pending
+            and escalation_enabled
+            and category_allows_escalation
+            and should_escalate(
+                confidence=confidence,
+                no_knowledge=no_knowledge,
+                user_requested_human=user_requested_human,
+                threshold=threshold,
+            )
         ):
             if user_requested_human:
                 escalation_reason = "User Requested Human"
@@ -1933,6 +2003,21 @@ def _process_ai_response(conversation_id, payload_json):
                 remarks=escalation_remarks,
             )
 
+            if escalation_created:
+                _esc_notice = (
+                    "Your request to connect with our team has been received. "
+                    "A desk agent will review your chat shortly and you'll be updated "
+                    "based on their availability. In the meantime, feel free to continue "
+                    "asking questions — our AI assistant is here to help."
+                )
+                # Save notice to transcript; realtime publish fires after the AI answer below
+                add_message(
+                    conversation=conversation,
+                    sender_type="AI Agent",
+                    message=_esc_notice,
+                    response_mode="chat",
+                )
+
         resolved_context = payload.get("_resolved_tenant_context") or {}
         correlated_questions = core_response.get("correlated_questions") or []
 
@@ -1950,7 +2035,7 @@ def _process_ai_response(conversation_id, payload_json):
             "sources": sources,
             "correlated_questions": correlated_questions,
 
-            "escalated": bool(escalation_created),
+            "escalation_requested": bool(escalation_created),
             "escalation": escalation_created.name if escalation_created else None,
 
             "confidence_threshold": threshold,
@@ -1966,6 +2051,19 @@ def _process_ai_response(conversation_id, payload_json):
             "resolved_tenant_context": resolved_context,
             "debug_info": debug_info,
         })
+
+        # Send escalation-request notice to visitor after the AI answer so message order is correct
+        if escalation_created and _esc_notice:
+            publish_chat_response(conversation.conversation_id, {
+                "status": "escalation_requested",
+                "response_type": "message",
+                "message": _esc_notice,
+                "answer": _esc_notice,
+                "confidence": 1.0,
+                "sources": [],
+                "escalation_requested": True,
+                "escalation": escalation_created.name,
+            })
 
         # WhatsApp delivery fork — send answer directly to visitor's phone when
         # the conversation is on a WhatsApp channel.  The realtime publish above

@@ -111,14 +111,15 @@ class NexusLiveConsole {
 	}
 
 	on_escalation_alert(data) {
-		// Refresh grid to pick up the new escalated card
 		this.load_conversations();
 
-		// Browser notification
-		const title = `Escalation — ${data.visitor_name || 'Visitor'}`;
+		const is_request = !!data.requires_approval;
+		const title = is_request
+			? `Escalation Request — ${data.visitor_name || 'Visitor'}`
+			: `Escalation — ${data.visitor_name || 'Visitor'}`;
 		const body  = data.chat_category
 			? `Category: ${data.category_label || data.chat_category}`
-			: 'A conversation needs your attention.';
+			: (is_request ? 'Review and approve or reject the escalation request.' : 'A conversation needs your attention.');
 
 		if (window.Notification && Notification.permission === 'granted') {
 			new Notification(title, { body, icon: '/assets/digitz_ai_nexus/images/nexus-chat-agent-icon.svg' });
@@ -128,7 +129,10 @@ class NexusLiveConsole {
 			});
 		}
 
-		frappe.show_alert({ message: `🔴 New escalation: ${data.visitor_name || 'Visitor'}`, indicator: 'red' }, 6);
+		const alert_msg = is_request
+			? `🟡 Escalation request: ${data.visitor_name || 'Visitor'}`
+			: `🔴 New escalation: ${data.visitor_name || 'Visitor'}`;
+		frappe.show_alert({ message: alert_msg, indicator: is_request ? 'yellow' : 'red' }, 6);
 	}
 
 	on_escalation_claimed(data) {
@@ -502,8 +506,9 @@ class NexusLiveConsole {
 		const is_active   = c.conversation_id === this.active_conversation_id;
 		const initials    = label.substring(0, 2).toUpperCase();
 
+		const esc_key  = (c.escalation_status || '').toLowerCase().replace(/\s+/g, '-');
 		const esc_html = c.escalation_status && c.escalation_status !== 'None'
-			? `<span class="nlc-card-esc">${frappe.utils.escape_html(c.escalation_status)}</span>`
+			? `<span class="nlc-card-esc nlc-card-esc-${frappe.utils.escape_html(esc_key)}">${frappe.utils.escape_html(c.escalation_status)}</span>`
 			: '';
 
 		const claimed_html = c.human_agent
@@ -690,7 +695,8 @@ class NexusLiveConsole {
 			history_html = before + escalation_divider + after;
 		}
 
-		const is_closed = conv.status === 'Closed';
+		const is_closed    = conv.status === 'Closed';
+		const esc_status   = conv.escalation_status || 'None';
 
 		let claim_section = '';
 		if (is_closed) {
@@ -699,7 +705,21 @@ class NexusLiveConsole {
 			</div>`;
 		} else {
 			const can_take = this.is_agent_mode || frappe.user.has_role('System Manager');
-			if (!claimed_by) {
+
+			if (esc_status === 'Requested' && can_take) {
+				// Desk must approve or reject before a human agent can claim
+				claim_section = `
+					<div id="nep-claim-wrap" class="nep-claim-wrap nep-claim-wrap-approval">
+						<div class="nep-approval-info">
+							<span class="nep-approval-badge">&#x23F3; Pending Approval</span>
+							<span class="nep-approval-hint">Review the chat then approve or reject this escalation request.</span>
+						</div>
+						<div class="nep-approval-actions">
+							<button class="nep-action-btn nep-approve-btn" id="nep-approve-btn">&#x2713; Approve</button>
+							<button class="nep-action-btn nep-reject-btn"  id="nep-reject-btn">&#x2717; Reject</button>
+						</div>
+					</div>`;
+			} else if (!claimed_by) {
 				if (can_take) {
 					claim_section = `
 						<div id="nep-claim-wrap" class="nep-claim-wrap">
@@ -861,6 +881,63 @@ class NexusLiveConsole {
 				frappe.show_alert({ message: 'Failed to close conversation.', indicator: 'red' });
 			}
 		});
+
+		// Escalation approval / rejection
+		this.body.on('click', '#nep-approve-btn', async () => {
+			try {
+				await frappe.call({
+					method: 'digitz_ai_nexus_live.api.agent_console.approve_escalation_request',
+					args: { conversation_id: me.panel_conv_id },
+				});
+				frappe.show_alert({ message: 'Escalation approved. Visitor has been notified.', indicator: 'green' });
+				me.close_escalation_panel();
+				me.load_conversations();
+			} catch(e) {
+				frappe.msgprint('Failed to approve escalation request.');
+			}
+		});
+
+		this.body.on('click', '#nep-reject-btn', () => {
+			me.body.find('#nep-claim-wrap').html(`
+				<div class="nep-approval-info">
+					<span class="nep-rejection-label">Reason for rejection (optional):</span>
+					<input type="text" id="nep-reject-remarks" class="nep-reject-input"
+						placeholder="e.g. Not available right now" maxlength="200">
+				</div>
+				<div class="nep-approval-actions">
+					<button class="nep-action-btn nep-confirm-yes-btn" id="nep-reject-confirm-btn">Confirm Reject</button>
+					<button class="nep-action-btn nep-confirm-no-btn"  id="nep-reject-cancel-btn">Cancel</button>
+				</div>
+			`);
+		});
+
+		this.body.on('click', '#nep-reject-confirm-btn', async () => {
+			const remarks = (me.body.find('#nep-reject-remarks').val() || '').trim();
+			try {
+				await frappe.call({
+					method: 'digitz_ai_nexus_live.api.agent_console.reject_escalation_request',
+					args: { conversation_id: me.panel_conv_id, remarks },
+				});
+				frappe.show_alert({ message: 'Escalation request rejected. Visitor can continue with AI.', indicator: 'orange' });
+				me.close_escalation_panel();
+				me.load_conversations();
+			} catch(e) {
+				frappe.msgprint('Failed to reject escalation request.');
+			}
+		});
+
+		this.body.on('click', '#nep-reject-cancel-btn', () => {
+			me.body.find('#nep-claim-wrap').html(`
+				<div class="nep-approval-info">
+					<span class="nep-approval-badge">&#x23F3; Pending Approval</span>
+					<span class="nep-approval-hint">Review the chat then approve or reject this escalation request.</span>
+				</div>
+				<div class="nep-approval-actions">
+					<button class="nep-action-btn nep-approve-btn" id="nep-approve-btn">&#x2713; Approve</button>
+					<button class="nep-action-btn nep-reject-btn"  id="nep-reject-btn">&#x2717; Reject</button>
+				</div>
+			`);
+		});
 	}
 
 	_subscribe_panel_realtime(conversation_id) {
@@ -963,6 +1040,10 @@ class NexusLiveConsole {
 		this.body.off('click', '#nep-close-conv-btn');
 		this.body.off('click', '#nep-confirm-close-yes');
 		this.body.off('click', '#nep-confirm-close-no');
+		this.body.off('click', '#nep-approve-btn');
+		this.body.off('click', '#nep-reject-btn');
+		this.body.off('click', '#nep-reject-confirm-btn');
+		this.body.off('click', '#nep-reject-cancel-btn');
 		// Leave the conversation task room
 		if (conv_id) {
 			if (typeof frappe.realtime.task_unsubscribe === 'function') {
@@ -1915,6 +1996,86 @@ class NexusLiveConsole {
 			border-color: #e2e8f0;
 		}
 		.nep-confirm-no-btn:hover { background: #e2e8f0; }
+
+		/* ── Escalation approval section ── */
+
+		.nep-claim-wrap-approval {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 10px;
+		}
+
+		.nep-approval-info {
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
+		}
+
+		.nep-approval-badge {
+			font-size: 12px;
+			font-weight: 700;
+			color: #975a16;
+			background: #fffbeb;
+			border: 1.5px solid #f6e05e;
+			border-radius: 6px;
+			padding: 3px 10px;
+			display: inline-block;
+		}
+
+		.nep-approval-hint {
+			font-size: 12px;
+			color: #718096;
+			margin-top: 2px;
+		}
+
+		.nep-approval-actions {
+			display: flex;
+			gap: 8px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+
+		.nep-approve-btn {
+			background: #f0fff8;
+			color: #276749;
+			border-color: #c6f6d5;
+		}
+		.nep-approve-btn:hover { background: #c6f6d5; }
+
+		.nep-reject-btn {
+			background: #fff5f5;
+			color: #c53030;
+			border-color: #fed7d7;
+		}
+		.nep-reject-btn:hover { background: #fed7d7; }
+
+		.nep-rejection-label {
+			font-size: 12.5px;
+			font-weight: 600;
+			color: #c53030;
+			display: block;
+			margin-bottom: 4px;
+		}
+
+		.nep-reject-input {
+			border: 1.5px solid #e2e8f0;
+			border-radius: 8px;
+			padding: 6px 12px;
+			font-size: 13px;
+			font-family: inherit;
+			width: 100%;
+			max-width: 340px;
+			outline: none;
+			color: #1a2942;
+		}
+		.nep-reject-input:focus { border-color: #e53e3e; }
+
+		/* Escalation status badge colour variants on conversation cards */
+		.nlc-card-esc-requested {
+			background: #fffbeb;
+			color: #975a16;
+			border-color: #f6e05e;
+		}
 
 		/* ── New message flash on panel message ── */
 		.nep-msg-flash .nep-msg-bubble {

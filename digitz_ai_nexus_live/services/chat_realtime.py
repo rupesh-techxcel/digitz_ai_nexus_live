@@ -3,6 +3,7 @@ import frappe
 CHAT_RESPONSE_EVENT = "nexus_chat_response"
 CHAT_TYPING_EVENT = "nexus_chat_typing"
 ESCALATION_ALERT_EVENT = "nexus_escalation_alert"
+ESCALATION_APPROVED_EVENT = "nexus_escalation_approved"
 ESCALATION_CLAIMED_EVENT = "nexus_escalation_claimed"
 LIVE_MESSAGE_EVENT = "nexus_live_message"
 
@@ -63,10 +64,11 @@ def publish_live_message(conversation, message):
     )
 
 
-def publish_escalation_alert(conversation):
+def publish_escalation_alert(conversation, requires_approval=False):
     """
     Notify all desk users who can handle escalations for the conversation's
-    chat category that a new escalation is waiting.
+    chat category. When requires_approval=True the desk must Approve or Reject
+    before the conversation is fully escalated.
     """
     chat_category = getattr(conversation, "chat_category", None)
     visitor_name = getattr(conversation, "visitor_name", None) or "Visitor"
@@ -85,6 +87,7 @@ def publish_escalation_alert(conversation):
         "chat_category": chat_category,
         "category_label": category_label or chat_category,
         "escalated_at": str(conversation.escalated_at) if getattr(conversation, "escalated_at", None) else None,
+        "requires_approval": requires_approval,
     }
 
     if agent_users:

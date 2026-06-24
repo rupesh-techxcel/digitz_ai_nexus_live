@@ -4,6 +4,7 @@ from frappe.utils import now_datetime
 from digitz_ai_nexus_live.services.agent_service import decrement_active_sessions
 from digitz_ai_nexus_live.services.chat_realtime import (
     publish_chat_response,
+    ESCALATION_APPROVED_EVENT,
     ESCALATION_CLAIMED_EVENT,
 )
 from digitz_ai_nexus_live.services.conversation_service import add_message, mark_escalated
@@ -285,4 +286,132 @@ def close_conversation_by_agent(conversation_id):
     })
 
     frappe.db.commit()
+    return {"success": True}
+
+
+@frappe.whitelist()
+def approve_escalation_request(conversation_id):
+    """
+    Desk agent approves a visitor's escalation request.
+    If the visitor's email is already verified, escalation completes immediately.
+    Otherwise the visitor is prompted to verify their email via OTP before the
+    conversation is handed to a human agent.
+    """
+    user = frappe.session.user
+    is_sysmanager = "System Manager" in frappe.get_roles(user)
+    assignment = _get_human_assignment(user)
+    if not assignment and not is_sysmanager:
+        frappe.throw("No active escalation-enabled profile found for the current user.")
+
+    conv_name = _get_conversation_name(conversation_id)
+    if not conv_name:
+        frappe.throw("Conversation not found.")
+
+    esc_status = frappe.db.get_value("Nexus Live Conversation", conv_name, "escalation_status")
+    if esc_status != "Requested":
+        frappe.throw("No pending escalation request for this conversation.")
+
+    conv = frappe.get_doc("Nexus Live Conversation", conv_name)
+
+    if conv.visitor_email:
+        # Email already verified — complete escalation immediately
+        from digitz_ai_nexus_live.services.escalation_service import _complete_approved_escalation
+        _complete_approved_escalation(conv_name)
+    else:
+        # Prompt visitor to verify email before completing escalation
+        frappe.db.set_value("Nexus Live Conversation", conv_name, "intent", "await_escalation_verification")
+        frappe.db.commit()
+
+        approval_msg = (
+            "Your escalation request has been reviewed and approved. "
+            "To connect you with our team, please verify your email address — "
+            "check the verification prompt in the chat."
+        )
+        add_message(
+            conversation=conv,
+            sender_type="System",
+            message=approval_msg,
+            response_mode="chat",
+        )
+        publish_chat_response(conversation_id, {
+            "status": "escalation_approved",
+            "response_type": "message",
+            "message": approval_msg,
+            "answer": approval_msg,
+            "confidence": 1.0,
+            "sources": [],
+            "identity_verification_offer": True,
+        })
+
+        frappe.publish_realtime(
+            event=ESCALATION_APPROVED_EVENT,
+            message={
+                "conversation_id": conversation_id,
+                "requires_email_verification": True,
+            },
+            task_id=conversation_id,
+        )
+
+    return {"success": True}
+
+
+@frappe.whitelist()
+def reject_escalation_request(conversation_id, remarks=None):
+    """
+    Desk agent rejects a visitor's escalation request.
+    The conversation returns to normal AI mode so the visitor can continue chatting.
+    """
+    user = frappe.session.user
+    is_sysmanager = "System Manager" in frappe.get_roles(user)
+    assignment = _get_human_assignment(user)
+    if not assignment and not is_sysmanager:
+        frappe.throw("No active escalation-enabled profile found for the current user.")
+
+    conv_name = _get_conversation_name(conversation_id)
+    if not conv_name:
+        frappe.throw("Conversation not found.")
+
+    esc_status = frappe.db.get_value("Nexus Live Conversation", conv_name, "escalation_status")
+    if esc_status != "Requested":
+        frappe.throw("No pending escalation request for this conversation.")
+
+    # Reject all "Requested" escalation records for this conversation
+    for esc_name in frappe.get_all(
+        "Nexus Live Escalation",
+        filters={"conversation": conv_name, "status": "Requested"},
+        pluck="name",
+    ):
+        frappe.db.set_value(
+            "Nexus Live Escalation",
+            esc_name,
+            {"status": "Rejected", "remarks": remarks or ""},
+        )
+
+    # Reset conversation — escalation_status = "Rejected", AI continues responding
+    frappe.db.set_value("Nexus Live Conversation", conv_name, "escalation_status", "Rejected")
+    frappe.db.commit()
+
+    rejection_msg = (
+        "Thank you for your patience! Our team has reviewed your request. "
+        "Our AI assistant is ready to continue helping you — "
+        "please feel free to ask any further questions."
+    )
+
+    conv = frappe.get_doc("Nexus Live Conversation", conv_name)
+    add_message(
+        conversation=conv,
+        sender_type="AI Agent",
+        message=rejection_msg,
+        response_mode="chat",
+    )
+
+    publish_chat_response(conversation_id, {
+        "status": "escalation_rejected",
+        "response_type": "message",
+        "message": rejection_msg,
+        "answer": rejection_msg,
+        "confidence": 1.0,
+        "sources": [],
+    })
+
     return {"success": True}

@@ -214,7 +214,7 @@
    "fieldname": "escalation_status",
    "fieldtype": "Select",
    "label": "Escalation Status",
-   "options": "None\nPending\nAccepted\nResolved\nRejected",
+   "options": "None\nRequested\nPending\nAccepted\nResolved\nRejected",
    "default": "None"
   },
   {

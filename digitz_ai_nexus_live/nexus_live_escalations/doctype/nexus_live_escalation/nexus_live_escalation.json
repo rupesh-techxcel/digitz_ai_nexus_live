@@ -54,8 +54,8 @@
       "fieldname": "status",
       "fieldtype": "Select",
       "label": "Status",
-      "default": "Pending",
-      "options": "Pending\nAccepted\nResolved\nRejected"
+      "default": "Requested",
+      "options": "Requested\nPending\nAccepted\nResolved\nRejected"
     },
     {
       "fieldname": "confidence",
