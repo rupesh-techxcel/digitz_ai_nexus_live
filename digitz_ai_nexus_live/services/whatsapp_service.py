@@ -143,6 +143,10 @@ def _handle_new_conversation(conversation, channel, phone, whatsapp_account, mes
 
 def _handle_existing_conversation(conversation, channel, phone, whatsapp_account,
                                    message_text, content_type):
+    # Fire outreach reply tracking when this is an outreach-initiated conversation
+    if getattr(conversation, "conversation_origin", None) == "Outreach":
+        _notify_outreach_reply(conversation.name)
+
     intent = conversation.intent or ""
 
     if intent != "await_category":
@@ -387,6 +391,19 @@ def _get_agent_greeting(conversation):
         ) or None
     except Exception:
         return None
+
+
+def _notify_outreach_reply(conversation_name):
+    """Fire the outreach reply handler in a background job — non-blocking."""
+    try:
+        frappe.enqueue(
+            "digitz_ai_nexus_nexy.services.nexy_outreach_service.handle_outreach_reply",
+            conversation_name=conversation_name,
+            queue="short",
+            enqueue_after_commit=True,
+        )
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp: outreach reply notification failed")
 
 
 def _strip_markdown(text):

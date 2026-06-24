@@ -53,7 +53,8 @@
   "companion_persona_confidence",
   "column_break_companion",
   "companion_enquiry",
-  "companion_discovery_json"
+  "companion_discovery_json",
+  "conversation_origin"
  ],
  "fields": [
   {
@@ -385,6 +386,15 @@
    "options": "JSON",
    "read_only": 1,
    "description": "Running visitor context collected through conversation"
+  },
+  {
+   "fieldname": "conversation_origin",
+   "fieldtype": "Select",
+   "label": "Conversation Origin",
+   "options": "Inbound\nOutreach",
+   "default": "Inbound",
+   "read_only": 1,
+   "description": "Inbound: visitor initiated. Outreach: Nexy sent the first message via WhatsApp outreach."
   }
  ],
  "index_web_pages_for_search": 1,
