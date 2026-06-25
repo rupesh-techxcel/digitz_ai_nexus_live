@@ -1066,7 +1066,8 @@ def continue_live_chat(conversation_id, payload):
         cat = frappe.db.get_value(
             "Nexus Chat Category",
             {"name": category_name, "enabled": 1, "published": 1} if category_name else {"category_code": category_code, "enabled": 1, "published": 1},
-            ["name", "channel", "category_code", "category_label", "identity_verification_mode"],
+            ["name", "channel", "category_code", "category_label", "identity_verification_mode",
+             "internal_drive_mode", "internal_drive_prompt"],
             as_dict=True,
         )
 
