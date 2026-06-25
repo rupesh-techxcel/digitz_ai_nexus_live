@@ -350,7 +350,7 @@
    "fieldname": "companion_journey_stage",
    "fieldtype": "Select",
    "label": "Journey Stage",
-   "options": "ARRIVED\nGREETING\nDISCOVERY\nENGAGED\nSOLUTION_ALIGNMENT\nINTERESTED\nQUALIFIED\nESCALATED",
+   "options": "ARRIVED\nGREETING\nDISCOVERY\nENGAGED\nPRESENTING\nOBJECTION_HANDLING\nSOLUTION_ALIGNMENT\nINTERESTED\nQUALIFIED\nCONVERTING\nCONVERTED\nDECLINED\nESCALATED",
    "default": "ARRIVED",
    "read_only": 0
   },

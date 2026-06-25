@@ -1888,7 +1888,8 @@ def _process_ai_response(conversation_id, payload_json):
             and not identity_verification_offer
             and core_response.get("access_status") == "allowed"
         )
-        if is_real_answer and confidence is not None and confidence < threshold:
+        _is_companion_mode = int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
+        if is_real_answer and confidence is not None and confidence < threshold and not _is_companion_mode:
             answer = _wrap_low_confidence_answer(
                 visitor_message=payload.get("message") or payload.get("query") or "",
                 raw_answer=answer,
@@ -2015,14 +2016,20 @@ def _process_ai_response(conversation_id, payload_json):
             for r in _retrieval_results
         )
 
+        _is_companion_mode = int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
+
         if (
             not already_pending
             and escalation_enabled
             and category_allows_escalation
             and should_escalate(
-                # Skip confidence check when in fallback or when retrieval was driven by
-                # a curated Intent entry — both indicate intentional knowledge matches.
-                confidence=None if (no_knowledge or intent_matched) else confidence,
+                # Skip confidence check when:
+                # - fallback was used (no_knowledge) — RAG confidence is irrelevant
+                # - retrieval was driven by a curated Intent entry
+                # - companion mode is active — the companion manages escalation via
+                #   its own signal mechanism and request_escalation tool; RAG confidence
+                #   is not a reliable escalation signal in guided conversation mode.
+                confidence=None if (no_knowledge or intent_matched or _is_companion_mode) else confidence,
                 no_knowledge=no_knowledge,
                 user_requested_human=user_requested_human,
                 threshold=threshold,
@@ -2065,7 +2072,10 @@ def _process_ai_response(conversation_id, payload_json):
                 )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
-        correlated_questions = core_response.get("correlated_questions") or []
+        # Suppress suggested questions in companion mode — the companion is running a
+        # guided strategic conversation. Surfacing FAQ suggestions breaks conversational
+        # momentum and redirects visitors away from answering the companion's question.
+        correlated_questions = [] if _is_companion_mode else (core_response.get("correlated_questions") or [])
 
         publish_chat_response(conversation_id, {
             "status": "success",
@@ -2280,17 +2290,15 @@ def _wrap_low_confidence_answer(visitor_message, raw_answer, confidence):
 
     prompt = (
         "You are a helpful enterprise AI assistant.\n\n"
-        "The knowledge retrieval system found relevant information for the user's question, "
-        "but the match confidence is moderate — meaning this may not be a perfect answer.\n\n"
         f"User's question: {visitor_message}\n\n"
         f"Retrieved answer:\n{raw_answer}\n\n"
         "Your task:\n"
-        "1. Briefly and naturally acknowledge that you're not entirely certain this is exactly "
-        "what they're looking for — keep this to one short sentence.\n"
-        "2. Present the retrieved information clearly and helpfully.\n"
-        "3. Close with a short, conversational invitation for the user to confirm whether "
-        "it helps or to guide you with more detail.\n\n"
+        "1. Present the retrieved information clearly, helpfully, and with confidence.\n"
+        "2. Close with one short, natural invitation for the user to confirm it covers "
+        "what they needed, or to ask a follow-up if they want more detail.\n\n"
         "Important rules:\n"
+        "- Do NOT open with any negative, hedging, or uncertainty statement.\n"
+        "- Do NOT say 'this might not be exactly what you were looking for' or anything similar.\n"
         "- Do NOT mention confidence scores, percentages, or any technical terms.\n"
         "- Do NOT start with the word 'I'.\n"
         "- Keep a warm, professional tone throughout.\n"

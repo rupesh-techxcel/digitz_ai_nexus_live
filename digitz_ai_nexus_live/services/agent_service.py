@@ -55,8 +55,38 @@ def is_agent_available(agent):
     max_sessions = int(agent.max_active_sessions or 1)
     current_sessions = int(agent.current_active_sessions or 0)
 
+    # Self-healing: when the counter says the agent is at or over capacity, verify
+    # against actual open conversations in the DB. Abandoned sessions (browser closed,
+    # tab refreshed, bench restarted) never call close_conversation() so the counter
+    # drifts upward. If the real count is lower, auto-correct and continue.
     if current_sessions >= max_sessions:
-        return False
+        real_count = frappe.db.count(
+            "Nexus Live Conversation",
+            filters={"assigned_agent": agent.name, "status": ["not in", ["Closed", "Resolved"]]},
+        )
+        if real_count < current_sessions:
+            frappe.db.set_value(
+                "Nexus AI Agent Profile",
+                agent.name,
+                "current_active_sessions",
+                real_count,
+                update_modified=False,
+            )
+            agent.current_active_sessions = real_count
+            current_sessions = real_count
+
+            if real_count == 0 and agent.status not in ("Idle", "Waiting"):
+                frappe.db.set_value(
+                    "Nexus AI Agent Profile",
+                    agent.name,
+                    "status",
+                    "Idle",
+                    update_modified=False,
+                )
+                agent.status = "Idle"
+
+        if current_sessions >= max_sessions:
+            return False
 
     # For single-session agents, status must be Idle or Waiting.
     # Multi-session agents (max > 1) are available whenever below the session limit —
