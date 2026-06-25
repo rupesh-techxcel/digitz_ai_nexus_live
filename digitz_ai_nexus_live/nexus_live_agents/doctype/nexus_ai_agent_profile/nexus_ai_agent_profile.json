@@ -247,6 +247,12 @@
    "options": "Nexus Escalation Rule"
   },
   {
+   "fieldname": "calendly_link",
+   "fieldtype": "Data",
+   "label": "Calendly Booking Link",
+   "description": "Shown to visitors as an alternative to waiting for a desk agent after escalation is confirmed."
+  },
+  {
    "default": "Session",
    "fieldname": "memory_mode",
    "fieldtype": "Select",

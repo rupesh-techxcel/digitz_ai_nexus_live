@@ -29,7 +29,6 @@ from digitz_ai_nexus_live.services.conversation_service import (
 )
 from digitz_ai_nexus_live.services.escalation_service import (
     create_escalation,
-    should_escalate,
 )
 from digitz_ai_nexus_live.services.intent_handler_service import (
     resolve_intents_for_profile,
@@ -1169,6 +1168,7 @@ def continue_live_chat(conversation_id, payload):
                         "companion_mode": int(getattr(profile, "companion_mode", 0) or 0),
                         "companion_playbook": getattr(profile, "companion_playbook", None),
                         "companion_discovery_style": getattr(profile, "companion_discovery_style", None),
+                        "calendly_link": getattr(profile, "calendly_link", None) or None,
                         "category_drive_mode": getattr(cat, "internal_drive_mode", None) or "None",
                         "category_drive_prompt": getattr(cat, "internal_drive_prompt", None) or "",
                     }),
@@ -1572,6 +1572,103 @@ def continue_live_chat(conversation_id, payload):
             }
 
         intent = ""
+
+    # ── Pre-escalation email verification ──────────────────────────────────────
+    # Set when visitor requests a human agent but has not yet verified their email.
+    # OTP must pass before the escalation is created and the desk is notified.
+    if intent == "await_pre_escalation_verification":
+        from digitz_ai_nexus_live.services.identity_verification import get_verified_challenge
+        from digitz_ai_nexus_live.services.conversation_service import stamp_email_on_web_visitor
+
+        _pesc_cat = getattr(conversation, "chat_category", None)
+        _pesc_challenge = get_verified_challenge(
+            challenge_token=payload.get("identity_verification_challenge"),
+            chat_category=_pesc_cat,
+        ) if _pesc_cat else None
+
+        if not _pesc_challenge:
+            nudge = (
+                "To connect you with our team, please verify your email address. "
+                "Enter your email and we'll send you a quick verification code."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=nudge,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "await_pre_escalation_verification",
+                "response_type": "message",
+                "message": nudge,
+                "answer": nudge,
+                "confidence": 1.0,
+                "access_status": "awaiting_verification",
+                "sources": [],
+                "identity_verification_offer": True,
+            })
+            return {
+                "status": "await_pre_escalation_verification",
+                "conversation": conversation.name,
+                "conversation_id": conversation_id,
+            }
+
+        # OTP verified — stamp email, create escalation, notify desk
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, {
+            "visitor_email": _pesc_challenge.email,
+            "intent": "",
+        })
+        conversation.reload()
+
+        stamp_email_on_web_visitor(conversation, _pesc_challenge.email, verified=True)
+
+        _pesc_agent = frappe.get_doc("Nexus AI Agent Profile", conversation.assigned_agent)
+        _pesc_esc = create_escalation(
+            conversation=conversation,
+            reason="User Requested Human",
+            from_agent=_pesc_agent,
+            confidence=None,
+            remarks="User requested escalation; email verified before desk notification.",
+        )
+
+        _pesc_calendly = getattr(_pesc_agent, "calendly_link", None) or None
+        if _pesc_calendly:
+            confirmed_msg = (
+                "Your email has been verified. Your request has been forwarded to our team — "
+                "an agent will respond based on their availability. "
+                "Alternatively, you can book a meeting directly using the calendar below."
+            )
+        else:
+            confirmed_msg = (
+                "Your email has been verified. Your request has been forwarded to our team — "
+                "a desk agent will review and connect with you shortly. "
+                "You can continue chatting in the meantime."
+            )
+        add_message(
+            conversation=conversation,
+            sender_type="AI Agent",
+            message=confirmed_msg,
+            response_mode="chat",
+        )
+        _touch_last_message_at(conversation)
+        publish_chat_response(conversation.conversation_id, {
+            "status": "escalation_requested",
+            "response_type": "message",
+            "message": confirmed_msg,
+            "answer": confirmed_msg,
+            "confidence": 1.0,
+            "access_status": "conversational",
+            "sources": [],
+            "escalation_requested": True,
+            "escalation": _pesc_esc.name if _pesc_esc else None,
+            "calendly_link": _pesc_calendly,
+        })
+        return {
+            "status": "escalation_requested",
+            "conversation": conversation.name,
+            "conversation_id": conversation_id,
+        }
 
     # ── Escalation approval email verification ─────────────────────────────────
     # Set when a desk agent approves an escalation request but the visitor has
@@ -2076,92 +2173,79 @@ def _process_ai_response(conversation_id, payload_json):
 
         escalation_created = None
         _esc_notice = None
+        _pre_escalation_email_prompt = None
 
         # Only escalate to human if the category has enable_escalation checked.
         # All categories (including Nexy) can escalate — approval gate applies universally.
         category_allows_escalation = False
-        auto_escalate_no_knowledge = False
         if conversation.chat_category:
-            _cat_vals = frappe.db.get_value(
-                "Nexus Chat Category",
-                conversation.chat_category,
-                ["enable_escalation", "auto_escalate_no_knowledge"],
-                as_dict=True,
-            ) or {}
-            category_allows_escalation = bool(_cat_vals.get("enable_escalation"))
-            auto_escalate_no_knowledge = bool(_cat_vals.get("auto_escalate_no_knowledge"))
+            category_allows_escalation = bool(
+                frappe.db.get_value("Nexus Chat Category", conversation.chat_category, "enable_escalation")
+            )
 
         # Prevent re-triggering while an escalation request is already in flight
         _current_esc_status = getattr(conversation, "escalation_status", None) or "None"
         already_pending = _current_esc_status in ("Requested", "Pending", "Accepted")
 
         user_requested_human = bool(core_response.get("user_requested_human"))
-        # fallback_used=1 means no knowledge was found; treat as no_knowledge regardless of
-        # whether the fallback_message string was used as a canned answer.
-        no_knowledge = bool(core_response.get("fallback_used"))
-
-        # Intent-matched retrieval is a curated high-signal hit — skip confidence-based
-        # escalation when the top chunk was surfaced by an Intent index entry.
-        _retrieval_results = (core_response.get("retrieval_result") or {}).get("results") or []
-        intent_matched = any(
-            r.get("semantic_index_type") == "Intent"
-            for r in _retrieval_results
-        )
 
         _is_companion_mode = int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
 
+        # Escalation is triggered only by explicit visitor request — never auto-escalated.
         if (
             not already_pending
             and escalation_enabled
             and category_allows_escalation
-            and should_escalate(
-                # Skip confidence check when:
-                # - fallback was used (no_knowledge) — RAG confidence is irrelevant
-                # - retrieval was driven by a curated Intent entry
-                # - companion mode is active — the companion manages escalation via
-                #   its own signal mechanism and request_escalation tool; RAG confidence
-                #   is not a reliable escalation signal in guided conversation mode.
-                confidence=None if (no_knowledge or intent_matched or _is_companion_mode) else confidence,
-                no_knowledge=no_knowledge,
-                user_requested_human=user_requested_human,
-                threshold=threshold,
-                auto_escalate_no_knowledge=auto_escalate_no_knowledge,
-            )
+            and user_requested_human
         ):
-            if user_requested_human:
-                escalation_reason = "User Requested Human"
-                escalation_remarks = "User explicitly requested escalation to a human agent."
-            elif no_knowledge:
-                escalation_reason = "No Approved Knowledge"
-                escalation_remarks = "No knowledge found for the visitor query."
-            else:
-                escalation_reason = "Low Confidence"
-                escalation_remarks = (
-                    f"AI confidence ({confidence:.2f}) below threshold ({threshold:.2f})."
+            if not conversation.visitor_email:
+                # Visitor email not yet verified — collect it before surfacing to desk.
+                # Escalation is created in await_pre_escalation_verification after OTP passes.
+                frappe.db.set_value(
+                    "Nexus Live Conversation", conversation.name,
+                    "intent", "await_pre_escalation_verification",
                 )
-
-            escalation_created = create_escalation(
-                conversation=conversation,
-                reason=escalation_reason,
-                from_agent=agent,
-                confidence=confidence,
-                remarks=escalation_remarks,
-            )
-
-            if escalation_created:
-                _esc_notice = (
-                    "Your request to connect with our team has been received. "
-                    "A desk agent will review your chat shortly and you'll be updated "
-                    "based on their availability. In the meantime, feel free to continue "
-                    "asking questions — our AI assistant is here to help."
+                _pre_escalation_email_prompt = (
+                    "I'd be happy to connect you with our team. To proceed, could you please "
+                    "share your email address? We'll send you a quick verification code."
                 )
-                # Save notice to transcript; realtime publish fires after the AI answer below
                 add_message(
                     conversation=conversation,
                     sender_type="AI Agent",
-                    message=_esc_notice,
+                    message=_pre_escalation_email_prompt,
                     response_mode="chat",
                 )
+            else:
+                escalation_created = create_escalation(
+                    conversation=conversation,
+                    reason="User Requested Human",
+                    from_agent=agent,
+                    confidence=None,
+                    remarks="User explicitly requested escalation to a human agent.",
+                )
+
+                if escalation_created:
+                    _esc_calendly = getattr(agent, "calendly_link", None) or None
+                    if _esc_calendly:
+                        _esc_notice = (
+                            "Your request to connect with our team has been received. "
+                            "An agent will respond based on their availability. "
+                            "Alternatively, you can book a meeting directly using the calendar below."
+                        )
+                    else:
+                        _esc_notice = (
+                            "Your request to connect with our team has been received. "
+                            "A desk agent will review your chat shortly and you'll be updated "
+                            "based on their availability. In the meantime, feel free to continue "
+                            "asking questions — our AI assistant is here to help."
+                        )
+                    # Save notice to transcript; realtime publish fires after the AI answer below
+                    add_message(
+                        conversation=conversation,
+                        sender_type="AI Agent",
+                        message=_esc_notice,
+                        response_mode="chat",
+                    )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
         # Suppress suggested questions in companion mode — the companion is running a
@@ -2211,6 +2295,50 @@ def _process_ai_response(conversation_id, payload_json):
                 "sources": [],
                 "escalation_requested": True,
                 "escalation": escalation_created.name,
+                "calendly_link": _esc_calendly if escalation_created else None,
+            })
+
+        # Prompt visitor for email verification before escalation is created
+        if _pre_escalation_email_prompt:
+            publish_chat_response(conversation.conversation_id, {
+                "status": "await_pre_escalation_verification",
+                "response_type": "message",
+                "message": _pre_escalation_email_prompt,
+                "answer": _pre_escalation_email_prompt,
+                "confidence": 1.0,
+                "sources": [],
+                "identity_verification_offer": True,
+            })
+
+        # Soft nudge when the AI couldn't answer well — invite the visitor to request
+        # a human agent without auto-escalating.
+        _is_weak_answer = is_fallback or (
+            is_real_answer and confidence is not None and confidence < threshold
+        )
+        if (
+            _is_weak_answer
+            and category_allows_escalation
+            and not already_pending
+            and not user_requested_human
+            and not _is_companion_mode
+        ):
+            _human_nudge = (
+                "If you'd like to speak with someone from our team directly, just let me know."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=_human_nudge,
+                response_mode="chat",
+            )
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": _human_nudge,
+                "answer": _human_nudge,
+                "agent_name": get_agent_nickname(conversation, agent),
+                "confidence": 1.0,
+                "sources": [],
             })
 
         # WhatsApp delivery fork — send answer directly to visitor's phone when

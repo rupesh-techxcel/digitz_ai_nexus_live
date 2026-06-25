@@ -768,6 +768,7 @@
         var _rt_related = data.correlated_questions || [];
         var _rt_debug = data.debug_info || null;
         var _rt_conversion = data.conversion_action || null;
+        var _rt_calendly = data.calendly_link || null;
         typewrite_message("agent", data.message || data.answer, null, _rt_agent_lbl, function() {
           if (_rt_offer && !is_desk()) {
             render_identity_verification_prompt();
@@ -777,6 +778,9 @@
           }
           if (_rt_conversion && !is_desk()) {
             render_conversion_card(_rt_conversion);
+          }
+          if (_rt_calendly && !is_desk()) {
+            render_calendly_card(_rt_calendly);
           }
           if (_rt_faq.length) {
             render_faq_chips(_rt_faq);
@@ -1406,6 +1410,16 @@
       });
       document.getElementById("ncw-verify-email").focus();
     }
+    function render_calendly_card(url) {
+      if (!url)
+        return;
+      var msgs = el("ncw-messages");
+      var card = document.createElement("div");
+      card.className = "ncw-calendly-card";
+      card.innerHTML = '<div class="ncw-calendly-icon">\u{1F4C5}</div><div class="ncw-calendly-body"><div class="ncw-calendly-title">Book a Meeting</div><div class="ncw-calendly-desc">Schedule a time directly with our team at your convenience.</div><a class="ncw-calendly-btn" href="' + escape_html(url) + '" target="_blank" rel="noopener noreferrer">Book a Meeting \u2192</a></div>';
+      msgs.appendChild(card);
+      scroll_bottom();
+    }
     function render_conversion_card(action) {
       if (!action || !action.type)
         return;
@@ -1651,8 +1665,8 @@
           scroll_bottom();
           return;
         }
-        const challenge_token = data.challenge_token;
-        prompt_el.innerHTML = '<div class="ncw-verify-label">A code was sent to <strong>' + escape_html(email) + `</strong>. Enter it below:</div><div class="ncw-verify-spam-note">Didn't receive it? Check your <strong>spam or junk</strong> folder.</div><div class="ncw-verify-row"><input type="text" class="ncw-verify-input" id="ncw-verify-otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code"><button class="ncw-verify-btn" id="ncw-verify-otp-btn">Verify</button></div><div class="ncw-verify-msg" id="ncw-verify-otp-msg" style="display:none;"></div>`;
+        let challenge_token = data.challenge_token;
+        prompt_el.innerHTML = '<div class="ncw-verify-label">A code was sent to <strong>' + escape_html(email) + `</strong>. Enter it below:</div><div class="ncw-verify-spam-note">Didn't receive it? Check your <strong>spam or junk</strong> folder.</div><div class="ncw-verify-row"><input type="text" class="ncw-verify-input" id="ncw-verify-otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code"><button class="ncw-verify-btn" id="ncw-verify-otp-btn">Verify</button></div><div class="ncw-verify-msg" id="ncw-verify-otp-msg" style="display:none;"></div><button class="ncw-verify-resend" id="ncw-verify-resend-btn" type="button">Resend code</button>`;
         scroll_bottom();
         document.getElementById("ncw-verify-otp-btn").addEventListener("click", function() {
           submit_otp_verification(prompt_el, challenge_token);
@@ -1661,6 +1675,33 @@
           if (e.key === "Enter") {
             e.preventDefault();
             submit_otp_verification(prompt_el, challenge_token);
+          }
+        });
+        document.getElementById("ncw-verify-resend-btn").addEventListener("click", async function() {
+          const resend_btn = document.getElementById("ncw-verify-resend-btn");
+          const otp_msg = document.getElementById("ncw-verify-otp-msg");
+          resend_btn.disabled = true;
+          resend_btn.textContent = "Sending\u2026";
+          otp_msg.style.display = "none";
+          try {
+            const rr = await api(
+              "digitz_ai_nexus_live.api.identity_verification.request_identity_verification",
+              { conversation_id: S.conversation_id, email }
+            );
+            const rdata = rr.message || {};
+            challenge_token = rdata.challenge_token;
+            document.getElementById("ncw-verify-otp").value = "";
+            otp_msg.className = "ncw-verify-msg ncw-verify-success";
+            otp_msg.textContent = "\u2713 A new code has been sent to " + email;
+            otp_msg.style.display = "";
+            document.getElementById("ncw-verify-otp").focus();
+          } catch (err) {
+            otp_msg.className = "ncw-verify-msg ncw-verify-error";
+            otp_msg.textContent = err && err.message || "Could not resend code. Please try again.";
+            otp_msg.style.display = "";
+          } finally {
+            resend_btn.disabled = false;
+            resend_btn.textContent = "Resend code";
           }
         });
         document.getElementById("ncw-verify-otp").focus();
@@ -2664,6 +2705,46 @@
 .ncw-verify-error   { color: #c53030; }
 .ncw-verify-success { color: #276749; font-weight: 500; }
 .ncw-verify-success strong { color: #22543d; }
+.ncw-calendly-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e6f0fd 100%);
+    border: 1px solid #b3d0f7;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 6px 8px 4px 8px;
+}
+.ncw-calendly-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+.ncw-calendly-body { flex: 1; min-width: 0; }
+.ncw-calendly-title { font-weight: 600; font-size: 14px; color: #1a2942; margin-bottom: 4px; }
+.ncw-calendly-desc  { font-size: 12px; color: #4a6085; margin-bottom: 10px; line-height: 1.4; }
+.ncw-calendly-btn {
+    display: inline-block;
+    background: #2158c7;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+.ncw-calendly-btn:hover { background: #1a47aa; color: #fff; }
+
+.ncw-verify-resend {
+    display: inline-block;
+    margin-top: 8px;
+    background: none;
+    border: none;
+    color: #2158c7;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+.ncw-verify-resend:hover { color: #1a47aa; }
+.ncw-verify-resend:disabled { color: #999; cursor: not-allowed; text-decoration: none; }
 
 /* \u2500\u2500 Conversion action card \u2500\u2500 */
 .ncw-conversion-card {
@@ -2964,4 +3045,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.C2RVVPX2.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.KB7G3KKH.js.map
