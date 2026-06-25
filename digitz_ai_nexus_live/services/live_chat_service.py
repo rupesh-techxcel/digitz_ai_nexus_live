@@ -410,6 +410,17 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
         ai_profile = dict(ai_profile)
         ai_profile["behavior_prompt"] = (ai_profile.get("behavior_prompt") or "") + post_esc_note
 
+    if payload.get("_onboarding_business_response"):
+        onboarding_note = (
+            "\n\nCONTEXT FOR THIS RESPONSE: The visitor has just told you about their "
+            "business for the first time. Acknowledge what they shared — warmly and "
+            "specifically. Then naturally close your response with: 'Are you interested "
+            "to learn more about how Nexy can help you grow your business?' and let the "
+            "conversation flow from their answer."
+        )
+        ai_profile = dict(ai_profile)
+        ai_profile["behavior_prompt"] = (ai_profile.get("behavior_prompt") or "") + onboarding_note
+
     resolved_intents = resolve_intents_for_profile(ai_profile.get("name") if ai_profile else None)
 
     resolved_identity_type = (
@@ -1093,6 +1104,7 @@ def continue_live_chat(conversation_id, payload):
             "channel": cat.channel,
             "intent": new_intent,
         }
+        _is_companion_mode = False
 
         payload["chat_category"] = cat.name
         payload["channel"] = cat.channel
@@ -1161,46 +1173,115 @@ def continue_live_chat(conversation_id, payload):
                         "category_drive_prompt": getattr(cat, "internal_drive_prompt", None) or "",
                     }),
                 })
+                _is_companion_mode = int(getattr(profile, "companion_mode", 0) or 0) == 1
+                if _is_companion_mode:
+                    conversation_updates["intent"] = "onboarding_business"
 
         frappe.db.set_value("Nexus Live Conversation", conversation.name, conversation_updates)
         conversation.reload()
 
         visitor_name = conversation.visitor_name or ""
         name_part = f", {visitor_name}" if visitor_name else ""
+        agent_nick = get_agent_nickname(conversation)
 
         if requires_verification:
             ack = (
                 f"To get started with **{cat.category_label}**, we need to verify your identity. "
                 "Please enter your email address below."
             )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=ack,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": ack,
+                "answer": ack,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+                "identity_verification_offer": True,
+                "faq_questions": [],
+            })
+
+        elif _is_companion_mode:
+            # Onboarding flow: two mandatory messages before free chat opens.
+            # intent has been set to "onboarding_business" in conversation_updates above.
+            intro = (
+                f"Perfect{name_part}! I'm {agent_nick} — powered by a Governed Knowledge "
+                "Base System that enables different agentic capabilities: Visitor Companion, "
+                "Sales Intelligence, Knowledge Q&A, and more. I use that governed knowledge "
+                "to give you precise, grounded answers — not guesswork."
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=intro,
+                response_mode="chat",
+            )
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": intro,
+                "answer": intro,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+            })
+
+            biz_ask = (
+                "Before we dive in, I'd love to understand your business a little better. "
+                "What does your company do, and what's the main challenge you're hoping to solve?"
+            )
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=biz_ask,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": biz_ask,
+                "answer": biz_ask,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+            })
+
         else:
             ack = (
                 f"Perfect{name_part}! I'll be assisting you with {cat.category_label}. "
                 "What would you like to know?"
             )
-
-        faq_questions = _get_faq_questions(cat.name) if not requires_verification else []
-
-        add_message(
-            conversation=conversation,
-            sender_type="AI Agent",
-            message=ack,
-            response_mode="chat",
-        )
-        _touch_last_message_at(conversation)
-
-        publish_chat_response(conversation.conversation_id, {
-            "status": "success",
-            "response_type": "message",
-            "message": ack,
-            "answer": ack,
-            "agent_name": get_agent_nickname(conversation),
-            "confidence": 1.0,
-            "access_status": "conversational",
-            "sources": [],
-            "identity_verification_offer": requires_verification,
-            "faq_questions": faq_questions,
-        })
+            faq_questions = _get_faq_questions(cat.name)
+            add_message(
+                conversation=conversation,
+                sender_type="AI Agent",
+                message=ack,
+                response_mode="chat",
+            )
+            _touch_last_message_at(conversation)
+            publish_chat_response(conversation.conversation_id, {
+                "status": "success",
+                "response_type": "message",
+                "message": ack,
+                "answer": ack,
+                "agent_name": agent_nick,
+                "confidence": 1.0,
+                "access_status": "conversational",
+                "sources": [],
+                "identity_verification_offer": False,
+                "faq_questions": faq_questions,
+            })
 
         return {
             "status": "category_selected",
@@ -1627,6 +1708,17 @@ def continue_live_chat(conversation_id, payload):
     if intent == "post_escalation":
         frappe.db.set_value("Nexus Live Conversation", conversation.name, "intent", "")
         payload["_post_escalation"] = True
+
+    # ── Onboarding: visitor's first reply after the mandatory business inquiry ──
+    if intent == "onboarding_business":
+        frappe.db.set_value("Nexus Live Conversation", conversation.name, "intent", "")
+        payload["_onboarding_business_response"] = True
+        _enqueue_ai_response(conversation.conversation_id, payload)
+        return {
+            "status": "processing",
+            "conversation": conversation.name,
+            "conversation_id": conversation_id,
+        }
 
     # ── Normal flow: detect closing signals ────────────────────────────────────
     if _is_closing_message(message):
