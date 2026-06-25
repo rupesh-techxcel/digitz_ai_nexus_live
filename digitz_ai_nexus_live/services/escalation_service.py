@@ -16,6 +16,7 @@ def should_escalate(
     repeated_fallback=False,
     escalation_enabled=True,
     threshold=None,
+    auto_escalate_no_knowledge=False,
 ):
     """Determine whether escalation is required."""
     if not escalation_enabled:
@@ -26,7 +27,7 @@ def should_escalate(
     if user_requested_human:
         return True
 
-    if no_knowledge:
+    if no_knowledge and auto_escalate_no_knowledge:
         return True
 
     if repeated_fallback:

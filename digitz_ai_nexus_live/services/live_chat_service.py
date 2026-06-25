@@ -49,7 +49,7 @@ from digitz_ai_nexus.engine.access_resolver import resolve_allowed_policies
 
 
 MAX_HISTORY_MESSAGES = 20
-CHAT_RESPONSE_SENTENCE_LIMIT = 6
+CHAT_RESPONSE_SENTENCE_LIMIT = 20
 DEFAULT_FALLBACK_ANSWER = "I do not have enough approved knowledge to answer this."
 PUBLIC_IDENTITY_FALLBACK = (
     "I wasn't able to find an answer for your question in the publicly available knowledge. "
@@ -420,7 +420,8 @@ def build_core_chat_payload(payload, conversation, agent, behavior):
     # Applies regardless of whether an AI profile is assigned — a named profile does
     # not grant elevated knowledge access to public visitors.
     force_public_only = bool(
-        resolved_identity_type == "Public"
+        payload.get("force_public_only")  # explicit "Public Access Mode" flag from desk admin
+        or resolved_identity_type == "Public"
         or payload.get("user_type", "Guest") == "Guest"
         or (not ai_profile.get("name") and not ai_profile.get("knowledge_profile_names"))
     )
@@ -643,22 +644,35 @@ def start_live_chat(payload):
             }
 
         # Widget opened with no initial message.
-        # If Internal/Both categories exist on this channel, show a category picker
-        # so desk users can route to the right knowledge domain.
-        # Otherwise fall back to a direct greeting.
-        has_internal_categories = frappe.db.exists(
-            "Nexus Chat Category",
-            {
-                "channel": conversation.channel,
-                "enabled": 1,
-                "published": 1,
-                "visibility": ["in", ["Internal", "Both"]],
-            },
-        )
+        # In Public Access Mode the desk user simulates a public visitor, so we
+        # use External/Both visibility categories from website channels (which
+        # includes the Nexy option). Otherwise use Internal/Both on the desk channel.
+        force_public_only = bool(payload.get("force_public_only"))
+        picker_is_internal = not force_public_only
+
+        if force_public_only:
+            has_picker_categories = frappe.db.exists(
+                "Nexus Chat Category",
+                {
+                    "enabled": 1,
+                    "published": 1,
+                    "visibility": ["in", ["External", "Both"]],
+                },
+            )
+        else:
+            has_picker_categories = frappe.db.exists(
+                "Nexus Chat Category",
+                {
+                    "channel": conversation.channel,
+                    "enabled": 1,
+                    "published": 1,
+                    "visibility": ["in", ["Internal", "Both"]],
+                },
+            )
 
         name_part = f", {first_name}" if first_name else ""
 
-        if has_internal_categories:
+        if has_picker_categories:
             intro = (
                 f"Hi{name_part}! I'm {agent_nick}, your AI assistant. "
                 "Please select a topic so I can assist you better."
@@ -680,7 +694,7 @@ def start_live_chat(payload):
                 "sources": [],
                 "conversation_id": conversation.conversation_id,
             }
-            category_data = _send_category_picker(conversation, publish=False, is_internal=True)
+            category_data = _send_category_picker(conversation, publish=False, is_internal=picker_is_internal)
             if category_data is not None:
                 category_data["agent_name"] = agent_nick
                 return {
@@ -1023,7 +1037,10 @@ def continue_live_chat(conversation_id, payload):
     # If waiting for a category, any non-category message is rejected and the
     # picker is re-shown. Users cannot skip the selection by typing.
     if intent == "await_category" and not message.startswith("__cat__:"):
-        _is_internal_conv = getattr(conversation, "user_type", "") == "Desk User"
+        _is_internal_conv = (
+            getattr(conversation, "user_type", "") == "Desk User"
+            and not payload.get("force_public_only")
+        )
         nudge = "Please select a topic from the options above before sending a message."
         add_message(
             conversation=conversation,
@@ -1082,11 +1099,18 @@ def continue_live_chat(conversation_id, payload):
         if not requires_verification:
             from digitz_ai_nexus_live.services.identity_resolver import resolve_identity_type
 
-            identity_type = resolve_identity_type(payload)
-            _is_authenticated = (
-                (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
-                or frappe.session.user not in ("Guest", None, "")
-            )
+            # Public Access Mode: simulate a public visitor for routing so that the
+            # category route and AI profile configured for "Public" identity are used,
+            # exactly as a real public visitor would experience.
+            if payload.get("force_public_only"):
+                identity_type = "Public"
+                _is_authenticated = False
+            else:
+                identity_type = resolve_identity_type(payload)
+                _is_authenticated = (
+                    (payload.get("user_type", "Guest") != "Guest" and bool(payload.get("user")))
+                    or frappe.session.user not in ("Guest", None, "")
+                )
             cat_behavior = resolve_behavior_from_chat_category(
                 cat.name,
                 identity_type,
@@ -1777,6 +1801,12 @@ def _process_ai_response(conversation_id, payload_json):
         except Exception:
             pass
 
+        # Public Access Mode: desk intro messages (e.g. "I'm Raju On Desk") anchor the LLM in a desk
+        # persona and prevent it from responding as Nexy. Clear the history so the LLM gets a clean
+        # Nexy context — simulating exactly what a fresh public visitor would experience.
+        if payload.get("force_public_only") and getattr(conversation, "user_type", "") == "Desk User":
+            core_payload["chat_history"] = []
+
         # Nexus Companion enrichment — injects business companion context when companion_mode is active
         core_payload["conversation_name"] = conversation.name
         if int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0):
@@ -1956,31 +1986,46 @@ def _process_ai_response(conversation_id, payload_json):
         # Only escalate to human if the category has enable_escalation checked.
         # All categories (including Nexy) can escalate — approval gate applies universally.
         category_allows_escalation = False
+        auto_escalate_no_knowledge = False
         if conversation.chat_category:
-            category_allows_escalation = bool(
-                frappe.db.get_value(
-                    "Nexus Chat Category",
-                    conversation.chat_category,
-                    "enable_escalation",
-                )
-            )
+            _cat_vals = frappe.db.get_value(
+                "Nexus Chat Category",
+                conversation.chat_category,
+                ["enable_escalation", "auto_escalate_no_knowledge"],
+                as_dict=True,
+            ) or {}
+            category_allows_escalation = bool(_cat_vals.get("enable_escalation"))
+            auto_escalate_no_knowledge = bool(_cat_vals.get("auto_escalate_no_knowledge"))
 
         # Prevent re-triggering while an escalation request is already in flight
         _current_esc_status = getattr(conversation, "escalation_status", None) or "None"
         already_pending = _current_esc_status in ("Requested", "Pending", "Accepted")
 
         user_requested_human = bool(core_response.get("user_requested_human"))
-        no_knowledge = bool(core_response.get("fallback_used") and not core_response.get("answer"))
+        # fallback_used=1 means no knowledge was found; treat as no_knowledge regardless of
+        # whether the fallback_message string was used as a canned answer.
+        no_knowledge = bool(core_response.get("fallback_used"))
+
+        # Intent-matched retrieval is a curated high-signal hit — skip confidence-based
+        # escalation when the top chunk was surfaced by an Intent index entry.
+        _retrieval_results = (core_response.get("retrieval_result") or {}).get("results") or []
+        intent_matched = any(
+            r.get("semantic_index_type") == "Intent"
+            for r in _retrieval_results
+        )
 
         if (
             not already_pending
             and escalation_enabled
             and category_allows_escalation
             and should_escalate(
-                confidence=confidence,
+                # Skip confidence check when in fallback or when retrieval was driven by
+                # a curated Intent entry — both indicate intentional knowledge matches.
+                confidence=None if (no_knowledge or intent_matched) else confidence,
                 no_knowledge=no_knowledge,
                 user_requested_human=user_requested_human,
                 threshold=threshold,
+                auto_escalate_no_knowledge=auto_escalate_no_knowledge,
             )
         ):
             if user_requested_human:

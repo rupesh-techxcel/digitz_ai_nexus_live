@@ -22,6 +22,7 @@
     "description",
     "section_escalation",
     "enable_escalation",
+    "auto_escalate_no_knowledge",
     "use_for_nexy",
     "section_faq",
     "faq_questions",
@@ -138,6 +139,14 @@
       "fieldname": "enable_escalation",
       "fieldtype": "Check",
       "label": "Enable Human Escalation"
+    },
+    {
+      "default": "0",
+      "depends_on": "eval:doc.enable_escalation",
+      "description": "When enabled, a conversation is automatically escalated when the AI cannot find any approved knowledge to answer the visitor's query.",
+      "fieldname": "auto_escalate_no_knowledge",
+      "fieldtype": "Check",
+      "label": "Auto-Escalate on No Knowledge"
     },
     {
       "default": "0",

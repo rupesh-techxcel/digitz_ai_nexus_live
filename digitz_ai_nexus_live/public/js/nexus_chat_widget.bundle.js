@@ -39,6 +39,7 @@
         visitor_email:                   null,
         identity_verification_challenge: null,
         whatsapp_phone:   null,
+        public_access_mode: false,
     };
 
     // Nexy-specific categories stored when the category picker arrives;
@@ -249,12 +250,23 @@
                             <line x1="5" y1="12" x2="19" y2="12"/>
                         </svg>
                     </button>
+                    <button id="ncw-pub-mode-btn" aria-label="Toggle Public Access Mode" title="Public Access Mode — knowledge retrieval simulates a public visitor (desk privileges still used for debug display)" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="2" y1="12" x2="22" y2="12"/>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                    </button>
                     <button id="ncw-close-btn" aria-label="Close chat" title="Close chat">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <line x1="6" y1="6" x2="18" y2="18"/>
                             <line x1="18" y1="6" x2="6" y2="18"/>
                         </svg>
                     </button>
+                </div>
+
+                <div id="ncw-pub-mode-strip" style="display:none;">
+                    <span>&#127760; Public Access Mode &mdash; retrieval simulates a public visitor</span>
                 </div>
 
                 <div id="ncw-wa-strip">
@@ -409,6 +421,8 @@
         if (is_desk()) {
             el('ncw-close-btn').style.display = 'none';
             el('ncw-nexy-sticky').style.display = 'none';
+            el('ncw-pub-mode-btn').style.display = 'flex';
+            el('ncw-pub-mode-btn').addEventListener('click', toggle_public_access_mode);
         }
         _apply_font_size(_load_font_size());
 
@@ -621,6 +635,31 @@
         });
 
         _init_tooltip();
+    }
+
+    // ── Public Access Mode (desk only) ─────────────────────────────────────────
+
+    function toggle_public_access_mode() {
+        S.public_access_mode = !S.public_access_mode;
+        var btn   = el('ncw-pub-mode-btn');
+        var strip = el('ncw-pub-mode-strip');
+        if (btn)   btn.classList.toggle('ncw-pub-active', S.public_access_mode);
+        if (strip) strip.style.display = S.public_access_mode ? 'flex' : 'none';
+
+        // Restart the chat so the new mode takes effect immediately.
+        // Both the category picker and knowledge retrieval depend on the mode
+        // at session start, so we need a fresh conversation.
+        if (S.open && !S.starting) {
+            S.conversation_id = null;
+            S.locked = false;
+            S.sending = false;
+            _nexy_cats = [];
+            _category_selected = false;
+            _nexy_click_count = 0;
+            el('ncw-nexy-sticky').style.display = 'none';
+            reset_messages();
+            start_new_chat();
+        }
     }
 
     // ── Tooltip ────────────────────────────────────────────────────────────────
@@ -886,7 +925,7 @@
         _nexy_cats = [];
         _category_selected = false;
         _nexy_click_count = 0;
-        if (!is_desk()) el('ncw-nexy-sticky').style.display = 'none';
+        el('ncw-nexy-sticky').style.display = 'none';
         S.open = false;
         S.sending = false;
         S.conversation_id = null;
@@ -1050,6 +1089,7 @@
             if (is_desk()) {
                 // Desk users — no guest role, channel optional (resolved server-side)
                 delete base.channel;
+                if (S.public_access_mode) base.force_public_only = true;
             } else {
                 base.roles = ['Guest'];
                 if (S.widget_code) base.widget_code = S.widget_code;
@@ -1297,6 +1337,7 @@
             if (S.visitor_email) msg_payload.visitor_email = S.visitor_email;
             if (S.identity_verification_challenge) msg_payload.identity_verification_challenge = S.identity_verification_challenge;
             if (!is_desk() && S.widget_code) msg_payload.widget_code = S.widget_code;
+            if (S.public_access_mode) msg_payload.force_public_only = true;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(msg_payload),
@@ -1329,7 +1370,7 @@
             var nexy = categories.filter(function (c) { return c.use_for_nexy; });
             var regular = categories.filter(function (c) { return !c.use_for_nexy; });
 
-            if (nexy.length && !is_desk()) {
+            if (nexy.length && (!is_desk() || S.public_access_mode)) {
                 _nexy_cats = nexy;
                 el('ncw-nexy-sticky').style.display = 'flex';
             }
@@ -1393,6 +1434,7 @@
         try {
             const cat_payload = { message: '__cat__:' + code, tenant: S.tenant };
             if (!is_desk() && S.widget_code) cat_payload.widget_code = S.widget_code;
+            if (S.public_access_mode) cat_payload.force_public_only = true;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(cat_payload),
@@ -1459,6 +1501,7 @@
         try {
             const faq_payload = { message: '__faq__:' + faq_name, tenant: S.tenant };
             if (!is_desk() && S.widget_code) faq_payload.widget_code = S.widget_code;
+            if (S.public_access_mode) faq_payload.force_public_only = true;
             await api('digitz_ai_nexus_live.api.live.send_chat_message', {
                 conversation_id: S.conversation_id,
                 payload: JSON.stringify(faq_payload),
@@ -2399,7 +2442,7 @@
     text-overflow: ellipsis;
     margin-top: 1px;
 }
-#ncw-font-btn, #ncw-max-btn, #ncw-min-btn, #ncw-close-btn {
+#ncw-font-btn, #ncw-max-btn, #ncw-min-btn, #ncw-close-btn, #ncw-pub-mode-btn {
     width: 28px;
     height: 28px;
     border: none;
@@ -2412,11 +2455,28 @@
     flex-shrink: 0;
     transition: background 0.15s;
 }
-#ncw-font-btn:hover, #ncw-max-btn:hover, #ncw-min-btn:hover, #ncw-close-btn:hover { background: rgba(255,255,255,0.28); }
-#ncw-max-btn svg, #ncw-min-btn svg, #ncw-close-btn svg {
+#ncw-font-btn:hover, #ncw-max-btn:hover, #ncw-min-btn:hover, #ncw-close-btn:hover, #ncw-pub-mode-btn:hover { background: rgba(255,255,255,0.28); }
+#ncw-max-btn svg, #ncw-min-btn svg, #ncw-close-btn svg, #ncw-pub-mode-btn svg {
     width: 14px;
     height: 14px;
     stroke: #fff;
+}
+#ncw-pub-mode-btn.ncw-pub-active {
+    background: #f59e0b;
+}
+#ncw-pub-mode-btn.ncw-pub-active:hover { background: #d97706; }
+#ncw-pub-mode-btn.ncw-pub-active svg { stroke: #fff; }
+#ncw-pub-mode-strip {
+    background: #fef3c7;
+    border-bottom: 1px solid #fcd34d;
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #92400e;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
 }
 #ncw-font-btn {
     color: #fff;
