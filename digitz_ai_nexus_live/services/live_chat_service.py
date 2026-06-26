@@ -1213,10 +1213,12 @@ def continue_live_chat(conversation_id, payload):
             # Onboarding flow: two mandatory messages before free chat opens.
             # intent has been set to "onboarding_business" in conversation_updates above.
             intro = (
-                f"Perfect{name_part}! I'm {agent_nick} — powered by a Governed Knowledge "
-                "Base System that enables different agentic capabilities: Visitor Companion, "
-                "Sales Intelligence, Knowledge Q&A, and more. I use that governed knowledge "
-                "to give you precise, grounded answers — not guesswork."
+                f"Perfect{name_part}! I'm {agent_nick} — powered by Nexus Orbit, a governed "
+                "knowledge intelligence platform that fuels advanced agentic capabilities, "
+                "visitor companionship, business orchestration, and much more.\n\n"
+                "I help businesses transform knowledge into AI-powered action, enabling smarter "
+                "decisions, streamlined operations, and accelerated growth. Through Nexus Orbit, "
+                "I turn trusted knowledge into meaningful business outcomes."
             )
             add_message(
                 conversation=conversation,
