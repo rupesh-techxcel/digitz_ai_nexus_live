@@ -1948,15 +1948,18 @@ def continue_live_chat(conversation_id, payload):
 # ── Background AI job ──────────────────────────────────────────────────────────
 
 def _enqueue_ai_response(conversation_id, payload):
-    frappe.enqueue(
-        "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
+    # frappe.enqueue(
+    #     "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
+    #     conversation_id=conversation_id,
+    #     payload_json=json.dumps(payload, default=str),
+    #     queue="short",
+    #     timeout=120,
+    #     now=frappe.flags.in_test,
+    # )
+    _process_ai_response(
         conversation_id=conversation_id,
         payload_json=json.dumps(payload, default=str),
-        queue="short",
-        timeout=120,
-        now=frappe.flags.in_test,
     )
-
 
 def _process_ai_response(conversation_id, payload_json):
     """Background job: run the AI pipeline and push the answer via realtime."""
@@ -1986,36 +1989,90 @@ def _process_ai_response(conversation_id, payload_json):
             behavior=behavior,
         )
 
-        # Nexy Sales Companion enrichment — injects role-profile persona + forces agent_loop
+        # Nexy Companion enrichment — role profile, communication rules, agent_loop behaviour
         try:
-            from digitz_ai_nexus_nexy.services.nexy_live_response_service import try_enrich_with_companion_context
-            core_payload = try_enrich_with_companion_context(conversation, agent, core_payload)
-        except Exception:
-            pass
+            from digitz_ai_nexus_nexy.services.nexy_live_response_service import (
+                try_enrich_with_companion_context,
+            )
 
-        # Public Access Mode: desk intro messages (e.g. "I'm Raju On Desk") anchor the LLM in a desk
-        # persona and prevent it from responding as Nexy. Clear the history so the LLM gets a clean
-        # Nexy context — simulating exactly what a fresh public visitor would experience.
+            core_payload = try_enrich_with_companion_context(
+                conversation,
+                agent,
+                core_payload,
+            )
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Nexy: try_enrich_with_companion_context failed",
+            )
+
+        # Public Access Mode: desk simulation should behave like a fresh public visitor.
         if payload.get("force_public_only") and getattr(conversation, "user_type", "") == "Desk User":
             core_payload["chat_history"] = []
 
-        # Nexus Companion enrichment — injects business companion context when companion_mode is active
+        # Nexus Companion context enrichment.
         core_payload["conversation_name"] = conversation.name
-        if int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0):
-            try:
-                from digitz_ai_nexus.nexus_companion.services.companion_context_service import build_companion_context
-                _companion_tenant = payload.get("tenant") or getattr(conversation, "tenant", "")
-                core_payload["companion_context"] = build_companion_context(
-                    conversation, agent, _companion_tenant
-                )
-                core_payload["response_mode"] = "companion_advisor"
-            except Exception:
-                frappe.log_error(frappe.get_traceback(), "Nexus Companion: build_companion_context failed")
 
+        _is_companion_mode = int(
+            (core_payload.get("ai_profile") or {}).get("companion_mode") or 0
+        )
+
+        if _is_companion_mode:
+            try:
+                from digitz_ai_nexus.nexus_companion.services.companion_context_service import (
+                    build_companion_context,
+                )
+
+                _companion_tenant = (
+                    payload.get("tenant")
+                    or getattr(conversation, "tenant", "")
+                    or (core_payload.get("ai_profile") or {}).get("tenant")
+                    or ""
+                )
+
+                core_payload["companion_context"] = build_companion_context(
+                    conversation,
+                    agent,
+                    _companion_tenant,
+                )
+
+                # Keep this as advisory metadata.
+                # The controller will still own the flow.
+                core_payload["response_mode"] = "companion_advisor"
+
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "Nexus Companion: build_companion_context failed",
+                )
+
+        # ------------------------------------------------------------------
+        # Core AI response
+        # ------------------------------------------------------------------
         try:
-            core_response = answer_query(core_payload)
+            _is_companion_mode = int(
+                (core_payload.get("ai_profile") or {}).get("companion_mode") or 0
+            )
+
+            if _is_companion_mode:
+                from digitz_ai_nexus.nexus_companion.services.business_companion_controller import (
+                    handle_companion_turn,
+                )
+
+                core_response = handle_companion_turn(
+                    conversation=conversation,
+                    agent=agent,
+                    payload=payload,
+                    core_payload=core_payload,
+                )
+            else:
+                core_response = answer_query(core_payload)
+
         except Exception:
-            frappe.log_error(frappe.get_traceback(), "Nexus Live Chat Core Answer Failed")
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Nexus Live Chat Core Answer Failed",
+            )
 
             set_agent_status(
                 agent,
@@ -2027,10 +2084,15 @@ def _process_ai_response(conversation_id, payload_json):
             publish_chat_error(conversation_id, "AI response failed. Please try again.")
             return
 
-        answer = core_response.get("answer") if isinstance(core_response, dict) else None
-        confidence = core_response.get("confidence") if isinstance(core_response, dict) else None
-        sources = core_response.get("sources") if isinstance(core_response, dict) else []
-        retrieval_debug = core_response.get("retrieval_debug") if isinstance(core_response, dict) else {}
+        if not isinstance(core_response, dict):
+            core_response = {}
+
+        _controller_led_companion = bool(core_response.get("companion_controller"))
+
+        answer = core_response.get("answer")
+        confidence = core_response.get("confidence")
+        sources = core_response.get("sources") or []
+        retrieval_debug = core_response.get("retrieval_debug") or {}
 
         debug_info = None
         try:
@@ -2056,12 +2118,11 @@ def _process_ai_response(conversation_id, payload_json):
         if answer.strip() == DEFAULT_FALLBACK_ANSWER and fallback_message != DEFAULT_FALLBACK_ANSWER:
             answer = fallback_message
 
-        # When a Public visitor hits a fallback, the dead-end message is replaced
-        # with an identity verification offer — the visitor can upgrade from the
-        # default Public identity by verifying their email via OTP.
+        # Public identity fallback.
         is_fallback = bool(core_response.get("fallback_used") or not core_response.get("answer"))
         is_public_visitor = bool(behavior and behavior.identity_type == "Public")
         identity_verification_offer = is_fallback and is_public_visitor
+
         if identity_verification_offer:
             answer = PUBLIC_IDENTITY_FALLBACK
 
@@ -2071,16 +2132,23 @@ def _process_ai_response(conversation_id, payload_json):
             else 0.65
         )
 
-        # Low-confidence wrap: real RAG answer but below the confidence threshold.
-        # Ask the LLM to reframe it with an honest preamble and an invitation to
-        # refine the query, rather than presenting a shaky answer with full confidence.
         is_real_answer = (
             not is_fallback
             and not identity_verification_offer
             and core_response.get("access_status") == "allowed"
         )
-        _is_companion_mode = int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
-        if is_real_answer and confidence is not None and confidence < threshold and not _is_companion_mode:
+
+        _is_companion_mode = int(
+            (core_payload.get("ai_profile") or {}).get("companion_mode") or 0
+        )
+
+        # Low-confidence wrapper only for non-companion RAG answers.
+        if (
+            is_real_answer
+            and confidence is not None
+            and confidence < threshold
+            and not _is_companion_mode
+        ):
             answer = _wrap_low_confidence_answer(
                 visitor_message=payload.get("message") or payload.get("query") or "",
                 raw_answer=answer,
@@ -2105,12 +2173,30 @@ def _process_ai_response(conversation_id, payload_json):
             remarks="Waiting for next visitor message.",
         )
 
+        # ------------------------------------------------------------------
+        # Companion conversion action
+        # ------------------------------------------------------------------
+        # In controller-led companion mode, the controller owns CTA/conversion.
+        # Therefore this must come from core_response only.
         _companion_conversion_action = None
 
-        # Companion journey: classify visitor signal, update enquiry, advance stage
-        if int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0):
+        if _controller_led_companion:
+            _companion_conversion_action = core_response.get("conversion_action")
+
+        # ------------------------------------------------------------------
+        # Legacy companion journey post-processing
+        # ------------------------------------------------------------------
+        # Run this only for old LLM-led companion mode.
+        # Do NOT run this after controller-led companion mode, otherwise the old
+        # stage/score/CTA logic can override the controller.
+        if (
+            int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
+            and not _controller_led_companion
+        ):
             try:
-                from digitz_ai_nexus.nexus_companion.services.signal_classifier import classify_signal
+                from digitz_ai_nexus.nexus_companion.services.signal_classifier import (
+                    classify_signal,
+                )
                 from digitz_ai_nexus.nexus_companion.services.enquiry_service import (
                     update_enquiry,
                     advance_journey_stage_from_signal,
@@ -2120,35 +2206,39 @@ def _process_ai_response(conversation_id, payload_json):
                     get_or_create_enquiry,
                     get_conversion_action,
                 )
+
                 conversation.reload()
 
                 _visitor_message = payload.get("message") or payload.get("query") or ""
-                _companion_playbook = (core_payload.get("ai_profile") or {}).get("companion_playbook")
+                _companion_playbook = (
+                    core_payload.get("ai_profile") or {}
+                ).get("companion_playbook")
 
-                # Ensure the enquiry exists
                 get_or_create_enquiry(conversation)
 
-                # Classify the visitor's signal
                 _conv_context = core_payload.get("conversation_context") or ""
                 _signal = classify_signal(_visitor_message, _conv_context)
 
-                # Update the enquiry: stamp signal, re-score, re-match persona
-                update_enquiry(conversation, discovery_delta={}, signal=_signal)
+                update_enquiry(
+                    conversation,
+                    discovery_delta={},
+                    signal=_signal,
+                )
 
-                # Advance stage based on the classified signal
-                advance_journey_stage_from_signal(conversation, _signal.get("signal_type", "CURIOUS"))
+                advance_journey_stage_from_signal(
+                    conversation,
+                    _signal.get("signal_type", "CURIOUS"),
+                )
 
-                # Score-based fallback advancement (safety net)
                 conversation.reload()
                 advance_journey_stage(conversation)
 
-                # Fetch conversion action if stage landed on CONVERTING
                 conversation.reload()
                 _companion_conversion_action = get_conversion_action(conversation)
 
-                # Escalation: keyword trigger or threshold
                 if check_escalation_threshold(conversation, _companion_playbook) or (
-                    _companion_playbook and check_trigger_keywords(_visitor_message, _companion_playbook)
+                    _companion_playbook
+                    and check_trigger_keywords(_visitor_message, _companion_playbook)
                 ):
                     frappe.db.set_value(
                         "Nexus Live Conversation",
@@ -2157,6 +2247,7 @@ def _process_ai_response(conversation_id, payload_json):
                         "ESCALATED",
                         update_modified=False,
                     )
+
                     if conversation.companion_enquiry:
                         frappe.db.set_value(
                             "Nexus Companion Enquiry",
@@ -2164,9 +2255,16 @@ def _process_ai_response(conversation_id, payload_json):
                             "enquiry_stage",
                             "ESCALATED",
                         )
-            except Exception:
-                frappe.log_error(frappe.get_traceback(), "Nexus Companion: signal/stage update failed")
 
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "Nexus Companion: signal/stage update failed",
+                )
+
+        # ------------------------------------------------------------------
+        # Escalation handling
+        # ------------------------------------------------------------------
         escalation_enabled = (
             bool(behavior.escalation_enabled)
             if behavior and behavior.escalation_enabled is not None
@@ -2175,25 +2273,25 @@ def _process_ai_response(conversation_id, payload_json):
 
         escalation_created = None
         _esc_notice = None
+        _esc_calendly = None
         _pre_escalation_email_prompt = None
 
-        # Only escalate to human if the category has enable_escalation checked.
-        # All categories (including Nexy) can escalate — approval gate applies universally.
         category_allows_escalation = False
         if conversation.chat_category:
             category_allows_escalation = bool(
-                frappe.db.get_value("Nexus Chat Category", conversation.chat_category, "enable_escalation")
+                frappe.db.get_value(
+                    "Nexus Chat Category",
+                    conversation.chat_category,
+                    "enable_escalation",
+                )
             )
 
-        # Prevent re-triggering while an escalation request is already in flight
         _current_esc_status = getattr(conversation, "escalation_status", None) or "None"
         already_pending = _current_esc_status in ("Requested", "Pending", "Accepted")
 
         user_requested_human = bool(core_response.get("user_requested_human"))
 
-        _is_companion_mode = int((core_payload.get("ai_profile") or {}).get("companion_mode") or 0)
-
-        # Escalation is triggered only by explicit visitor request — never auto-escalated.
+        # Escalation is triggered only by explicit visitor request.
         if (
             not already_pending
             and escalation_enabled
@@ -2201,22 +2299,25 @@ def _process_ai_response(conversation_id, payload_json):
             and user_requested_human
         ):
             if not conversation.visitor_email:
-                # Visitor email not yet verified — collect it before surfacing to desk.
-                # Escalation is created in await_pre_escalation_verification after OTP passes.
                 frappe.db.set_value(
-                    "Nexus Live Conversation", conversation.name,
-                    "intent", "await_pre_escalation_verification",
+                    "Nexus Live Conversation",
+                    conversation.name,
+                    "intent",
+                    "await_pre_escalation_verification",
                 )
+
                 _pre_escalation_email_prompt = (
                     "I'd be happy to connect you with our team. To proceed, could you please "
                     "share your email address? We'll send you a quick verification code."
                 )
+
                 add_message(
                     conversation=conversation,
                     sender_type="AI Agent",
                     message=_pre_escalation_email_prompt,
                     response_mode="chat",
                 )
+
             else:
                 escalation_created = create_escalation(
                     conversation=conversation,
@@ -2228,6 +2329,7 @@ def _process_ai_response(conversation_id, payload_json):
 
                 if escalation_created:
                     _esc_calendly = getattr(agent, "calendly_link", None) or None
+
                     if _esc_calendly:
                         _esc_notice = (
                             "Your request to connect with our team has been received. "
@@ -2241,7 +2343,7 @@ def _process_ai_response(conversation_id, payload_json):
                             "based on their availability. In the meantime, feel free to continue "
                             "asking questions — our AI assistant is here to help."
                         )
-                    # Save notice to transcript; realtime publish fires after the AI answer below
+
                     add_message(
                         conversation=conversation,
                         sender_type="AI Agent",
@@ -2250,10 +2352,12 @@ def _process_ai_response(conversation_id, payload_json):
                     )
 
         resolved_context = payload.get("_resolved_tenant_context") or {}
-        # Suppress suggested questions in companion mode — the companion is running a
-        # guided strategic conversation. Surfacing FAQ suggestions breaks conversational
-        # momentum and redirects visitors away from answering the companion's question.
-        correlated_questions = [] if _is_companion_mode else (core_response.get("correlated_questions") or [])
+
+        correlated_questions = (
+            []
+            if _is_companion_mode
+            else (core_response.get("correlated_questions") or [])
+        )
 
         publish_chat_response(conversation_id, {
             "status": "success",
@@ -2286,7 +2390,6 @@ def _process_ai_response(conversation_id, payload_json):
             "debug_info": debug_info,
         })
 
-        # Send escalation-request notice to visitor after the AI answer so message order is correct
         if escalation_created and _esc_notice:
             publish_chat_response(conversation.conversation_id, {
                 "status": "escalation_requested",
@@ -2297,10 +2400,9 @@ def _process_ai_response(conversation_id, payload_json):
                 "sources": [],
                 "escalation_requested": True,
                 "escalation": escalation_created.name,
-                "calendly_link": _esc_calendly if escalation_created else None,
+                "calendly_link": _esc_calendly,
             })
 
-        # Prompt visitor for email verification before escalation is created
         if _pre_escalation_email_prompt:
             publish_chat_response(conversation.conversation_id, {
                 "status": "await_pre_escalation_verification",
@@ -2312,11 +2414,11 @@ def _process_ai_response(conversation_id, payload_json):
                 "identity_verification_offer": True,
             })
 
-        # Soft nudge when the AI couldn't answer well — invite the visitor to request
-        # a human agent without auto-escalating.
+        # Soft human nudge only for non-companion weak answers.
         _is_weak_answer = is_fallback or (
             is_real_answer and confidence is not None and confidence < threshold
         )
+
         if (
             _is_weak_answer
             and category_allows_escalation
@@ -2327,12 +2429,14 @@ def _process_ai_response(conversation_id, payload_json):
             _human_nudge = (
                 "If you'd like to speak with someone from our team directly, just let me know."
             )
+
             add_message(
                 conversation=conversation,
                 sender_type="AI Agent",
                 message=_human_nudge,
                 response_mode="chat",
             )
+
             publish_chat_response(conversation.conversation_id, {
                 "status": "success",
                 "response_type": "message",
@@ -2343,24 +2447,31 @@ def _process_ai_response(conversation_id, payload_json):
                 "sources": [],
             })
 
-        # WhatsApp delivery fork — send answer directly to visitor's phone when
-        # the conversation is on a WhatsApp channel.  The realtime publish above
-        # still fires so the desk console can observe the transcript.
+        # WhatsApp delivery fork.
         try:
             from digitz_ai_nexus_live.services.whatsapp_service import (
                 get_whatsapp_delivery_for_conversation,
                 send_whatsapp_reply,
             )
+
             _wa_account, _wa_phone = get_whatsapp_delivery_for_conversation(conversation)
+
             if _wa_account and _wa_phone:
                 send_whatsapp_reply(_wa_phone, answer, _wa_account)
+
         except Exception:
-            frappe.log_error(frappe.get_traceback(), "Nexus WhatsApp: outbound delivery failed")
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Nexus WhatsApp: outbound delivery failed",
+            )
 
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Nexus Live Chat Background Processing Failed")
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Nexus Live Chat Background Processing Failed",
+        )
+
         try:
-            # Ensure agent is not left stuck in Responding status
             conversation = get_conversation(conversation_id)
             if conversation and conversation.assigned_agent:
                 set_agent_status(
@@ -2371,8 +2482,8 @@ def _process_ai_response(conversation_id, payload_json):
                 )
         except Exception:
             pass
-        publish_chat_error(conversation_id, "An error occurred processing your message.")
 
+        publish_chat_error(conversation_id, "An error occurred processing your message.")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
