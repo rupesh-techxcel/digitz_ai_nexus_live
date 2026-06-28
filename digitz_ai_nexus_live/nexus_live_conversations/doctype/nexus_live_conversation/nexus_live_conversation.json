@@ -49,6 +49,7 @@
   "nexy_handover_category",
   "section_companion_journey",
   "companion_journey_stage",
+  "companion_milestone",
   "companion_persona",
   "companion_persona_confidence",
   "column_break_companion",
@@ -353,6 +354,14 @@
    "options": "ARRIVED\nGREETING\nDISCOVERY\nENGAGED\nPRESENTING\nOBJECTION_HANDLING\nSOLUTION_ALIGNMENT\nINTERESTED\nQUALIFIED\nCONVERTING\nCONVERTED\nDECLINED\nESCALATED",
    "default": "ARRIVED",
    "read_only": 0
+  },
+  {
+   "fieldname": "companion_milestone",
+   "fieldtype": "Select",
+   "label": "Companion Milestone",
+   "options": "\nonboarding_business\nbusiness_discovery\npain_discovery\nsolution_mapping\nevidence_building\ndemo_arrangement\nquotation\nconversion",
+   "read_only": 1,
+   "description": "Controller-owned sales milestone. Drives steering decisions and response goals."
   },
   {
    "fieldname": "companion_persona",
