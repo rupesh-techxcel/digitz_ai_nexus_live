@@ -727,9 +727,10 @@
             var _rt_debug = data.debug_info || null;
             var _rt_conversion = data.conversion_action || null;
             var _rt_calendly = data.calendly_link || null;
+            var _rt_pending_action = data.pending_action || null;
             typewrite_message('agent', data.message || data.answer, null, _rt_agent_lbl, function () {
                 if (_rt_offer && !is_desk()) {
-                    render_identity_verification_prompt();
+                    render_identity_verification_prompt(_rt_pending_action);
                 }
                 if (_rt_email_offer && _rt_gap_name && !is_desk()) {
                     render_email_followup_prompt(_rt_gap_name);
@@ -1471,7 +1472,7 @@
 
     // ── Identity verification prompt ───────────────────────────────────────────
 
-    function render_identity_verification_prompt() {
+    function render_identity_verification_prompt(pending_action) {
         const msgs = el('ncw-messages');
         const prompt = document.createElement('div');
         prompt.className = 'ncw-verify-prompt';
@@ -1486,10 +1487,10 @@
         scroll_bottom();
 
         document.getElementById('ncw-verify-email-btn').addEventListener('click', function () {
-            submit_email_for_verification(prompt);
+            submit_email_for_verification(prompt, pending_action);
         });
         document.getElementById('ncw-verify-email').addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); submit_email_for_verification(prompt); }
+            if (e.key === 'Enter') { e.preventDefault(); submit_email_for_verification(prompt, pending_action); }
         });
         document.getElementById('ncw-verify-email').focus();
     }
@@ -1805,7 +1806,7 @@
         show_email_step();
     }
 
-    async function submit_email_for_verification(prompt_el) {
+    async function submit_email_for_verification(prompt_el, pending_action) {
         const email_input = document.getElementById('ncw-verify-email');
         const email = (email_input ? email_input.value : '').trim();
         const msg_el  = document.getElementById('ncw-verify-email-msg');
@@ -1822,10 +1823,13 @@
         btn.textContent = 'Sending…';
         msg_el.style.display = 'none';
 
+        const _idv_payload = { conversation_id: S.conversation_id, email: email };
+        if (pending_action) { _idv_payload.pending_action = pending_action; }
+
         try {
             const r = await api(
                 'digitz_ai_nexus_live.api.identity_verification.request_identity_verification',
-                { conversation_id: S.conversation_id, email: email }
+                _idv_payload
             );
             const data = r.message || {};
 
@@ -1927,10 +1931,23 @@
                 S.visitor_email = data.email || S.visitor_email;
 
                 prompt_el.innerHTML =
-                    '<div class="ncw-verify-msg ncw-verify-success">✓ Identity verified as <strong>' +
-                    escape_html(data.identity_type || 'Verified') +
-                    '</strong>. Your next message will use your verified access.</div>';
+                    '<div class="ncw-verify-msg ncw-verify-success">✓ Identity verified. Preparing your booking…</div>';
                 scroll_bottom();
+
+                // Automatically advance the companion turn so the booking card
+                // appears without the visitor needing to type another message.
+                show_typing();
+                try {
+                    const adv_payload = { message: '__idv_advance__', tenant: S.tenant };
+                    adv_payload.identity_verification_challenge = data.challenge_token;
+                    if (S.visitor_email) adv_payload.visitor_email = S.visitor_email;
+                    await api('digitz_ai_nexus_live.api.live.send_chat_message', {
+                        conversation_id: S.conversation_id,
+                        payload: JSON.stringify(adv_payload),
+                    });
+                } catch (_) {
+                    hide_typing();
+                }
             }
         } catch (err) {
             btn.disabled    = false;

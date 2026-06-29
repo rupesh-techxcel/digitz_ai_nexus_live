@@ -1032,6 +1032,14 @@ def continue_live_chat(conversation_id, payload):
         frappe.throw("Conversation has no assigned agent.")
 
     message = (payload.get("message") or "").strip()
+
+    # Silent post-verification advance trigger sent automatically by the widget
+    # after OTP verification.  Substitute a neutral phrase for LLM/steering
+    # context but suppress the visible visitor message bubble.
+    _is_idv_advance = (message == "__idv_advance__")
+    if _is_idv_advance:
+        message = "email verified"
+
     if not message:
         frappe.throw("Message is required.")
 
@@ -1726,14 +1734,15 @@ def continue_live_chat(conversation_id, payload):
             "conversation_id": conversation_id,
         }
 
-    # Store visitor message for all non-category-click cases
-    add_message(
-        conversation=conversation,
-        sender_type=sender_type,
-        message=message,
-        response_mode="chat",
-    )
-    _touch_last_message_at(conversation)
+    # Store visitor message for all non-category-click, non-idv-advance cases
+    if not _is_idv_advance:
+        add_message(
+            conversation=conversation,
+            sender_type=sender_type,
+            message=message,
+            response_mode="chat",
+        )
+        _touch_last_message_at(conversation)
 
     # ── Await name ──────────────────────────────────────────────────────────────
     if intent == "await_name":
@@ -2141,15 +2150,24 @@ def _process_ai_response(conversation_id, payload_json):
         # Public identity fallback.
         is_fallback = bool(core_response.get("fallback_used") or not core_response.get("answer"))
         is_public_visitor = bool(behavior and behavior.identity_type == "Public")
+        _companion_wants_email_verification = bool(core_response.get("requires_email_verification"))
         _companion_no_verify = (
-            bool(core_response.get("companion_controller"))
+            (bool(core_response.get("companion_controller")) and not _companion_wants_email_verification)
             or core_response.get("verification_prompt_allowed") is False
             or core_response.get("access_status") == "controlled_no_context"
         )
-        identity_verification_offer = is_fallback and is_public_visitor and not _companion_no_verify
+        identity_verification_offer = (
+            (is_fallback and is_public_visitor and not _companion_no_verify)
+            or _companion_wants_email_verification
+        )
 
         if identity_verification_offer:
-            answer = PUBLIC_IDENTITY_FALLBACK
+            # Preserve the companion-controller answer when it explicitly set
+            # requires_email_verification and returned its own answer text.
+            # Only use the public-knowledge fallback for pure RAG-fallback cases
+            # where no controller answer exists.
+            if not (_companion_wants_email_verification and core_response.get("answer")):
+                answer = PUBLIC_IDENTITY_FALLBACK
 
         threshold = (
             behavior.confidence_threshold
@@ -2384,7 +2402,7 @@ def _process_ai_response(conversation_id, payload_json):
             else (core_response.get("correlated_questions") or [])
         )
 
-        publish_chat_response(conversation_id, {
+        _publish_payload = {
             "status": "success",
             "response_type": "message",
             "conversation": conversation.name,
@@ -2406,6 +2424,24 @@ def _process_ai_response(conversation_id, payload_json):
             "identity_verification_offer": identity_verification_offer,
             "email_followup_offer": bool(core_response.get("email_followup_offer")),
             "gap_name": core_response.get("gap_name") or None,
+        }
+
+        # Forward companion verification metadata so the frontend has full context.
+        if _companion_wants_email_verification:
+            _publish_payload["requires_email_verification"] = True
+            _publish_payload["verification_prompt_allowed"] = bool(
+                core_response.get("verification_prompt_allowed")
+            )
+            _publish_payload["verification_stage"] = core_response.get("verification_stage")
+            _publish_payload["verification_purpose"] = core_response.get("verification_purpose")
+            _publish_payload["pending_action"] = core_response.get("pending_action")
+            _publish_payload["booking_blocked_until_verified"] = bool(
+                core_response.get("booking_blocked_until_verified")
+            )
+            _publish_payload["access_status"] = core_response.get("access_status") or "awaiting_verification"
+
+        publish_chat_response(conversation_id, {
+            **_publish_payload,
 
             "conversion_action": _companion_conversion_action,
 

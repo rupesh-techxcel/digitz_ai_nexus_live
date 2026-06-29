@@ -24,13 +24,15 @@ def get_category_verification_mode(chat_category):
     )
 
 
-def request_verification(channel, chat_category, email):
+def request_verification(channel, chat_category, email, force_mode=None):
     email = _normalize_email(email)
     if not email:
         frappe.throw("Email is required for identity verification.")
 
     category = frappe.get_doc("Nexus Chat Category", chat_category)
-    mode = category.identity_verification_mode or "None"
+    # force_mode allows callers (e.g. companion controller) to require OTP even
+    # when the category's identity_verification_mode is "None".
+    mode = force_mode or category.identity_verification_mode or "None"
 
     if mode == "None":
         return {"required": 0, "status": "not_required"}

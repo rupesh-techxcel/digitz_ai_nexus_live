@@ -6,9 +6,16 @@ from digitz_ai_nexus_live.services.identity_verification import (
 )
 from digitz_ai_nexus_live.services.rate_limit import check_rate_limit, get_caller_ip
 
+# Companion pending actions that require OTP even when the chat category's
+# identity_verification_mode is "None".
+_COMPANION_EMAIL_COLLECT_ACTIONS = frozenset({
+    "collect_email_for_consultancy",
+    "collect_email_for_appointment",
+})
+
 
 @frappe.whitelist(allow_guest=True)
-def request_identity_verification(channel=None, chat_category=None, email=None, conversation_id=None):
+def request_identity_verification(channel=None, chat_category=None, email=None, conversation_id=None, pending_action=None):
     # 5 OTP requests per email per 10 minutes
     if email:
         check_rate_limit(
@@ -24,6 +31,7 @@ def request_identity_verification(channel=None, chat_category=None, email=None, 
     # Resolve channel + chat_category from an active conversation when not supplied directly.
     # The conversation stores chat_category as the category_code field value; we resolve
     # the canonical doc name here so request_verification always receives a doc name.
+    conv_name = None
     if conversation_id:
         conv_name = frappe.db.get_value(
             "Nexus Live Conversation", {"conversation_id": conversation_id}, "name"
@@ -40,10 +48,26 @@ def request_identity_verification(channel=None, chat_category=None, email=None, 
     if not chat_category:
         frappe.throw("Chat category is required.")
 
+    # When the companion controller is collecting email mid-conversation for a
+    # booking/consultancy action, force OTP regardless of the category's
+    # identity_verification_mode (which may be "None" for companion-only categories).
+    # Primary: widget passes pending_action directly from the realtime event payload.
+    # Fallback: read companion_pending_action from DB (covers reconnect / reload cases).
+    force_mode = None
+    _effective_pending = (pending_action or "").strip()
+    if not _effective_pending and conv_name:
+        _effective_pending = (
+            frappe.db.get_value("Nexus Live Conversation", conv_name, "companion_pending_action")
+            or ""
+        ).strip()
+    if _effective_pending in _COMPANION_EMAIL_COLLECT_ACTIONS:
+        force_mode = "Email OTP"
+
     return request_verification(
         channel=channel,
         chat_category=chat_category,
         email=email,
+        force_mode=force_mode,
     )
 
 

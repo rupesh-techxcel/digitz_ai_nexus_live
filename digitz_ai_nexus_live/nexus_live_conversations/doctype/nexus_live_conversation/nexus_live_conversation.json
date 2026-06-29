@@ -55,7 +55,13 @@
   "column_break_companion",
   "companion_enquiry",
   "companion_discovery_json",
-  "conversation_origin"
+  "conversation_origin",
+  "companion_pending_action",
+  "companion_pending_context_json",
+  "companion_email_verification_hash",
+  "companion_email_verification_expires_on",
+  "companion_email_verification_retry_count",
+  "companion_email_verified"
  ],
  "fields": [
   {
@@ -404,12 +410,60 @@
    "default": "Inbound",
    "read_only": 1,
    "description": "Inbound: visitor initiated. Outreach: Nexy sent the first message via WhatsApp outreach."
+  },
+  {
+   "fieldname": "companion_pending_action",
+   "fieldtype": "Data",
+   "label": "Companion Pending Action",
+   "hidden": 1,
+   "no_copy": 1,
+   "description": "Explicit pending input state for the Nexy Companion flow. Owns routing; text scanning is fallback only."
+  },
+  {
+   "fieldname": "companion_pending_context_json",
+   "fieldtype": "Code",
+   "label": "Companion Pending Context (JSON)",
+   "options": "JSON",
+   "hidden": 1,
+   "no_copy": 1,
+   "description": "Extra context for the current pending action (methodology, context_area, etc.)."
+  },
+  {
+   "fieldname": "companion_email_verification_hash",
+   "fieldtype": "Data",
+   "label": "Email Verification Hash",
+   "hidden": 1,
+   "no_copy": 1,
+   "description": "SHA-256 hash of the OTP sent for email verification. Cleared after successful verification."
+  },
+  {
+   "fieldname": "companion_email_verification_expires_on",
+   "fieldtype": "Datetime",
+   "label": "Email Verification Expires On",
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "companion_email_verification_retry_count",
+   "fieldtype": "Int",
+   "label": "Email Verification Retry Count",
+   "hidden": 1,
+   "no_copy": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "companion_email_verified",
+   "fieldtype": "Check",
+   "label": "Email Verified",
+   "hidden": 1,
+   "no_copy": 1,
+   "default": "0"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 0,
  "links": [],
- "modified": "2026-06-23 00:00:00.000000",
+ "modified": "2026-06-29 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Nexus Live Conversations",
  "name": "Nexus Live Conversation",
