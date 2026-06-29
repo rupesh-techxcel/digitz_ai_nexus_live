@@ -261,26 +261,7 @@
 
                 <!-- WhatsApp registration panel \u2014 shown when visitor clicks the strip -->
                 <div id="ncw-wa-panel" style="display:none;">
-                    <div id="ncw-wa-phone-step">
-                        <p class="ncw-wa-label">Enter your WhatsApp number to receive replies there:</p>
-                        <div class="ncw-wa-row">
-                            <input id="ncw-wa-phone-input" type="tel" placeholder="+91 98765 43210" autocomplete="tel" maxlength="20"/>
-                            <button id="ncw-wa-send-otp-btn" type="button">Send code</button>
-                        </div>
-                        <p id="ncw-wa-phone-error" class="ncw-wa-error" style="display:none;"></p>
-                    </div>
-                    <div id="ncw-wa-otp-step" style="display:none;">
-                        <p class="ncw-wa-label" id="ncw-wa-otp-label">Enter the 6-digit code sent to your WhatsApp:</p>
-                        <div class="ncw-wa-row">
-                            <input id="ncw-wa-otp-input" type="text" placeholder="\xB7\xB7\xB7\xB7\xB7\xB7" maxlength="6" inputmode="numeric" autocomplete="one-time-code"/>
-                            <button id="ncw-wa-verify-btn" type="button">Verify</button>
-                        </div>
-                        <p id="ncw-wa-otp-error" class="ncw-wa-error" style="display:none;"></p>
-                        <button id="ncw-wa-resend-btn" type="button" class="ncw-wa-link">Resend code</button>
-                    </div>
-                    <div id="ncw-wa-done-step" style="display:none;">
-                        <p class="ncw-wa-label ncw-wa-success">&#10003; WhatsApp connected! Nexy will now reply to your phone. You can close this window.</p>
-                    </div>
+                    <p class="ncw-wa-label">We are waiting for approval from Meta to launch WhatsApp connectivity.</p>
                 </div>
 
                 <!-- Email transcript panel \u2014 shown when visitor clicks "Email this conversation" -->
@@ -417,80 +398,6 @@
         var visible = panel.style.display !== "none";
         panel.style.display = visible ? "none" : "block";
       });
-      el("ncw-wa-send-otp-btn").addEventListener("click", _wa_send_otp);
-      el("ncw-wa-phone-input").addEventListener("keydown", function(e) {
-        if (e.key === "Enter")
-          _wa_send_otp();
-      });
-      el("ncw-wa-verify-btn").addEventListener("click", _wa_verify_otp);
-      el("ncw-wa-otp-input").addEventListener("keydown", function(e) {
-        if (e.key === "Enter")
-          _wa_verify_otp();
-      });
-      el("ncw-wa-resend-btn").addEventListener("click", function() {
-        el("ncw-wa-otp-step").style.display = "none";
-        el("ncw-wa-phone-step").style.display = "block";
-        el("ncw-wa-otp-error").style.display = "none";
-      });
-      async function _wa_send_otp() {
-        var phone = (el("ncw-wa-phone-input").value || "").trim();
-        if (!phone) {
-          _wa_phone_err("Please enter your WhatsApp number.");
-          return;
-        }
-        el("ncw-wa-send-otp-btn").disabled = true;
-        el("ncw-wa-phone-error").style.display = "none";
-        try {
-          var r = await api("digitz_ai_nexus_live.api.live.request_whatsapp_registration", {
-            conversation_id: S.conversation_id,
-            phone,
-            caller_token: _conv_caller_token() || ""
-          });
-          var d = r.message || {};
-          if (d.status === "sent") {
-            var lbl = el("ncw-wa-otp-label");
-            if (lbl && d.phone)
-              lbl.textContent = "Enter the 6-digit code sent to WhatsApp " + d.phone + ":";
-            el("ncw-wa-phone-step").style.display = "none";
-            el("ncw-wa-otp-step").style.display = "block";
-            el("ncw-wa-otp-input").focus();
-          }
-        } catch (err) {
-          _wa_phone_err(err && err.message || "Could not send code. Please try again.");
-        } finally {
-          el("ncw-wa-send-otp-btn").disabled = false;
-        }
-      }
-      async function _wa_verify_otp() {
-        var otp = (el("ncw-wa-otp-input").value || "").trim();
-        if (!otp) {
-          _wa_otp_err("Please enter the verification code.");
-          return;
-        }
-        el("ncw-wa-verify-btn").disabled = true;
-        el("ncw-wa-otp-error").style.display = "none";
-        try {
-          await api("digitz_ai_nexus_live.api.live.verify_whatsapp_registration", {
-            conversation_id: S.conversation_id,
-            otp,
-            caller_token: _conv_caller_token() || ""
-          });
-        } catch (err) {
-          _wa_otp_err(err && err.message || "Incorrect code. Please try again.");
-        } finally {
-          el("ncw-wa-verify-btn").disabled = false;
-        }
-      }
-      function _wa_phone_err(msg) {
-        var e = el("ncw-wa-phone-error");
-        e.textContent = msg;
-        e.style.display = "block";
-      }
-      function _wa_otp_err(msg) {
-        var e = el("ncw-wa-otp-error");
-        e.textContent = msg;
-        e.style.display = "block";
-      }
       el("ncw-email-transcript-btn").addEventListener("click", function() {
         if (!S.conversation_id)
           return;
@@ -717,14 +624,8 @@
         }
         if (data.response_type === "visitor_message")
           return;
-        if (data.response_type === "whatsapp_registered") {
-          el("ncw-wa-phone-step").style.display = "none";
-          el("ncw-wa-otp-step").style.display = "none";
-          el("ncw-wa-done-step").style.display = "block";
-          el("ncw-wa-panel").style.display = "block";
-          el("ncw-wa-strip").style.display = "none";
+        if (data.response_type === "whatsapp_registered")
           return;
-        }
         if (data.response_type === "transcript_sent") {
           el("ncw-email-addr-step").style.display = "none";
           el("ncw-email-otp-step").style.display = "none";
@@ -3045,4 +2946,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.KB7G3KKH.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.GKZOYBKH.js.map

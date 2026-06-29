@@ -24,6 +24,7 @@
     "enable_escalation",
     "auto_escalate_no_knowledge",
     "use_for_nexy",
+    "companion_controller_type",
     "section_faq",
     "faq_questions",
     "section_drive",
@@ -154,6 +155,15 @@
       "fieldname": "use_for_nexy",
       "fieldtype": "Check",
       "label": "Use for Nexy"
+    },
+    {
+      "default": "business_companion",
+      "depends_on": "eval:doc.use_for_nexy",
+      "description": "Selects which Nexy companion controller handles conversations in this category. Business Companion drives B2B sales discovery. Customer Support drives issue triage and resolution. Defaults to Business Companion when not set.",
+      "fieldname": "companion_controller_type",
+      "fieldtype": "Select",
+      "label": "Companion Controller",
+      "options": "\nbusiness_companion\ncustomer_support"
     },
     {
       "fieldname": "section_faq",

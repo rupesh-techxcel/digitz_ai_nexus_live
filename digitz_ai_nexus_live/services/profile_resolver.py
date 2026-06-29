@@ -139,6 +139,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
 
     drive_mode = getattr(category, "internal_drive_mode", None) or "None"
     drive_prompt = getattr(category, "internal_drive_prompt", None) or ""
+    companion_controller_type = getattr(category, "companion_controller_type", None) or "business_companion"
 
     return _build_behavior_dict(
         profile=profile,
@@ -151,6 +152,7 @@ def resolve_behavior_from_chat_category(category_code, identity_type, is_authent
         knowledge_profile_names=knowledge_profile_names,
         category_drive_mode=drive_mode,
         category_drive_prompt=drive_prompt,
+        companion_controller_type=companion_controller_type,
     )
 
 
@@ -192,6 +194,7 @@ def resolve_behavior_from_conversation(conversation):
         knowledge_profile_names=snapshot.get("knowledge_profile_names") or [],
         category_drive_mode=snapshot.get("category_drive_mode") or "None",
         category_drive_prompt=snapshot.get("category_drive_prompt") or "",
+        companion_controller_type=snapshot.get("companion_controller_type") or "business_companion",
     )
 
 
@@ -369,6 +372,7 @@ def _build_behavior_dict(
     knowledge_profile_names=None,
     category_drive_mode=None,
     category_drive_prompt=None,
+    companion_controller_type=None,
 ):
     return frappe._dict({
         "source": source,
@@ -397,4 +401,6 @@ def _build_behavior_dict(
         # Category-level internal drive
         "category_drive_mode": category_drive_mode or "None",
         "category_drive_prompt": category_drive_prompt or "",
+        # Category-level Nexy controller selector
+        "companion_controller_type": companion_controller_type or "business_companion",
     })

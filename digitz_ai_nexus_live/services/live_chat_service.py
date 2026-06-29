@@ -378,6 +378,7 @@ def _build_ai_profile_dict(behavior):
         "companion_mode": effective_companion_mode,
         "companion_playbook": getattr(behavior, "companion_playbook", None),
         "companion_discovery_style": getattr(behavior, "companion_discovery_style", None),
+        "companion_controller_type": getattr(behavior, "companion_controller_type", None) or "business_companion",
         "category_drive_mode": drive_mode,
         "category_drive_prompt": drive_prompt,
     }
@@ -1168,6 +1169,7 @@ def continue_live_chat(conversation_id, payload):
                         "companion_mode": int(getattr(profile, "companion_mode", 0) or 0),
                         "companion_playbook": getattr(profile, "companion_playbook", None),
                         "companion_discovery_style": getattr(profile, "companion_discovery_style", None),
+                        "companion_controller_type": getattr(cat, "companion_controller_type", None) or "business_companion",
                         "calendly_link": getattr(profile, "calendly_link", None) or None,
                         "category_drive_mode": getattr(cat, "internal_drive_mode", None) or "None",
                         "category_drive_prompt": getattr(cat, "internal_drive_prompt", None) or "",
@@ -1213,12 +1215,8 @@ def continue_live_chat(conversation_id, payload):
             # Onboarding flow: two mandatory messages before free chat opens.
             # intent has been set to "onboarding_business" in conversation_updates above.
             intro = (
-                f"Perfect{name_part}! I'm {agent_nick} — powered by Nexus Orbit, a governed "
-                "knowledge intelligence platform that fuels advanced agentic capabilities, "
-                "visitor companionship, business orchestration, and much more.\n\n"
-                "I help businesses transform knowledge into AI-powered action, enabling smarter "
-                "decisions, streamlined operations, and accelerated growth. Through Nexus Orbit, "
-                "I turn trusted knowledge into meaningful business outcomes."
+                f"Hi{name_part}! I'm {agent_nick} — here to understand your business "
+                "and connect you with what's most relevant."
             )
             add_message(
                 conversation=conversation,
@@ -1237,10 +1235,7 @@ def continue_live_chat(conversation_id, payload):
                 "sources": [],
             })
 
-            biz_ask = (
-                "Before we dive in, I'd love to understand your business a little better. "
-                "What does your company do, and what's the main challenge you're hoping to solve?"
-            )
+            biz_ask = "What does your company do, and what's the main challenge you're looking to solve?"
             add_message(
                 conversation=conversation,
                 sender_type="AI Agent",
@@ -1961,6 +1956,34 @@ def _enqueue_ai_response(conversation_id, payload):
         payload_json=json.dumps(payload, default=str),
     )
 
+def _dispatch_companion_controller(controller_type, conversation, agent, payload, core_payload):
+    """
+    Route to the correct Nexy companion controller based on companion_controller_type
+    set on the Nexus Chat Category. Defaults to business_companion for any missing,
+    unknown, or legacy value — ensuring backward compatibility with existing conversations.
+
+    To add a new Nexy role:
+    1. Add the option to Nexus Chat Category.companion_controller_type
+    2. Create the controller module under digitz_ai_nexus/nexus_companion/services/
+    3. Add an elif branch here pointing to handle_companion_turn in that module
+    """
+    if controller_type == "customer_support":
+        from digitz_ai_nexus.nexus_companion.services.support_companion_controller import (
+            handle_companion_turn,
+        )
+    else:
+        from digitz_ai_nexus.nexus_companion.services.business_companion_controller import (
+            handle_companion_turn,
+        )
+
+    return handle_companion_turn(
+        conversation=conversation,
+        agent=agent,
+        payload=payload,
+        core_payload=core_payload,
+    )
+
+
 def _process_ai_response(conversation_id, payload_json):
     """Background job: run the AI pipeline and push the answer via realtime."""
     try:
@@ -2055,15 +2078,12 @@ def _process_ai_response(conversation_id, payload_json):
             )
 
             if _is_companion_mode:
-                from digitz_ai_nexus.nexus_companion.services.business_companion_controller import (
-                    handle_companion_turn,
-                )
+                _controller_type = (core_payload.get("ai_profile") or {}).get(
+                    "companion_controller_type"
+                ) or "business_companion"
 
-                core_response = handle_companion_turn(
-                    conversation=conversation,
-                    agent=agent,
-                    payload=payload,
-                    core_payload=core_payload,
+                core_response = _dispatch_companion_controller(
+                    _controller_type, conversation, agent, payload, core_payload
                 )
             else:
                 core_response = answer_query(core_payload)
@@ -2121,7 +2141,12 @@ def _process_ai_response(conversation_id, payload_json):
         # Public identity fallback.
         is_fallback = bool(core_response.get("fallback_used") or not core_response.get("answer"))
         is_public_visitor = bool(behavior and behavior.identity_type == "Public")
-        identity_verification_offer = is_fallback and is_public_visitor
+        _companion_no_verify = (
+            bool(core_response.get("companion_controller"))
+            or core_response.get("verification_prompt_allowed") is False
+            or core_response.get("access_status") == "controlled_no_context"
+        )
+        identity_verification_offer = is_fallback and is_public_visitor and not _companion_no_verify
 
         if identity_verification_offer:
             answer = PUBLIC_IDENTITY_FALLBACK
