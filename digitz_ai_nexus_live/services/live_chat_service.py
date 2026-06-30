@@ -1952,18 +1952,18 @@ def continue_live_chat(conversation_id, payload):
 # ── Background AI job ──────────────────────────────────────────────────────────
 
 def _enqueue_ai_response(conversation_id, payload):
-    # frappe.enqueue(
-    #     "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
-    #     conversation_id=conversation_id,
-    #     payload_json=json.dumps(payload, default=str),
-    #     queue="short",
-    #     timeout=120,
-    #     now=frappe.flags.in_test,
-    # )
-    _process_ai_response(
+    frappe.enqueue(
+        "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
         conversation_id=conversation_id,
         payload_json=json.dumps(payload, default=str),
+        queue="short",
+        timeout=120,
+        now=frappe.flags.in_test,
     )
+    # _process_ai_response(
+    #     conversation_id=conversation_id,
+    #     payload_json=json.dumps(payload, default=str),
+    # )
 
 def _dispatch_companion_controller(controller_type, conversation, agent, payload, core_payload):
     """
