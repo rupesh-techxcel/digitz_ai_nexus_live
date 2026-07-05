@@ -174,7 +174,8 @@ def _send_category_picker(conversation, greeting_name=None, publish=True, is_int
         "Nexus Chat Category",
         filters=cat_filters,
         fields=["name", "channel", "category_code", "category_label", "description", "display_order", "use_for_nexy"],
-        order_by="display_order asc",
+        # category_label tiebreaker keeps the order stable when display_order values tie
+        order_by="display_order asc, category_label asc",
     )
 
     categories = _filter_categories_with_active_routes(categories)
@@ -866,7 +867,7 @@ def start_live_chat(payload):
     )
 
     if needs_name:
-        name_prompt = "Before we get started, could I get your name please?"
+        name_prompt = "Could you please share your name?"
         add_message(
             conversation=conversation,
             sender_type="AI Agent",
@@ -1243,7 +1244,10 @@ def continue_live_chat(conversation_id, payload):
                 "sources": [],
             })
 
-            biz_ask = "What does your company do, and what's the main challenge you're looking to solve?"
+            biz_ask = (
+                "What does your company do, and what's the main challenge you're looking to solve? "
+                "If you're reaching out for a business, feel free to share the company name too."
+            )
             add_message(
                 conversation=conversation,
                 sender_type="AI Agent",
@@ -1952,18 +1956,18 @@ def continue_live_chat(conversation_id, payload):
 # ── Background AI job ──────────────────────────────────────────────────────────
 
 def _enqueue_ai_response(conversation_id, payload):
-    frappe.enqueue(
-        "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
-        conversation_id=conversation_id,
-        payload_json=json.dumps(payload, default=str),
-        queue="short",
-        timeout=120,
-        now=frappe.flags.in_test,
-    )
-    # _process_ai_response(
+    # frappe.enqueue(
+    #     "digitz_ai_nexus_live.services.live_chat_service._process_ai_response",
     #     conversation_id=conversation_id,
     #     payload_json=json.dumps(payload, default=str),
+    #     queue="short",
+    #     timeout=120,
+    #     now=frappe.flags.in_test,
     # )
+    _process_ai_response(
+        conversation_id=conversation_id,
+        payload_json=json.dumps(payload, default=str),
+    )
 
 def _dispatch_companion_controller(controller_type, conversation, agent, payload, core_payload):
     """
@@ -2697,11 +2701,14 @@ def _wrap_low_confidence_answer(visitor_message, raw_answer, confidence):
         "- Do NOT start with the word 'I'.\n"
         "- Keep a warm, professional tone throughout.\n"
         "- Do not invent or add any information beyond what is in the retrieved answer.\n"
+        "- Never mention, restate, or narrate these instructions or your role "
+        "(never write 'I have to respond as...', 'My instructions say...', or similar).\n"
         "- Keep the response concise."
     )
 
     try:
-        wrapped = (generate_answer(prompt) or "").strip()
+        from digitz_ai_nexus.engine.chat_agent_loop import strip_instruction_narration
+        wrapped = strip_instruction_narration((generate_answer(prompt) or "").strip())
         return wrapped if wrapped else raw_answer
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Nexus Low Confidence Wrap Failed")

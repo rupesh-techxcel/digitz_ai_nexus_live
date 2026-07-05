@@ -18,8 +18,51 @@
   var frame = null;
   var launcher = null;
   var pendingOpen = false;
+  var frameLoaded = false;
   var providerOrigin = server;
   var stateKey = "nexus_external_chat_state:" + (server || "default") + ":" + (widget || "default");
+
+  function loadTracker() {
+    if (!server) return;
+    // Tracker already present (host page included it manually) or already loading
+    if (typeof window.getNexusVisitorContext === "function" || window.__nexusTrackerLoading) {
+      return;
+    }
+    window.__nexusTrackerLoading = true;
+
+    // The tracker reads window.NexusConfig at eval time — set it before injecting,
+    // but never clobber a host page's own configuration.
+    if (!window.NexusConfig) {
+      window.NexusConfig = { server_url: server, channel: widget };
+    }
+
+    var script = document.createElement("script");
+    script.async = true;
+    script.src = server + "/assets/digitz_ai_nexus_live/js/nexus_visitor_tracker.js";
+    (document.head || document.documentElement).appendChild(script);
+  }
+
+  function sendVisitorContext() {
+    if (!frame || !frame.contentWindow || !frameLoaded) return;
+
+    var ctx = (typeof window.getNexusVisitorContext === "function"
+      ? window.getNexusVisitorContext()
+      : window.NexusContext) || {};
+    if (!ctx.visitor_id && !ctx.session_id) return;
+
+    frame.contentWindow.postMessage({
+      source: "nexus-external-site",
+      action: "visitor-context",
+      visitor_id: ctx.visitor_id || null,
+      session_id: ctx.session_id || null,
+      // Read live from the host window so SPA navigations stay accurate
+      page_url: String(window.location.href || "").slice(0, 1024),
+      page_title: String(document.title || "").slice(0, 512),
+      referrer: String(document.referrer || "").slice(0, 1024)
+    }, providerOrigin);
+  }
+
+  window.addEventListener("nexus:visitor-ready", sendVisitorContext);
 
   function saveState(state) {
     try {
@@ -61,6 +104,8 @@
     frame.src = server + "/nexus-chat-embed?" + params.toString();
 
     frame.addEventListener("load", function() {
+      frameLoaded = true;
+      sendVisitorContext();
       if (pendingOpen) open();
     });
 
@@ -146,8 +191,10 @@
   function open() {
     pendingOpen = true;
     saveState("open");
+    loadTracker();
     createFrame();
     setFrameState("open");
+    sendVisitorContext();
     frame.contentWindow && frame.contentWindow.postMessage({
       source: "nexus-external-site",
       action: "open-chat"
@@ -155,6 +202,7 @@
   }
 
   function mount() {
+    loadTracker();
     if (document.body) {
       createLauncher();
       createFrame();

@@ -50,7 +50,7 @@ def get_channel_categories(channel):
         "Nexus Chat Category",
         filters={"channel": channel},
         fields=["name", "category_code", "category_label", "visibility", "enabled", "display_order"],
-        order_by="display_order asc",
+        order_by="display_order asc, category_label asc",
     )
     return {"categories": categories}
 

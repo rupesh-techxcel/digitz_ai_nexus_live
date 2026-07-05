@@ -86,13 +86,44 @@
         postState();
       }
 
+      function applyVisitorContext(data) {
+        // Ids must match the server-side formats (visitor_tracking_service.py)
+        var vid = (typeof data.visitor_id === "string" && /^nv_[a-f0-9]{24}$/.test(data.visitor_id))
+          ? data.visitor_id : null;
+        var sid = (typeof data.session_id === "string" && /^ns_[a-f0-9]{16}$/.test(data.session_id))
+          ? data.session_id : null;
+        if (!vid && !sid) return;
+
+        function trunc(val, max) {
+          return typeof val === "string" ? val.slice(0, max) : "";
+        }
+
+        window.NexusContext = {
+          visitor_id: vid,
+          session_id: sid,
+          page_url:   trunc(data.page_url, 1024),
+          page_title: trunc(data.page_title, 512),
+          referrer:   trunc(data.referrer, 1024),
+          source:     "external"
+        };
+        if (typeof window.getNexusVisitorContext !== "function") {
+          window.getNexusVisitorContext = function() {
+            return window.NexusContext || {};
+          };
+        }
+      }
+
       window.addEventListener("message", function(event) {
         var data = event.data || {};
-        if (event.origin !== parentOrigin || data.source !== "nexus-external-site" || data.action !== "open-chat") {
+        if (event.origin !== parentOrigin || data.source !== "nexus-external-site") {
           return;
         }
 
-        openChat();
+        if (data.action === "open-chat") {
+          openChat();
+        } else if (data.action === "visitor-context") {
+          applyVisitorContext(data);
+        }
       });
 
       if (document.readyState === "loading") {

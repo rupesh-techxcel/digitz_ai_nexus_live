@@ -8,9 +8,13 @@ from digitz_ai_nexus_live.services.rate_limit import check_rate_limit, get_calle
 
 # Companion pending actions that require OTP even when the chat category's
 # identity_verification_mode is "None".
+# The verify_* stages are included so "Resend code" still issues a fresh OTP
+# after the controller has already advanced past email collection.
 _COMPANION_EMAIL_COLLECT_ACTIONS = frozenset({
     "collect_email_for_consultancy",
     "collect_email_for_appointment",
+    "verify_email_for_consultancy",
+    "verify_email_for_appointment",
 })
 
 

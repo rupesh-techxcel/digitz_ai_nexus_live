@@ -400,7 +400,6 @@
         el('ncw-min-btn').addEventListener('click', close_panel);
         el('ncw-close-btn').addEventListener('click', close_widget);
         if (is_desk()) {
-            el('ncw-close-btn').style.display = 'none';
             el('ncw-nexy-sticky').style.display = 'none';
             el('ncw-pub-mode-btn').style.display = 'flex';
             el('ncw-pub-mode-btn').addEventListener('click', toggle_public_access_mode);
@@ -519,8 +518,10 @@
             if (!_nexy_cats || !_nexy_cats.length) return;
             _nexy_click_count++;
             el('ncw-nexy-sticky').style.display = 'none';
-            // Remove any existing category pickers so only the Nexy picker is shown
-            el('ncw-messages').querySelectorAll('.ncw-category-picker').forEach(function (p) { p.remove(); });
+            // Keep the regular picker visible as readonly history and record
+            // the Nexy action in the transcript before showing the Nexy picker
+            freeze_category_pickers(null);
+            append_nexy_action_record();
             render_category_picker(_nexy_cats, true);
         });
 
@@ -583,42 +584,25 @@
     }
 
     function _init_tooltip() {
+        // Promotional "Powered by NEXUS ORBIT" tooltip is replaced by auto-opening
+        // the chat panel itself — home page only, once per browser session.
         var tip = el('ncw-tooltip');
-        if (!tip) return;
+        if (tip) tip.style.display = 'none';
 
-        // Don't show on desk
-        if (is_desk()) { tip.style.display = 'none'; return; }
+        if (is_desk()) return;
 
-        // Don't show if already dismissed this session
+        // Only auto-open on the home page (www/index.html).
+        var path = (global.location.pathname || '/').replace(/\/+$/, '') || '/';
+        if (path !== '/' && path !== '/index') return;
+
         try {
-            if (sessionStorage.getItem('ncw_tooltip_dismissed')) {
-                tip.style.display = 'none';
-                return;
-            }
+            if (sessionStorage.getItem('ncw_auto_opened')) return;
         } catch (_) {}
 
-        var dismiss_btn = el('ncw-tooltip-dismiss');
-        var cta_btn     = el('ncw-tooltip-cta');
-        if (dismiss_btn) dismiss_btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            _dismiss_tooltip();
-        });
-        if (cta_btn) cta_btn.addEventListener('click', function () {
-            _dismiss_tooltip();
-            open_panel();
-        });
-
-        // Reveal after a short delay, auto-dismiss after 10 s
         setTimeout(function () {
-            tip.style.display = 'flex';
-            // Trigger transition in next frame
-            requestAnimationFrame(function () {
-                requestAnimationFrame(function () {
-                    tip.style.opacity = '1';
-                    tip.style.transform = 'translateX(0)';
-                });
-            });
-            setTimeout(_dismiss_tooltip, 10000);
+            if (S.open || S.starting) return;
+            try { sessionStorage.setItem('ncw_auto_opened', '1'); } catch (_) {}
+            open_panel();
         }, 3000);
     }
 
@@ -808,7 +792,9 @@
         try {
             var caller_token = _conv_caller_token();
             var waiting_for_start = S.starting;
-            if (S.conversation_id && !S.locked && caller_token) {
+            // Desk conversations have no caller_token — close_chat authorises
+            // them by session (token is only enforced for Guest conversations).
+            if (S.conversation_id && !S.locked && (caller_token || is_desk())) {
                 await api('digitz_ai_nexus_live.api.live.close_chat', {
                     conversation_id: S.conversation_id,
                     caller_token: caller_token,
@@ -1008,9 +994,11 @@
                         : window.NexusContext) || {};
                     if (_nctx.visitor_id) base.visitor_id = _nctx.visitor_id;
                     if (_nctx.session_id)  base.web_session_id  = _nctx.session_id;
-                    base.source_page_url   = window.location.href || null;
-                    base.source_page_title = document.title       || null;
-                    base.referrer          = document.referrer     || null;
+                    // Prefer the tracker context — inside the external embed iframe it
+                    // carries the host page, not the /nexus-chat-embed URL.
+                    base.source_page_url   = _nctx.page_url   || window.location.href || null;
+                    base.source_page_title = _nctx.page_title || document.title       || null;
+                    base.referrer          = _nctx.referrer   || document.referrer     || null;
                 } catch (_) {}
             }
             const r = await api('digitz_ai_nexus_live.api.live.start_chat', {
@@ -1261,11 +1249,38 @@
 
     // ── Category picker ────────────────────────────────────────────────────────
 
+    // Freeze all active category pickers in place as readonly history instead of
+    // removing them. Buttons are disabled; the chosen one (if any) is highlighted.
+    function freeze_category_pickers(selected_code) {
+        el('ncw-messages').querySelectorAll('.ncw-category-picker:not(.ncw-picker-done)').forEach(function (p) {
+            p.classList.add('ncw-picker-done');
+            p.querySelectorAll('.ncw-cat-btn').forEach(function (b) {
+                b.disabled = true;
+                if (selected_code && b.dataset.code === selected_code) {
+                    b.classList.add('ncw-cat-selected');
+                }
+            });
+        });
+    }
+
+    // Readonly record of the "Connect with Nexy" action, kept in the message flow
+    // (the sticky strip itself lives outside the transcript and is hidden on use).
+    function append_nexy_action_record() {
+        var rec = document.createElement('div');
+        rec.className = 'ncw-nexy-inline-done';
+        rec.innerHTML =
+            '<span class="ncw-nexy-inline-mark" aria-hidden="true">N</span>' +
+            '<strong>Connect with Nexy</strong>' +
+            '<span class="ncw-nexy-inline-check" aria-hidden="true">&#10003;</span>';
+        el('ncw-messages').appendChild(rec);
+    }
+
     function render_category_picker(categories, is_nexy_picker) {
         const msgs = el('ncw-messages');
 
-        // Always clear any existing pickers before rendering a new one
-        msgs.querySelectorAll('.ncw-category-picker').forEach(function (p) { p.remove(); });
+        // Clear any still-active pickers before rendering a new one;
+        // pickers frozen as history (.ncw-picker-done) are kept.
+        msgs.querySelectorAll('.ncw-category-picker:not(.ncw-picker-done)').forEach(function (p) { p.remove(); });
 
         var display_cats;
         if (is_nexy_picker) {
@@ -1317,10 +1332,9 @@
     async function select_category(code, label, faq_questions) {
         _category_selected = true;
         unlock_input();
-        // Remove all pickers and hide the Nexy sticky
-        el('ncw-messages').querySelectorAll('.ncw-category-picker').forEach(function (p) {
-            p.remove();
-        });
+        // Freeze pickers as readonly history (highlighting the selection)
+        // and hide the unused Nexy sticky strip
+        freeze_category_pickers(code);
         el('ncw-nexy-sticky').style.display = 'none';
 
         // Show visitor's selection as a labelled chip
@@ -1870,15 +1884,22 @@
                 resend_btn.textContent = 'Sending…';
                 otp_msg.style.display = 'none';
                 try {
+                    const _resend_payload = { conversation_id: S.conversation_id, email: email };
+                    if (pending_action) { _resend_payload.pending_action = pending_action; }
                     const rr = await api(
                         'digitz_ai_nexus_live.api.identity_verification.request_identity_verification',
-                        { conversation_id: S.conversation_id, email: email }
+                        _resend_payload
                     );
                     const rdata = rr.message || {};
+                    if (!rdata.challenge_token) {
+                        // No new challenge was issued — keep the current code valid
+                        // and tell the visitor instead of claiming a new code was sent.
+                        throw new Error('Could not resend code. Please try again.');
+                    }
                     challenge_token = rdata.challenge_token;
                     document.getElementById('ncw-verify-otp').value = '';
                     otp_msg.className = 'ncw-verify-msg ncw-verify-success';
-                    otp_msg.textContent = '✓ A new code has been sent to ' + email;
+                    otp_msg.textContent = '✓ A new code has been sent to ' + email + '. The previous code is no longer valid.';
                     otp_msg.style.display = '';
                     document.getElementById('ncw-verify-otp').focus();
                 } catch (err) {
@@ -2353,6 +2374,9 @@
 #ncw-panel {
     width: 400px;
     height: 580px;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
+    max-height: calc(100dvh - 48px);
     background: #fff;
     border-radius: 18px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.18);
@@ -2840,6 +2864,57 @@
     border-color: #2158c7;
     background: #f0f4ff;
 }
+/* Frozen picker — kept in the transcript as readonly history */
+.ncw-picker-done .ncw-cat-btn {
+    cursor: default;
+    opacity: 0.55;
+}
+.ncw-picker-done .ncw-cat-btn:hover {
+    border-color: #c7d9f5;
+    background: #fff;
+}
+.ncw-picker-done .ncw-cat-btn.ncw-cat-selected {
+    opacity: 1;
+    border-color: #2158c7;
+    background: #f0f4ff;
+}
+.ncw-cat-selected .ncw-cat-label::after {
+    content: " \\2713";
+    color: #2158c7;
+    font-weight: 700;
+}
+/* Readonly transcript record of the "Connect with Nexy" action */
+.ncw-nexy-inline-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+    padding: 8px 11px;
+    border: 1px solid #bfd0ff;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #eef4ff 0%, #f4f0ff 100%);
+    color: #173f94;
+    opacity: 0.75;
+    font-size: calc(var(--ncw-fs) - 1px);
+}
+.ncw-nexy-inline-mark {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2158c7 0%, #6846c7 100%);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+}
+.ncw-nexy-inline-check {
+    margin-left: auto;
+    color: #6846c7;
+    font-weight: 700;
+}
 .ncw-cat-label {
     font-weight: 600;
     font-size: var(--ncw-fs);
@@ -3306,6 +3381,45 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* ── Mobile — full-screen panel ── */
+@media (max-width: 480px) {
+    #ncw-root {
+        bottom: 16px;
+        right: 16px;
+    }
+    #ncw-tooltip {
+        max-width: calc(100vw - 32px);
+    }
+    #ncw-panel {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        max-width: none;
+        height: 100vh;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+    }
+    #ncw-panel.ncw-maximised {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        bottom: 0;
+        right: 0;
+        border-radius: 0;
+    }
+    /* Full-screen already — maximise is meaningless on phones */
+    #ncw-max-btn { display: none; }
+    #ncw-header {
+        padding-top: max(14px, env(safe-area-inset-top));
+    }
+    #ncw-footer {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    /* 16px stops iOS Safari from auto-zooming the page on input focus */
+    #ncw-input { font-size: 16px; }
 }
         `;
         document.head.appendChild(s);

@@ -30,7 +30,7 @@ def get_nexy_category(channel: str, tenant=None):
         "Nexus Chat Category",
         filters=filters,
         fields=["name"],
-        order_by="display_order asc",
+        order_by="display_order asc, category_label asc",
         limit=1,
     )
     return cats[0]["name"] if cats else None

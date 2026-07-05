@@ -69,6 +69,10 @@ def request_verification(channel, chat_category, email, force_mode=None):
     otp = _generate_otp()
     challenge_token = frappe.generate_hash(length=32)
 
+    # Resend safety: a new code invalidates all previous pending codes for the
+    # same email + category, so only the most recently sent code can verify.
+    _expire_pending_challenges(email=email, chat_category=chat_category)
+
     doc = frappe.new_doc("Nexus Identity Verification Challenge")
     doc.challenge_token = challenge_token
     doc.status = "Pending"
@@ -263,6 +267,33 @@ def _send_otp_email(email, otp, category_label):
         frappe.log_error(
             title="Nexus OTP (email not configured)",
             message=f"OTP for {email}: {otp}\n\n{_tb.format_exc()}",
+        )
+
+
+def _expire_pending_challenges(email, chat_category):
+    """Mark all pending challenges for this email + category as Expired (superseded by a resend)."""
+    try:
+        names = frappe.get_all(
+            "Nexus Identity Verification Challenge",
+            filters={
+                "email": email,
+                "chat_category": chat_category,
+                "status": "Pending",
+            },
+            pluck="name",
+        )
+        for name in names:
+            frappe.db.set_value(
+                "Nexus Identity Verification Challenge",
+                name,
+                "status",
+                "Expired",
+                update_modified=False,
+            )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Identity Verification: expiring superseded challenges failed",
         )
 
 

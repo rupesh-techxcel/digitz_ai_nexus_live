@@ -296,6 +296,11 @@
             source:     'website',
         };
         global.NexusContext = ctx;
+        // Signal consumers (e.g. the external embed loader) that init finished —
+        // fires with null ids when tracking is disabled or failed.
+        try {
+            global.dispatchEvent(new CustomEvent('nexus:visitor-ready', { detail: ctx }));
+        } catch (_) {}
     }
 
     // ── Event listeners ───────────────────────────────────────────────────────

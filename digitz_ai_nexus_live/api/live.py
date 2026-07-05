@@ -69,7 +69,7 @@ def get_available_categories_for_tenant(tenant=None):
         "Nexus Chat Category",
         filters={"enabled": 1},
         fields=["name", "category_code", "category_label", "description", "display_order"],
-        order_by="display_order asc",
+        order_by="display_order asc, category_label asc",
     )
     return {"categories": categories}
 
@@ -144,7 +144,7 @@ def get_channel_categories(channel=None, tenant=None, visitor_email=None, email=
             "identity_verification_mode",
             "allow_public_fallback",
         ],
-        order_by="display_order asc",
+        order_by="display_order asc, category_label asc",
     )
 
     if not candidates:
