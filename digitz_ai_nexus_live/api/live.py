@@ -217,6 +217,19 @@ def ask_question(payload=None):
             "knowledge_delivery_enabled": False,
             "message": "This service is temporarily paused.",
         }
+    # A public widget is self-describing: resolve its channel (and the channel's
+    # tenant) so guest callers only need to send widget_code + query. Explicit
+    # values in the payload always win.
+    if widget:
+        channel = payload.get("channel") or frappe.db.get_value(
+            "Nexus Website Widget", widget.name, "channel"
+        )
+        if channel:
+            payload["channel"] = channel
+            if not payload.get("tenant"):
+                payload["tenant"] = frappe.db.get_value(
+                    "Nexus Live Channel", channel, "tenant"
+                )
     return ask_live_question(payload)
 
 
