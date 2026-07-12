@@ -19,6 +19,10 @@
     };
     window.dev_server = {{ dev_server }};
     window.socketio_port = {{ socketio_port }};
+    // This page is only ever loaded as an external cross-site embed, so the widget
+    // must always run in public-visitor mode (never desk), even if a nexusailive.com
+    // session leaks into the iframe. Keeps the "Connect with Nexy" picker visible.
+    window.NEXUS_FORCE_PUBLIC = true;
     window.frappe = window.frappe || {};
     frappe.boot = {
       sitename: "{{ sitename }}",

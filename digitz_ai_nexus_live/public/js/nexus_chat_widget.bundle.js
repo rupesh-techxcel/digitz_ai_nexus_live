@@ -59,6 +59,10 @@
     // ── Context ────────────────────────────────────────────────────────────────
 
     function is_desk() {
+        // External embeds (e.g. digitzprime.com) run only against the nexusailive.com
+        // backend and must always behave as a public visitor — never desk — so the
+        // public "Connect with Nexy" UX renders regardless of any leaked session.
+        if (global.NEXUS_FORCE_PUBLIC) return false;
         return !!(global.frappe && frappe.boot &&
                   frappe.boot.user && frappe.boot.user.name &&
                   frappe.boot.user.name !== 'Guest');

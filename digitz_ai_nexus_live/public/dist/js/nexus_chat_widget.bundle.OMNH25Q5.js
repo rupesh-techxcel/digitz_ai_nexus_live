@@ -30,6 +30,8 @@
     var _category_selected = false;
     var _nexy_click_count = 0;
     function is_desk() {
+      if (global.NEXUS_FORCE_PUBLIC)
+        return false;
       return !!(global.frappe && frappe.boot && frappe.boot.user && frappe.boot.user.name && frappe.boot.user.name !== "Guest");
     }
     function _generate_conversation_id() {
@@ -3063,4 +3065,4 @@
     }
   })(window);
 })();
-//# sourceMappingURL=nexus_chat_widget.bundle.7EUMY6EC.js.map
+//# sourceMappingURL=nexus_chat_widget.bundle.OMNH25Q5.js.map
