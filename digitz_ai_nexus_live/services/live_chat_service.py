@@ -1980,7 +1980,11 @@ def _dispatch_companion_controller(controller_type, conversation, agent, payload
     2. Create the controller module under digitz_ai_nexus/nexus_companion/services/
     3. Add an elif branch here pointing to handle_companion_turn in that module
     """
-    if controller_type == "customer_support":
+    if controller_type == "prime_companion":
+        from digitz_ai_nexus.nexus_companion.services.prime_companion_controller import (
+            handle_companion_turn,
+        )
+    elif controller_type == "customer_support":
         from digitz_ai_nexus.nexus_companion.services.support_companion_controller import (
             handle_companion_turn,
         )

@@ -94,6 +94,14 @@ def get_channel_categories(channel=None, tenant=None, visitor_email=None, email=
             "knowledge_delivery_enabled": False,
         }
 
+    # Tenant guard: when the caller did not pass an explicit tenant, derive it from
+    # the widget's channel. This ensures a widget can only ever surface its own
+    # tenant's categories (prevents cross-tenant Nexy category leakage).
+    if not tenant and widget and getattr(widget, "name", None):
+        _widget_channel = frappe.db.get_value("Nexus Website Widget", widget.name, "channel")
+        if _widget_channel:
+            tenant = frappe.db.get_value("Nexus Live Channel", _widget_channel, "tenant") or tenant
+
     is_authenticated = frappe.session.user not in ("Guest", None, "")
 
     identity_type = resolve_identity_type({

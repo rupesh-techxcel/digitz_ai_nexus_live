@@ -159,11 +159,11 @@
     {
       "default": "business_companion",
       "depends_on": "eval:doc.use_for_nexy",
-      "description": "Selects which Nexy companion controller handles conversations in this category. Business Companion drives B2B sales discovery. Customer Support drives issue triage and resolution. Defaults to Business Companion when not set.",
+      "description": "Selects which Nexy companion controller handles conversations in this category. Business Companion drives B2B sales discovery. Prime Companion drives DIGITZ Prime product enquiry. Customer Support drives issue triage and resolution. Defaults to Business Companion when not set.",
       "fieldname": "companion_controller_type",
       "fieldtype": "Select",
       "label": "Companion Controller",
-      "options": "\nbusiness_companion\ncustomer_support"
+      "options": "\nbusiness_companion\nprime_companion\ncustomer_support"
     },
     {
       "fieldname": "section_faq",
