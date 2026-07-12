@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nexus Chat Embed</title>
+  <!-- Define frappe before Frappe injects the csrf_token script below, otherwise
+       `frappe.csrf_token = "..."` throws "frappe is not defined" and breaks boot. -->
+  <script>window.frappe = window.frappe || {};</script>
   <!-- csrf_token -->
   {% if widget_valid %}
   <script>
