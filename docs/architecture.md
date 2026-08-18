@@ -265,3 +265,44 @@ The filter is applied in `nexus_profile_access_allocation.get_page_data` via `_e
 8. **Safeguard at identity class level** — access caps are on `Nexus Identity Type`, not on individual registry entries. All holders of an identity class are uniformly capped.
 9. **Fail-closed escalation** — if escalation rule lookup fails, the conversation is not silently left unescalated. The service raises an error to surface misconfiguration.
 10. **No retrieval logic here** — this app passes the query to Nexus Core and receives a structured response. It never reimplements chunking, scoring, or prompt building.
+
+---
+
+## Where the chat widget lives, and who embeds it
+
+`public/js/nexus_chat_widget.bundle.js` belongs to **`digitz_ai_nexus_live`**,
+but the pages that show it on the public site belong to **`digitz_ai_nexus`** —
+`www/index.html`, `nexus-platform.html` and `how-nexus-works.html`. They embed it
+with `{{ include_script('nexus_chat_widget.bundle.js') }}`, which resolves the
+content-hashed filename through `assets.json`, so a JS change needs
+`bench build --app digitz_ai_nexus_live` and nothing else.
+
+The host page supplies `window.NexusChatConfig = { widget_code }` from
+`frappe.conf.site_widget_code` (default `DIGITZ-AI-NEXUS-SITE`), and stubs
+`frappe.boot` so the frappe-web bundle runs outside the desk. The same bundle
+serves the desk console, which drives it through
+`NexusChatWidget.open(conversation_id)`.
+
+Consequence worth remembering: **a change to this widget affects a different
+app's pages**, and the marketing site's chat can break without anything in
+`digitz_ai_nexus` having changed.
+
+### Dormant: the conversion-action email card
+
+The widget renders an inline email form for a conversion action whose type is
+`Lead Capture`, `Download Gate` or `Trial Activation` **and** which carries no
+`url`. That branch calls `digitz_ai_nexus_live.api.live_chat.send_message`,
+**which does not exist** — there is no `live_chat` module — so submitting the
+form fails and the visitor is told "Something went wrong."
+
+It does not fire today: every configured `Nexus Companion Product` uses
+`Meeting Booking`, and no `Nexus Companion Service` records exist. It becomes
+live the moment someone configures one of those three types without a URL.
+
+Repairing the call alone would not capture a lead either. It posts
+`__visitor_email__:<email>` as a chat message, and nothing server-side parses
+that prefix — only `nexus_companion_dashboard.js` renders it, as "Shared email:".
+The working way to capture a verified visitor email is the knowledge-gap OTP
+flow the same widget already uses (`request_gap_email_otp` →
+`verify_gap_email_otp` → `submit_gap_visitor_email`).
+

@@ -145,19 +145,94 @@ Continues an existing chat conversation.
 | conversation_id | str | Yes | The `conversation_id` returned by `start_chat` |
 | payload | dict | Yes | Payload with `message`; category/profile context is preserved from the conversation snapshot |
 
-**Returns:**
+**Returns — the answer does not come back on this call.**
+
+For the normal AI path the request enqueues the work and returns immediately:
 
 ```json
-{
-  "answer": "...",
-  "confidence": 0.71,
-  "escalation_status": null,
-  "sources": [...],
-  "fallback_used": false
-}
+{ "status": "processing", "conversation_id": "..." }
 ```
 
-If escalation was triggered, `escalation_status` will be `"Pending"` or `"Assigned"`.
+The reply is pushed later over `frappe.realtime` as a **`nexus_chat_response`**
+event carrying the same `conversation_id`, with **`nexus_chat_typing`** driving
+the typing indicator in the meantime. A caller that waits for an answer in this
+response body will wait forever — subscribe first (`task_subscribe(conversation_id)`),
+then send.
+
+Some paths do answer synchronously, so `status` must be branched on rather than
+assumed:
+
+| `status` | Meaning |
+|---|---|
+| `processing` | Queued; the answer arrives via `nexus_chat_response` |
+| `success` | Answered inline (for example an FAQ hit) |
+| `await_category` | The visitor must pick a chat category before continuing |
+| `category_selected` | A category was accepted; carry on sending |
+| `escalated` | A human has taken over; messages are stored, the AI does not reply |
+| `closed` | The conversation is closed; start a new one |
+| `faq_not_found` | No FAQ matched under a FAQ-only category |
+
+---
+
+### `digitz_ai_nexus_live.api.live.get_widget_tenant`
+
+Resolves a website widget code to its tenant before a chat is started. This is
+the first call the embedded widget makes.
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| widget_code | str | Yes | The code the host page sets in `window.NexusChatConfig` |
+
+Where a `widget_code` is supplied by a Guest, `validate_widget_origin` checks the
+HTTP `Origin` against the widget's `allowed_domains_json`. The check is skipped
+for authenticated callers, and passes when no `Origin` header is present.
+
+---
+
+### `digitz_ai_nexus_live.api.live.get_conversation_detail`
+
+The full message history of one conversation, used when the widget resumes a
+stored session or the desk console opens an existing chat.
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| conversation_id | str | Yes | |
+
+---
+
+### `digitz_ai_nexus_live.api.live.close_chat`
+
+Closes a conversation. Once closed, `send_chat_message` returns `status: closed`
+rather than accepting further input.
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| conversation_id | str | Yes | |
+
+---
+
+### `digitz_ai_nexus_live.api.live.request_chat_transcript`
+
+Starts an OTP challenge to email a transcript of the conversation to the
+visitor. Pairs with `verify_chat_transcript_otp`; the transcript is only sent
+once the code is verified, so a transcript cannot be mailed to an address the
+visitor has not proved.
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| conversation_id | str | Yes | |
+| email | str | Yes | Where to send the transcript |
+
+---
+
+### `digitz_ai_nexus_live.api.live.verify_chat_transcript_otp`
+
+Verifies the code from `request_chat_transcript` and sends the transcript.
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| conversation_id | str | Yes | |
+| otp | str | Yes | |
 
 ---
 

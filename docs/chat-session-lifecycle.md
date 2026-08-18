@@ -367,6 +367,35 @@ After escalation, visitor messages are forwarded to the agent panel via `respons
 
 ---
 
+## Browser-Side Session Persistence
+
+The conversation is remembered in the visitor's browser so a reload continues
+the same chat rather than starting a new one.
+
+| | |
+|---|---|
+| Where | `localStorage`, key `ncw_session:<scope>` |
+| Contains | `conversation_id` and a timestamp |
+| Idle TTL | **1 hour**, refreshed on activity |
+
+On load the widget reads the key, drops it if the timestamp is older than the
+TTL, and otherwise resumes by calling `live.get_conversation_detail` to repaint
+the history. That is why an abandoned conversation does not reappear the next
+day, while a reload mid-conversation is seamless.
+
+The widget also keeps a few presentation flags — `ncw_fs2` (chat font size, in
+`localStorage`) and `ncw_auto_opened` / `ncw_wa_dismissed` /
+`ncw_tooltip_dismissed` (per-tab, in `sessionStorage`) — so the panel does not
+re-open itself or re-show a dismissed prompt on every navigation.
+
+**Realtime is what delivers replies.** After `start_chat`, the widget calls
+`task_subscribe(conversation_id)` and listens for `nexus_chat_response`, with
+`nexus_chat_typing` driving the typing indicator. Every handler re-checks
+`data.conversation_id` against the widget's current conversation, so a stale
+subscription cannot paint another conversation's messages into the panel.
+
+---
+
 ## Conversation ID vs Document Name
 
 | Identifier | Example | Where used |
